@@ -1,0 +1,45 @@
+# Herdr Space Folders
+
+![Herdr Space Folders: group your spaces in folders](social.png)
+
+Folders for the spaces list of the [Herdr](https://herdr.dev) desktop app. Drag spaces into colored folders, fold the ones you're not working on, start new spaces right inside a folder, and let folders collect the spaces of a project by themselves.
+
+![Space folders in the sidebar](preview.png)
+
+- **Folders in the sidebar.** A folder has a colored tile like a space's avatar, a count, and folds away. A folded folder still shows when an agent in it is done or needs you.
+- **Drag and drop.** Drop a space on a folder to file it, on a space to put it there and in that space's folder, or below the list to take it out. Drag folders to put them in order.
+- **New spaces in a folder.** A folder's **+** (or **New space here**) opens a space in the folder's start folder, already in the folder.
+- **Smart folders.** A folder collects the spaces working in folders that match its rules: `wbso-ai` (a folder name anywhere), `~/code/client-*` (a path, `*` for one folder name). What you drag yourself goes first.
+- **The same everywhere.** Folders are saved in the home of the machine the spaces run on (`~/.config/herdr-space-folders.json`), so every screen that connects to that machine shows the same folders.
+- **Everything the spaces list already does.** It's Herdr's own spaces mod with folders added: worktrees under their repo, branch and ahead/behind, a group per machine, colors, the right-click menu.
+
+![Editing a folder](edit.png)
+
+Right-click a folder to color it, open a new space in it, edit it or delete it. **Edit folder…** sets its name, the folder new spaces start in (**Choose…** opens the system's folder picker) and the rules it collects spaces with.
+
+## Install
+
+Clone this repository and link the mod into Herdr's home:
+
+```sh
+git clone https://github.com/jankeesvw/herdr-space-folders.git ~/Documents/github.com/jankeesvw/herdr-space-folders
+ln -s ~/Documents/github.com/jankeesvw/herdr-space-folders/mods/space-folders ~/.config/herdr-app/mods/space-folders
+cp ~/Documents/github.com/jankeesvw/herdr-space-folders/layouts/main-folders.json ~/.config/herdr-app/layouts/
+herdr-app do layout.switch --name main-folders
+```
+
+`main-folders` is Herdr's own `main` layout (0.1.10) with the spaces list swapped for this one. `ctrl-shift-l` switches back to any other layout.
+
+Herdr doesn't notice changes inside a symlinked mod folder, so after a `git pull` restart Herdr (or make the link again) to load the new version.
+
+### Your own layout
+
+In a layout of your own, point the spaces block at this mod:
+
+```json
+{ "id": "spaces", "type": "block", "size": { "weight": 1 }, "min": 90, "content": { "mod": "space-folders" } }
+```
+
+## How folders are kept
+
+Each machine's folders live in `~/.config/herdr-space-folders.json` in that machine's home: the folders in order (name, color, start folder, rules, folded) and which space went in which folder, by the id that machine knows the space by. A change shows at once and is written to the machine right away; changes from another screen come in within 15 seconds.
