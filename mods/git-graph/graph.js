@@ -48,6 +48,7 @@ function stamp(seconds) {
 }
 
 const tilde = (path, on) => (!on && path?.startsWith(home()) ? "~" + path.slice(home().length) : path);
+const repoLabel = (root, folder) => root === folder ? root : root.slice(folder.length).replace(/^[/\\]+/, "");
 const brief = (c) => ({ hash: c.hash, subject: c.subject, parents: c.parents });
 const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const sameFiles = (a, b) => a.length === b.length && a.every((f, i) => f.path === b[i].path && f.status === b[i].status);
@@ -56,36 +57,52 @@ const scopeOf = ({ all, remotes }) => `${all} ${remotes}`;
 const SEEN = 24, DETAILS = 200;
 const keep = (map, key, value, max) => { map.delete(key); map.set(key, value); if (map.size > max) map.delete(map.keys().next().value); };
 
-// What belongs to one folder: a new folder starts from this, and leaving one keeps it.
+// Per-folder graph state is cached when switching contexts and refreshed on return.
 const folderState = () => ({
   state: "loading", root: null, on: null, cwd: null, error: null,
+  repos: [], repoBranches: new Map(), selectedRoot: null,
   base: [], commits: [], rows: [], lanes: 1, labels: new Map(), index: new Map(), hasMore: false, limit: PAGE, files: [], ctx: null,
   head: null, current: null, branches: [], remoteNames: [], signature: null, scope: null, moreAsked: null,
   selected: null, details: null, diff: null,
 });
 
-// Everything the table shows for a folder, in one round of git calls: each
-// answers from any subfolder, and status names paths from the repository root.
-async function readFolder(cwd, on, { all, remotes, limit }) {
-  const git = (args) => exec("git", [...READ, ...args], { cwd, on });
-  const [top, log, head, current, branches, remoteNames, status] = await Promise.all([
-    // One commit past the page says whether there are more, as Git Graph asks.
-    exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }), git(logArgs({ all, remotes, limit: limit + 1 })),
-    git(["rev-parse", "--verify", "-q", "HEAD"]), git(["symbolic-ref", "-q", "--short", "HEAD"]),
-    git(["for-each-ref", "--format=%(refname)", "refs/heads"]), git(["remote"]), git(STATUS)]);
-  if (top.code !== 0) return { state: "norepo", cwd, on };
-  // A log that fails without a HEAD is a repository with no commits yet.
+// Read one repository plus direct-child repositories for a focused workspace folder.
+async function readFolder(cwd, on, { all, remotes, limit, selectedRoot }) {
+  const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on });
+  let repos = top.code === 0 ? [top.stdout.trim()] : [];
+  if (!repos.length) {
+    const found = await exec("find", [cwd, "-mindepth", "2", "-maxdepth", "2", "-name", ".git", "-prune", "-print"], { on });
+    repos = found.code === 0 ? [...new Set(found.stdout.split("\n").filter(Boolean)
+      .map((path) => path.replace(/[/\\]\.git\/?$/, "")))].sort() : [];
+  }
+  if (!repos.length) return { state: "norepo", cwd, on, repos, repoBranches: new Map(), selectedRoot: null };
+  const root = repos.includes(selectedRoot) ? selectedRoot : repos[0];
+  const otherRepos = repos.filter((repo) => repo !== root);
+  const git = (args) => exec("git", [...READ, ...args], { cwd: root, on });
+  const [log, head, current, branches, remoteNames, status, otherBranches] = await Promise.all([
+    git(logArgs({ all, remotes, limit: limit + 1 })), git(["rev-parse", "--verify", "-q", "HEAD"]),
+    git(["symbolic-ref", "-q", "--short", "HEAD"]), git(["for-each-ref", "--format=%(refname)", "refs/heads"]),
+    git(["remote"]), git(STATUS),
+    Promise.all(otherRepos.map(async (repo) => {
+      const branch = await exec("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: repo, on });
+      return [repo, branch.code === 0 ? branch.stdout.trim() : "Detached HEAD"];
+    })),
+  ]);
   if (log.code !== 0 && head.code === 0) throw new Error(log.stderr.trim());
   const base = log.code === 0 ? parseLog(log.stdout) : [];
+  const currentName = current.code === 0 ? current.stdout.trim() : "Detached HEAD";
+  const repoBranches = new Map([[root, currentName], ...otherBranches]);
   return {
-    root: top.stdout.trim(), on, cwd, base: base.slice(0, limit), limit, hasMore: base.length > limit,
+    root, on, cwd, repos, selectedRoot: root, repoBranches, base: base.slice(0, limit), limit, hasMore: base.length > limit,
     head: head.code === 0 ? head.stdout.trim() : null, current: current.code === 0 ? current.stdout.trim() : null,
     branches: branches.stdout.split("\n").filter(Boolean).map((r) => r.replace(/^refs\/heads\//, "")),
     remoteNames: remoteNames.stdout.split("\n").filter(Boolean),
     files: status.code === 0 ? parseStatus(status.stdout) : [],
-    signature: [log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout].join("\0"), scope: scopeOf({ all, remotes }),
+    signature: [root, log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout,
+      ...repoBranches].join("\0"), scope: scopeOf({ all, remotes }),
   };
 }
+
 
 export class Graph {
   init(cx) {
@@ -110,6 +127,7 @@ export class Graph {
 
   reset() {
     Object.assign(this, folderState());
+    this.repoSelection = (this.repoSelection ?? 0) + 1; this.repoPickerOpen = false;
     this.watchToken++; this.watching = null;
   }
 
@@ -153,20 +171,21 @@ export class Graph {
       } finally { this.warming = false; }
     });
   }
-
   // A load belongs to its folder: a new folder starts at once, and a slower
   // load for the old one finds itself stale and drops its result.
   refresh(cx, full = true) {
     const { cwd, on } = location(this.folder), context = this.key();
     if (context !== this.context) { this.enter(context); full = true; }
     if (!cwd) { this.state = "nofolder"; return; }
-    if (this.loading === context) { this.again = this.again === "full" || full ? "full" : "status"; return; }
-    this.loading = context; this.again = null;
-    const { all, remotes, limit } = this, stale = () => this.key() !== context;
+    const { all, remotes, limit } = this, selection = this.repoSelection;
+    const loadKey = JSON.stringify([context, selection]);
+    if (this.loading === loadKey) { this.again = this.again === "full" || full ? "full" : "status"; return; }
+    this.loading = loadKey; this.again = null;
+    const stale = () => this.key() !== context || this.repoSelection !== selection;
     cx.spawn(async (cx) => {
       try {
         if (full || !this.root) {
-          const read = await readFolder(cwd, on, { all, remotes, limit });
+          const read = await readFolder(cwd, on, { all, remotes, limit, selectedRoot: this.selectedRoot });
           if (stale()) return;
           if (read.state === "norepo") { this.reset(); Object.assign(this, read); return; }
           if (!on) this.watch(read.root, context, cx);
@@ -186,7 +205,7 @@ export class Graph {
       } catch (e) {
         if (!stale()) { this.state = "error"; this.error = String(e?.message ?? e); }
       } finally {
-        if (this.loading === context) {
+        if (this.loading === loadKey) {
           this.loading = null; cx.notify();
           if (this.again) this.refresh(cx, this.again === "full");
         }
@@ -458,7 +477,11 @@ export class Graph {
     const where = this.current ?? (this.head ? `detached at ${this.head.slice(0, 8)}` : null);
     return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().text_size(13).font_semibold().child("Graph"))
-      // Which branch you're on, always in view.
+      .when(this.repos.length > 1, (e) => e.child(h_flex().id("graph-repository").max_w(180).h(22).px(7).gap(5).items_center().rounded(6).cursor_pointer()
+        .bg(t.raised).text_color(t.foreground).hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => { this.repoPickerOpen = !this.repoPickerOpen; cx.notify(); })
+        .child(svg(icon("folder")).size(12).flex_none())
+        .child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(repoLabel(this.root ?? this.selectedRoot, this.cwd)))))
       .when(ready && Boolean(where), (e) => e.child(h_flex().h(22).px(7).gap(5).min_w(0).items_center().rounded(6).bg(t.accent + "26").text_color(t.accent)
         .child(svg(icon(this.current ? "branch" : "commit")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(where))))
       .child(div().flex_1())
@@ -468,6 +491,23 @@ export class Graph {
         .on_click(() => openUpdate()).child(div().size(6).rounded(3).bg(t.accent)).child("Update Graph")))
       .when(ready && this.remoteNames?.length > 0, (e) => e.child(this.iconButton("graph-fetch", "fetch", this.fetching ? "Fetching…" : null, false, (_e, cx) => this.fetch(cx), t)))
       .when(this.state !== "nofolder", (e) => e.child(this.iconButton("graph-refresh", "refresh", null, false, (_e, cx) => this.refresh(cx), t)));
+  }
+
+  repoPicker(t) {
+    if (!this.repoPickerOpen || this.repos.length < 2) return null;
+    const height = Math.min(this.repos.length * 34, 180);
+    return v_flex().h(height).flex_none().overflow_y_scrollbar().border_b(1).border_color(t.border)
+      .children(this.repos.map((root, i) => div().id(`graph-repository-${i}`).h(34).flex_none().pl(66).pr(14).flex().gap(10).items_center()
+        .text_color(root === this.root ? t.accent : t.foreground).hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => {
+          this.selectedRoot = root; this.repoSelection++; this.repoPickerOpen = false; this.root = null;
+          this.watchToken++; this.watching = null; this.selected = null; this.details = null; this.diff = null;
+          this.state = "loading"; this.refresh(cx); cx.notify();
+        })
+        .child(div().flex_1().min_w(0).truncate().text_size(11.5).child(repoLabel(root, this.cwd)))
+        .child(h_flex().flex_none().max_w(180).gap(5).items_center().text_color(t.muted)
+          .child(svg(icon("branch")).size(12).flex_none())
+          .child(div().max_w(160).truncate().text_size(11).child(this.repoBranches.get(root) ?? "…")))));
   }
 
   toolbar(t) {
@@ -623,6 +663,7 @@ export class Graph {
         if (wide !== this.wide || graphMax !== this.graphMax) { this.wide = wide; this.graphMax = graphMax; cx.notify(); }
       })
       .child(this.header(t))
+      .when(Boolean(this.repoPickerOpen), (e) => e.child(this.repoPicker(t)))
       .when(ready, (e) => e.child(this.toolbar(t)).child(this.columns(t, this.graphWidth())).child(this.list(t, mono))
         .when(Boolean(this.selected), (el) => el.child(this.detailsPane(t, mono))))
       .when(!ready, (e) => e.child(this.empty(t)));

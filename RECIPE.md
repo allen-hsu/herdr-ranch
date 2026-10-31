@@ -17,12 +17,15 @@ One column on the `background` color, radius 10, 1px `border`, base type 12.5px.
 Top to bottom:
 
 - **Header**, 42px, 14px side padding, bottom border. "Graph" at 13px semibold.
-  Beside it the current branch as a chip: 22px tall, radius 6, `accent` at 15%
-  (`accent` + `26`) behind `accent` text, a 12px branch icon and the name at
-  11.5px semibold; detached HEAD reads `detached at <8 chars>` with a commit icon.
-  On the right, 24px icon buttons in `muted`: Fetch (arrow down, only when the
-  repo has remotes; it says `Fetching…` while running) and Refresh. No commit
-  count, as in Git Graph.
+  Beside it, when multiple repositories are found, the current repository name opens a
+  picker aligned beneath it. Each 34px row shows a repository and its current
+  branch; the list grows to its row count, capped at 180px with scrolling.
+  Beside the repo name, the current branch appears as a chip: 22px tall, radius
+  6, `accent` at 15% (`accent` + `26`) behind `accent` text, a 12px branch icon
+  and the name at 11.5px semibold; detached HEAD reads `detached at <8 chars>`
+  with a commit icon. On the right, 24px icon buttons in `muted`: Fetch (arrow
+  down, only when the repo has remotes; it says `Fetching…` while running) and
+  Refresh. No commit count, as in Git Graph.
 - **Toolbar**, 34px, 10px side padding, bottom border: a segmented control
   `All branches | Current` (22px segments, 11.5px, the chosen one `raised` with a
   border) and a `Remotes` checkbox (13px box, `accent` filled with a check when
@@ -96,9 +99,11 @@ or `ansi1` when the action or the chosen mode destroys something.
   Nothing animates.
 - **Which repository**: the focused pane's live folder (`panes()[i].cwd`), else
   `focused().cwd`, else the space's folder, on the space's machine. Opened with
-  `props.folder` (as a pane), always that folder, here. A new folder starts
-  clean (selection, page size, details) and loads at once; a slower load for the
-  previous folder drops its result.
+  `props.folder` (as a pane), always that folder, here. If it's a repository,
+  use it; otherwise find direct-child repositories and load the first. The
+  header picker switches among them and shows each repository's current branch.
+  A new folder starts clean (selection, page size, details) and loads at once; a
+  slower load for the previous folder drops its result.
 - **Switching fast**: leaving a folder keeps it as it was (the last 24 folders).
   Coming back shows that in the same frame, then reads it again in the background
   and redraws only if something changed (the log, HEAD, branches, remotes or the
@@ -106,15 +111,18 @@ or `ansi1` when the action or the chosen mode destroys something.
   read ahead, one at a time, this machine's first: 1.5 s after start, then every
   15 s for new ones. A commit's details are kept too (the last 200): clicking it
   again shows them at once.
-- **Loading**: one round of git calls, all together, from the pane's folder (each
-  answers from a subfolder too, and status names paths from the repository
-  root): `git rev-parse --show-toplevel`, `git log` (all refs except `refs/stash`
-  with All branches, or `HEAD` with Current; `--exclude=refs/remotes/*` too when
-  Remotes is off; `--date-order --decorate=full -n301`: one past the page says
-  whether there are more, as Git Graph asks), `rev-parse HEAD`, `symbolic-ref
-  --short HEAD`, `for-each-ref refs/heads`, `git remote` and `git status
-  --porcelain=v1 -z --no-renames --untracked-files=all`. Reads pass `--no-optional-locks -c core.fsmonitor=false
-  -c diff.autoRefreshIndex=false`, so they write nothing under `.git`.
+- **Loading**: resolve the root with `git rev-parse --show-toplevel`; if the
+  folder isn't a repository, `find <folder> -mindepth 2 -maxdepth 2 -name .git
+  -prune -print` finds its direct-child repositories. For the selected repo,
+  together run `git log` (all refs except `refs/stash` with All branches, or
+  `HEAD` with Current; `--exclude=refs/remotes/*` too when Remotes is off;
+  `--date-order --decorate=full -n301`: one past the page says whether there
+  are more, as Git Graph asks), `rev-parse HEAD`, `symbolic-ref --short HEAD`,
+  `for-each-ref refs/heads`, `git remote` and `git status --porcelain=v1 -z
+  --no-renames --untracked-files=all`. Read each other repo's current branch
+  with `git symbolic-ref --short HEAD` concurrently. Reads pass
+  `--no-optional-locks -c core.fsmonitor=false -c diff.autoRefreshIndex=false`,
+  so they write nothing under `.git`.
 - **Staying live**: `watchFolder` on the repository root (and on the main
   checkout's `.git` for a linked worktree). A change to `HEAD`, `packed-refs` or
   anything under `refs/` inside the git folder reloads the history; any other
