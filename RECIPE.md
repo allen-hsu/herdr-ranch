@@ -18,8 +18,8 @@ Herdr's spaces list with folders: colored, foldable folders above the loose spac
 ## How it behaves
 
 - Click a folder to fold or unfold it. Press on a space and release on a folder to file it there; on another space to move it to that place (`space.move`) and into that space's folder; anywhere else in the list to take it out of its folder. Press on a folder and release on another to reorder: down puts it after, up before. Only within a machine.
-- A space's folder: the one it was dragged into; "" (dragged out) keeps it out; otherwise the first folder whose rules match the folder its first terminal works in. A worktree goes with its checkout's space.
-- A machine goes in the first folder on this computer whose rules match its name or the folder one of its spaces works in; a rule like `vm-*` matches a name the way it matches a folder name.
+- A space's folder: the one it was dragged into; "" (dragged out) keeps it out; otherwise the folder whose rules match deepest into the folder its first terminal works in (`~/code/client` beats `~/code`; on a tie the first folder wins). A worktree goes with its checkout's space.
+- A machine goes in the folder on this computer whose rules match deepest into its name or the folder one of its spaces works in; a rule like `vm-*` matches a name the way it matches a folder name.
 - Rules, comma-separated, each take a folder and everything in it: starting with `/` or `~` they're paths (`~` any home: `/home/x`, `/Users/x`, `/root`), otherwise a folder name at any depth; `*` is any one folder name.
 - A folder's + and "New space here" run `space.new` with the start folder (`~` made the machine's `$HOME`) and the machine; the first space that then appears on that machine goes in the folder (Herdr returns no id).
 - Choosing a start folder while the rules are empty (or the same as it) sets the rules to it too.

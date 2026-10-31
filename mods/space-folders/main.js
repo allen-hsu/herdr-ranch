@@ -63,20 +63,32 @@ export function rule(pattern) {
   return new RegExp(`${/^[/~]/.test(p) ? "^" : "(?:^|/)"}${body}(?:/|$)`);
 }
 
-const collects = (f, path) => Boolean(path) && (f.match ?? "").split(",").some((p) => rule(p)?.test(path));
+// How deep into the path a folder's rules reach: 0 when none match. A rule
+// that takes ~/code/client wins over one that takes ~/code.
+const reach = (f, path) => !path ? 0 : Math.max(0, ...(f.match ?? "").split(",").map((p) => {
+  const m = rule(p)?.exec(path);
+  return m ? m.index + m[0].replace(/\/$/, "").length : 0;
+}));
+
+// The folder whose rules reach deepest; the first one on a tie.
+function deepest(list, score) {
+  let best = null, most = 0;
+  for (const f of list) { const n = score(f); if (n > most) { best = f; most = n; } }
+  return best?.id ?? null;
+}
 
 // Where a space goes: where it was dragged (or "" for out of every folder), else
-// the first folder whose rules take the folder it works in.
+// the folder whose rules reach deepest into the folder it works in.
 function folderOf(s, { list, of }, ps) {
   const id = of[localId(s)];
   if (id !== undefined) return list.some((f) => f.id === id) ? id : null;
-  return list.find((f) => collects(f, place(s, ps)))?.id ?? null;
+  return deepest(list, (f) => reach(f, place(s, ps)));
 }
 
-// The folder on this computer that takes in another machine: the first whose
-// rules match its name ("vm-*") or the folder one of its spaces works in.
+// The folder on this computer that takes in another machine: the one whose
+// rules reach deepest into its name ("vm-*") or a folder one of its spaces works in.
 function machineFolder(m, rows, ps) {
-  return folders(null).list.find((f) => collects(f, m) || rows.some((r) => collects(f, place(r.w, ps))))?.id ?? null;
+  return deepest(folders(null).list, (f) => Math.max(reach(f, m), ...rows.map((r) => reach(f, place(r.w, ps)))));
 }
 
 function saveFolders(machine, data) {
