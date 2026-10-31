@@ -7,7 +7,9 @@
 // header go in it, dropped on a space they join its folder, dropped below the
 // list they leave. A folder folds; right-click colors, edits or deletes it.
 // A folder can start its new spaces in a folder, and collect the spaces
-// working in folders matching its rules.
+// working in folders matching its rules. A folder on this computer collects
+// another machine too, with its header and spaces, when a rule matches the
+// machine's name or the folder one of its spaces works in.
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
@@ -69,6 +71,12 @@ function folderOf(s, { list, of }, ps) {
   const id = of[localId(s)];
   if (id !== undefined) return list.some((f) => f.id === id) ? id : null;
   return list.find((f) => collects(f, place(s, ps)))?.id ?? null;
+}
+
+// The folder on this computer that takes in another machine: the first whose
+// rules match its name ("vm-*") or the folder one of its spaces works in.
+function machineFolder(m, rows, ps) {
+  return folders(null).list.find((f) => collects(f, m) || rows.some((r) => collects(f, place(r.w, ps))))?.id ?? null;
 }
 
 function saveFolders(machine, data) {
@@ -378,20 +386,25 @@ export default class Spaces extends View {
     });
   }
 
-  // A machine's folders, each with its spaces, then the spaces in none. A
-  // worktree goes where its checkout's space goes.
-  foldered(rows, machine, t, collapsed) {
+  // A machine's folders, each with its spaces and the machines it takes in,
+  // then the spaces in none. A worktree goes where its checkout's space goes.
+  foldered(rows, machine, t, collapsed, { guests = [], nested = false } = {}) {
     const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
     const f = folders(machine), { list } = f, ps = panes();
     let parent = null;
     const placed = rows.map((r) => {
       if (!r.tree) parent = folderOf(r.w, f, ps);
-      return { ...r, folder: parent };
+      return { ...r, folder: parent, nested };
     });
     return [
       ...list.flatMap((f, n) => {
         const inside = placed.filter((r) => r.folder === f.id);
-        return [this.folderHead(f, n, machine, inside, t, collapsed), ...(f.folded ? [] : inside.map(draw))];
+        const visitors = guests.filter((g) => g.folder === f.id);
+        const counted = [...inside, ...visitors.flatMap((g) => g.rows)];
+        return [
+          this.folderHead(f, n, machine, counted, t, collapsed),
+          ...(f.folded ? [] : [...inside.map(draw), ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true }))]),
+        ];
       }),
       ...placed.filter((r) => !r.folder).map(draw),
     ];
@@ -504,45 +517,68 @@ export default class Spaces extends View {
     return out;
   }
 
-  // The rows, under a header per machine once one isn't this computer.
+  // Whether a machine's spaces are still coming in.
+  machineLoading(m) {
+    const layout = machines().find(k => k.name === m)?.layout;
+    return layout === "loading" || (!layout && this.machines.some(k => k.name === m && k.state === "connected"))
+      || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
+  }
+
+  loadingRow(m, t, collapsed) {
+    return div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
+  }
+
+  // A machine's header and, unless it's folded, its folders and spaces. In a
+  // folder on this computer (`nested`) the header is indented like the
+  // folder's spaces, and so are the machine's spaces.
+  machineSection(m, mine, t, collapsed, { nested = false, guests = [] } = {}) {
+    const machine = this.machines.find(k => k.name === m);
+    const connected = !m || machine?.state === "connected";
+    const folded = this.folded.has(m);
+    const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().pl(collapsed ? 2 : nested ? 26 : 8).pr(collapsed ? 2 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+      .cursor_pointer().hover(s => s.bg(t.hover))
+      .on_click((_e, cx) => {
+        folded ? this.folded.delete(m) : this.folded.add(m);
+        localStorage.setItem("machines.folded", JSON.stringify([...this.folded]));
+        cx.notify();
+      })
+      .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
+      .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ?? "This computer"))
+        .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
+        .when(connected, el => el.child(div().id(`machine-folder-${m ?? "local"}`).flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .on_click((_e, cx) => { cx.stop_propagation(); this.newFolder(m); }).child(svg("mods/workspace-chrome/folder-plus.svg").size(12))))
+        .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
+        .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
+        .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
+    const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().pl(nested ? 26 : 8).pr(8).gap(7).items_center().rounded(7)
+      .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_click(() => run("space.new", m ? { machine: m } : {}))
+      .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
+    const body = mine.length || guests.length ? this.foldered(mine, m, t, collapsed, { guests, nested })
+      : [this.machineLoading(m) ? this.loadingRow(m, t, collapsed) : empty];
+    return [head, ...(folded ? [] : body)];
+  }
+
+  // The rows, under a header per machine once one isn't this computer. A
+  // machine a folder here takes in shows in that folder instead.
   grouped(t, collapsed) {
-    const rows = this.ordered();
+    const rows = this.ordered(), ps = panes();
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name)])].sort();
-    const loading = m => {
-      const layout = machines().find(k => k.name === m)?.layout;
-      return layout === "loading" || (!layout && this.machines.some(k => k.name === m && k.state === "connected"))
-        || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
-    };
-    const loadingRow = m => div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : this.foldered(rows, null, t, collapsed);
-    const machineNames = [null, ...remote];
-    return machineNames.flatMap((m) => {
-      const mine = rows.filter((r) => (r.w.machine ?? null) === m);
-      const machine = this.machines.find(k => k.name === m);
-      const connected = !m || machine?.state === "connected";
-      const folded = this.folded.has(m);
-      const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 2 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
-        .cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_e, cx) => {
-          folded ? this.folded.delete(m) : this.folded.add(m);
-          localStorage.setItem("machines.folded", JSON.stringify([...this.folded]));
-          cx.notify();
-        })
-        .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
-        .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ?? "This computer"))
-          .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
-          .when(connected, el => el.child(div().id(`machine-folder-${m ?? "local"}`).flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { cx.stop_propagation(); this.newFolder(m); }).child(svg("mods/workspace-chrome/folder-plus.svg").size(12))))
-          .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
-          .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
-          .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
-      const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().px(8).gap(7).items_center().rounded(7)
-        .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
-        .on_click(() => run("space.new", m ? { machine: m } : {}))
-        .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
-      return [head, ...(folded ? [] : mine.length ? this.foldered(mine, m, t, collapsed) : [loading(m) ? loadingRow(m) : empty])];
+    const guests = remote.map((m) => {
+      const mine = rows.filter((r) => r.w.machine === m);
+      return { m, rows: mine, folder: machineFolder(m, mine, ps) };
     });
+    const housed = guests.filter((g) => g.folder);
+    const loose = guests.filter((g) => !g.folder);
+    const local = rows.filter((r) => !r.w.machine);
+    if (!loose.length) {
+      return this.machineLoading(null) && !local.length && !housed.length ? [this.loadingRow(null, t, collapsed)] : this.foldered(local, null, t, collapsed, { guests: housed });
+    }
+    return [
+      ...this.machineSection(null, local, t, collapsed, { guests: housed }),
+      ...loose.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed)),
+    ];
   }
 
   // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
@@ -567,7 +603,7 @@ export default class Spaces extends View {
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
   }
 
-  row({ w, i, g, tree, folder }, t) {
+  row({ w, i, g, tree, folder, nested }, t) {
     const on = w.active;
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
@@ -575,7 +611,7 @@ export default class Spaces extends View {
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
-      .pl(folder ? 26 : 8)
+      .pl(folder || nested ? 26 : 8)
       .pr(8)
       .h(rowHeight({ tree }))
       .flex_none()
