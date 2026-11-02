@@ -245,5 +245,31 @@ const allEmpty = git(empty, G.logArgs({ all: true, remotes: true, limit: 300 }))
 assert.equal(allEmpty.code, 0); assert.equal(G.parseLog(allEmpty.stdout).length, 0);
 assert.ok(load({ all: true, remotes: false, limit: 300 }).every((c) => G.labelsOf(c, false).every((l) => l.kind !== "remote")));
 console.log("files ok");
+
+// Commit metadata is untrusted: control characters stay inside their field.
+const unusual = "subject with \x1e record and \x1f field separators";
+const beforeUnusual = load().length;
+sh(repo, "commit", "--allow-empty", "-qm", unusual);
+const unusualLog = load();
+const unusualCommit = unusualLog.find((c) => c.hash === ctxOf().head);
+assert.equal(unusualCommit.subject, unusual);
+assert.equal(unusualLog.length, beforeUnusual + 1, "metadata must not create extra rows");
+const raw = git(repo, [...G.READ, ...G.logArgs({ all: false, remotes: true, limit: 1 })]).stdout;
+assert.throws(() => G.parseLog(raw.slice(0, -1)), /framing/);
+assert.throws(() => G.parseLog(raw.replace(unusualCommit.hash, "invalid")), /identity/);
+assert.throws(() => G.parseLog(raw.replace(unusualCommit.hash, "--output=unexpected")), /identity/);
+assert.equal(G.parseLog(raw.replaceAll(unusualCommit.hash, "a".repeat(64)))[0].hash.length, 64);
+assert.deepEqual(G.parseRefs("refs/heads/-f, tag: refs/tags/--help, refs/remotes/-bad/x"), []);
+
+// Direct/menu actions must not bypass validation by skipping a dialog.
+for (const type of ["checkout", "deleteBranch", "deleteTag", "renameBranch", "push", "pushTag", "checkoutRemote"]) {
+  assert.throws(() => G.commandsFor({ type, name: "-f" }, {}, ctxOf()), /ref name/);
+}
+assert.throws(() => G.commandsFor({ type: "reset", hash: tip.hash }, { mode: "hard --other" }, ctxOf()), /reset mode/);
+assert.throws(() => G.commandsFor({ type: "push", name: "main" }, { remote: "--help" }, ctxOf()), /remote/);
+assert.throws(() => G.commandsFor({ type: "fetch-unknown" }), /Unknown/);
+assert.throws(() => G.fileArgs({ hash: "--output=unexpected", parents: [] }), /identity/);
+assert.throws(() => G.diffArgs({ hash: tip.hash, parents: ["--bad"] }, "file"), /identity/);
+console.log("untrusted history ok");
 rmSync(base, { recursive: true, force: true });
 console.log("all tests passed");
