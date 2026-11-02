@@ -105,6 +105,17 @@ parsing, lanes, label positions, menus, validation, and every action against
 real git. The UI was checked in an isolated Herdr window (`HERDR_APP_HOME` and
 `HC_SESSION` pointed at a scratch folder).
 
+## Contributing
+
+Pull requests are welcome.
+
+- Run `npm test` and say in the PR that it passes.
+- **If the change shows on screen, add a screenshot**, before and after when it
+  fixes something you can see. It's the fastest way to review a UI change.
+- Say which Herdr version and OS you tested on, and the zoom if it isn't 1.
+- Update `RECIPE.md` when behavior changes, so the recipe still builds what the
+  mod does.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Most icons are drawn after
