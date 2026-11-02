@@ -135,11 +135,11 @@ const lastPart = (p) => {
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, edit, machine = null, overlay } = props() ?? {};
+    const { folderMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (edit) {
-      const f = folders(machine).list.find((x) => x.id === edit) ?? {};
-      this.editing = { id: edit, machine, overlay };
+      const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
+      this.editing = { id: edit, machine, fresh, overlay };
       this.name = InputState.new({ value: f.name ?? "" });
       this.path = InputState.new({ value: f.path ?? "", placeholder: "e.g. ~/Documents/github.com/owner/repo" });
       this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. wbso-ai, ~/code/client-*" });
@@ -334,10 +334,10 @@ export default class Spaces extends View {
     });
   }
 
+  // A new folder is only made when its dialog is saved; cancelled, nothing's left.
   newFolder(machine) {
-    const f = folders(machine), id = `f${Date.now().toString(36)}`;
-    saveFolders(machine, { ...f, list: [...f.list, { id, name: NEW_FOLDER, folded: false }] });
-    openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } });
+    const id = `f${Date.now().toString(36)}`;
+    openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine, fresh: true } });
   }
 
   reorder(machine, from, to) {
@@ -383,9 +383,11 @@ export default class Spaces extends View {
   }
 
   saveFolder() {
-    const { id, machine, overlay } = this.editing, f = folders(machine);
+    const { id, machine, fresh, overlay } = this.editing, f = folders(machine);
     const name = this.name.value().trim(), path = this.path.value().trim() || null, match = this.match.value().trim() || null;
-    saveFolders(machine, { ...f, list: f.list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
+    // A folder deleted while its dialog was open isn't made again; a new one is made now.
+    const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
+    saveFolders(machine, { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
     closeOverlay(overlay);
   }
 
