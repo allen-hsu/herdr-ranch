@@ -48,10 +48,16 @@ git refuses, its own message stays in the dialog.
 ## What it runs
 
 The mod runs `git` in the focused repository (on its machine, for spaces on
-another machine) and reads files there to show an untracked file's contents. It
-reaches the network only through git, when you press Fetch, Push, or delete a
-remote branch. It never runs a shell: every git call is an argument list, and
-names you type can't start with `-`.
+another machine) and reads files there to show an untracked file's contents.
+Git reaches the network only when you press Fetch, Push, or delete a remote
+branch. It never runs a shell: every git call is an argument list, and names you
+type can't start with `-`.
+
+The mod itself makes one request of its own: at most once a day it asks GitHub's
+public API for this repository's latest release
+(`api.github.com/repos/rabeeh-ta/herdr-git-graph/releases/latest`), with no
+token and nothing about you or your repositories. See [Updating](#updating) to
+turn it off.
 
 ## Install
 
@@ -68,6 +74,24 @@ cp -R herdr-git-graph/mods/git-graph ~/.config/herdr-app/mods/
 
 If you already have a mod called `git-graph`, rename this one's folder, and the
 `mods/git-graph/` paths and `mod: "git-graph"` names inside it, to match.
+
+### Updating
+
+An installed copy doesn't update itself. When a newer release is out, the
+graph's header shows an **Update Graph** dot; click it for what changed. To update,
+ask your Herdr agent: *"Update the git-graph mod from
+github.com/rabeeh-ta/herdr-git-graph"*, or by hand:
+
+```sh
+cd herdr-git-graph && git pull
+rm -rf ~/.config/herdr-app/mods/git-graph && cp -R mods/git-graph ~/.config/herdr-app/mods/
+```
+
+The top-bar copies below don't need redoing: they open `git-graph` by name.
+
+To stop the daily check, click **Stop checking** in the update window, or set
+`CHECK = false` in `mods/git-graph/update.js` (an update puts it back). Watching
+the repository's releases on GitHub tells you too.
 
 ### Put it in the top bar
 

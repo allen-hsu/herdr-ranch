@@ -9,6 +9,7 @@ import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withU
   menuFor, menuHeight, fileArgs, joinFiles, diffArgs, diffRows } from "./git.js";
 import { perform, openDialog, showChanges } from "./act.js";
 import { icon } from "./menu.js";
+import { available, check, openUpdate } from "./update.js";
 
 function location(folder) {
   if (folder) return { cwd: folder, on: null };
@@ -99,7 +100,8 @@ export class Graph {
     this.refresh(cx);
     cx.timer.after(1500, (cx) => this.warm(cx));
     // Remote spaces can't be watched: poll them gently. New folders get read ahead.
-    cx.timer.every(15000, (cx) => { if (!this.watching) this.refresh(cx); this.warm(cx); });
+    cx.timer.every(15000, (cx) => { if (!this.watching) this.refresh(cx); this.warm(cx); check(); });
+    check();
   }
 
   key() { return JSON.stringify(location(this.folder)); }
@@ -458,6 +460,10 @@ export class Graph {
       .when(ready && Boolean(where), (e) => e.child(h_flex().h(22).px(7).gap(5).min_w(0).items_center().rounded(6).bg(t.accent + "26").text_color(t.accent)
         .child(svg(icon(this.current ? "branch" : "commit")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(where))))
       .child(div().flex_1())
+      // A newer release: a dot, and the update window on click.
+      .when(Boolean(available()), (e) => e.child(h_flex().id("graph-update").h(24).px(7).gap(5).flex_none().items_center().rounded(6).text_size(11.5)
+        .cursor_pointer().text_color(t.accent).hover((s) => s.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click(() => openUpdate()).child(div().size(6).rounded(3).bg(t.accent)).child("Update Graph")))
       .when(ready && this.remoteNames?.length > 0, (e) => e.child(this.iconButton("graph-fetch", "fetch", this.fetching ? "Fetching…" : null, false, (_e, cx) => this.fetch(cx), t)))
       .when(this.state !== "nofolder", (e) => e.child(this.iconButton("graph-refresh", "refresh", null, false, (_e, cx) => this.refresh(cx), t)));
   }

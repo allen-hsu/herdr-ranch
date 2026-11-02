@@ -160,11 +160,19 @@ or `ansi1` when the action or the chosen mode destroys something.
 ## Built from
 
 - `mods/git-graph/`, `mod.json` `{ "place": "none" }`: nothing docks by itself.
-- `main.js`: one `View` with three roles by `props().role`: none, the graph;
+- `main.js`: one `View` with four roles by `props().role`: none, the graph;
   `"menu"`, the popup (`openOverlay({ mod: "git-graph", kind: "popup", at:
   "pointer", width: 268, height, props: { role: "menu", target, ctx } })`);
   `"dialog"` (`kind: "dialog", width: 420, height` computed from its fields).
   `ctx` carries root, machine, current branch, HEAD, local branches, remotes.
+  `"update"` (`kind: "dialog", width: 460, height: 400`): the update window.
+- `update.js`: `VERSION` (this copy's release) and the update check. At most
+  once a day (`checked` in `shared("git-graph.update")`, set before asking so
+  other copies skip), one `fetch` of GitHub's `releases/latest`; a newer
+  `tag_name` shows an accent dot and **Update Graph** in the header. The window shows
+  the release notes and the agent prompt: Copy prompt, Release page (`open_url`,
+  only a URL under the repository), Later (hides that release), Stop checking
+  (`off`). `CHECK = false` turns it off in code.
 - `graph.js` the table; `menu.js` and `dialog.js` the overlays; `act.js` runs an
   action and opens dialogs; `git.js` everything git and no herdr import (log and
   status parsing, labels and their widths, the hit test, menus, dialogs,
