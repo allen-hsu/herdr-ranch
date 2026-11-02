@@ -13,7 +13,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home } from "herdr";
+import { spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
@@ -172,6 +172,29 @@ export default class Spaces extends View {
     // `git status` walks the whole tree, on another machine a process there:
     // only when its answer could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
+    // "space-folders.next" and ".prev" in keys.json: the next space down the
+    // list as it shows, where Herdr's own space.next goes by its own order.
+    this.seen = [];
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = String(await nextCommand()).split(".").pop();
+        if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
+        cx.notify();
+      }
+    });
+  }
+
+  // One space down (1) or up (-1) from the one in front, past the spaces in
+  // folded folders and machines, round from the end to the top.
+  step(dir) {
+    const seen = this.seen, len = seen.length;
+    if (!len) return;
+    const at = seen.findIndex((s) => s.id === spaces().find((w) => w.active)?.id);
+    const from = at >= 0 ? at : dir > 0 ? -1 : len;
+    for (let n = 1; n <= len; n++) {
+      const s = seen[(((from + dir * n) % len) + len) % len];
+      if (s.shown) { run("space.select", { id: s.id }); return; }
+    }
   }
 
   checkNew(cx) {
@@ -388,8 +411,13 @@ export default class Spaces extends View {
 
   // A machine's folders, each with its spaces and the machines it takes in,
   // then the spaces in none. A worktree goes where its checkout's space goes.
-  foldered(rows, machine, t, collapsed, { guests = [], nested = false } = {}) {
-    const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
+  // Every space goes in `seen` in this order, folded away (`hidden`) or not,
+  // for the keys that step through the list.
+  foldered(rows, machine, t, collapsed, { guests = [], nested = false, hidden = false, seen = [] } = {}) {
+    const draw = (r, away) => {
+      seen.push({ id: r.w.id, shown: !away });
+      return away ? [] : [collapsed ? this.compact(r, t) : this.row(r, t)];
+    };
     const f = folders(machine), { list } = f, ps = panes();
     let parent = null;
     const placed = rows.map((r) => {
@@ -401,12 +429,14 @@ export default class Spaces extends View {
         const inside = placed.filter((r) => r.folder === f.id);
         const visitors = guests.filter((g) => g.folder === f.id);
         const counted = [...inside, ...visitors.flatMap((g) => g.rows)];
+        const away = hidden || f.folded;
         return [
-          this.folderHead(f, n, machine, counted, t, collapsed),
-          ...(f.folded ? [] : [...inside.map(draw), ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true }))]),
+          ...(hidden ? [] : [this.folderHead(f, n, machine, counted, t, collapsed)]),
+          ...inside.flatMap((r) => draw(r, away)),
+          ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true, hidden: away, seen })),
         ];
       }),
-      ...placed.filter((r) => !r.folder).map(draw),
+      ...placed.filter((r) => !r.folder).flatMap((r) => draw(r, hidden)),
     ];
   }
 
@@ -531,7 +561,7 @@ export default class Spaces extends View {
   // A machine's header and, unless it's folded, its folders and spaces. In a
   // folder on this computer (`nested`) the header is indented like the
   // folder's spaces, and so are the machine's spaces.
-  machineSection(m, mine, t, collapsed, { nested = false, guests = [] } = {}) {
+  machineSection(m, mine, t, collapsed, { nested = false, guests = [], hidden = false, seen = [] } = {}) {
     const machine = this.machines.find(k => k.name === m);
     const connected = !m || machine?.state === "connected";
     const folded = this.folded.has(m);
@@ -555,14 +585,15 @@ export default class Spaces extends View {
       .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_click(() => run("space.new", m ? { machine: m } : {}))
       .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
-    const body = mine.length || guests.length ? this.foldered(mine, m, t, collapsed, { guests, nested })
+    const body = mine.length || guests.length ? this.foldered(mine, m, t, collapsed, { guests, nested, hidden: hidden || folded, seen })
       : [this.machineLoading(m) ? this.loadingRow(m, t, collapsed) : empty];
-    return [head, ...(folded ? [] : body)];
+    return hidden ? [] : [head, ...(folded ? [] : body)];
   }
 
   // The rows, under a header per machine once one isn't this computer. A
-  // machine a folder here takes in shows in that folder instead.
-  grouped(t, collapsed) {
+  // machine a folder here takes in shows in that folder instead. `seen`
+  // collects the spaces in this order (see foldered).
+  grouped(t, collapsed, seen = []) {
     const rows = this.ordered(), ps = panes();
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name)])].sort();
     const guests = remote.map((m) => {
@@ -573,11 +604,11 @@ export default class Spaces extends View {
     const loose = guests.filter((g) => !g.folder);
     const local = rows.filter((r) => !r.w.machine);
     if (!loose.length) {
-      return this.machineLoading(null) && !local.length && !housed.length ? [this.loadingRow(null, t, collapsed)] : this.foldered(local, null, t, collapsed, { guests: housed });
+      return this.machineLoading(null) && !local.length && !housed.length ? [this.loadingRow(null, t, collapsed)] : this.foldered(local, null, t, collapsed, { guests: housed, seen });
     }
     return [
-      ...this.machineSection(null, local, t, collapsed, { guests: housed }),
-      ...loose.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed)),
+      ...this.machineSection(null, local, t, collapsed, { guests: housed, seen }),
+      ...loose.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { seen })),
     ];
   }
 
@@ -696,6 +727,8 @@ export default class Spaces extends View {
     const leaving = Boolean(dragged && folderOf(dragged, folders(dragged.machine ?? null), panes()));
     const button = (id, icon, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6)
       .hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(action).child(svg(`mods/workspace-chrome/${icon}.svg`).size(14));
+    const seen = [], rows = this.grouped(t, collapsed, seen);
+    this.seen = seen;
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))
@@ -709,7 +742,7 @@ export default class Spaces extends View {
           this.pressed = null; this.over = null; this.overFolder = null; this.moving = null; this.overMove = null;
           cx.notify();
         })
-        .children(this.grouped(t, collapsed))
+        .children(rows)
         .when(leaving && !collapsed, el => el.child(div().id("folder-out").mt(6).h(34).flex_none().flex().items_center().justify_center()
           .rounded(8).border_1().border_dashed().border_color(this.overFolder === "out" ? t.accent : t.border)
           .text_size(12).text_color(this.overFolder === "out" ? t.foreground : t.dim)
