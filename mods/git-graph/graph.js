@@ -20,6 +20,8 @@ function location(folder) {
 }
 
 const PAGE = 300, ROW = 24, LANE = 12, PAD = 6, DIFF_ROW = 20;
+// The graph column's default keeps room for its "Graph" heading (and a lane or two) in narrow repos.
+const GRAPH_MIN = 56;
 // side: which way a drag widens it. Graph's handle is on its right edge, the others' on their left.
 const COLUMNS = { graph: { width: null, min: 24, side: 1 }, date: { width: 62, min: 36, max: 240, side: -1 },
   author: { width: 120, min: 50, max: 400, side: -1 }, hash: { width: 66, min: 40, max: 200, side: -1 } };
@@ -251,7 +253,7 @@ export class Graph {
     cx.notify();
   }
 
-  graphWidth() { return this.cols.graph ? this.clampColumn("graph", this.cols.graph) : Math.min(PAD * 2 + this.lanes * LANE, this.graphMax); }
+  graphWidth() { return this.cols.graph ? this.clampColumn("graph", this.cols.graph) : Math.min(Math.max(GRAPH_MIN, PAD * 2 + this.lanes * LANE), this.graphMax); }
   trailing() { return this.wide ? ["date", "author", "hash"] : ["date"]; }
 
   clampColumn(key, w) {
