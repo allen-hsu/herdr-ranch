@@ -124,6 +124,14 @@ export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 
+const NEW_FOLDER = "New folder";
+
+// A path's last folder name: "~/Projects/herdr/" gives "herdr"; "~" or "/" give "".
+const lastPart = (p) => {
+  const part = p.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+  return part === "~" ? "" : part;
+};
+
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
@@ -139,6 +147,12 @@ export default class Spaces extends View {
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
       this.match.on("change", () => { this.mirror = this.match.value() === this.path.value(); });
+      // The name follows the start folder's last part while it's still the default
+      // (or already that part); typing a name of its own stops that.
+      const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.path.value());
+      this.nameMirror = named(this.name.value());
+      this.path.on("change", (_e, cx) => { this.follow(); cx.notify(); });
+      this.name.on("change", () => { this.nameMirror = named(this.name.value()); });
       for (const input of [this.name, this.path, this.match]) input.on("submit", () => this.saveFolder());
       this.name.set_selected_range({ start: 0, end: this.name.value().length });
       this.name.focus();
@@ -322,7 +336,7 @@ export default class Spaces extends View {
 
   newFolder(machine) {
     const f = folders(machine), id = `f${Date.now().toString(36)}`;
-    saveFolders(machine, { ...f, list: [...f.list, { id, name: "New folder", folded: false }] });
+    saveFolders(machine, { ...f, list: [...f.list, { id, name: NEW_FOLDER, folded: false }] });
     openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } });
   }
 
@@ -375,6 +389,12 @@ export default class Spaces extends View {
     closeOverlay(overlay);
   }
 
+  // The name, while it follows the start folder, set to that folder's last part.
+  follow() {
+    const part = lastPart(this.path.value());
+    if (this.nameMirror && part && part !== this.name.value()) this.name.set_value(part);
+  }
+
   // The system's folder picker, for this computer: home written as "~".
   choose(cx) {
     cx.spawn(async (cx) => {
@@ -382,6 +402,7 @@ export default class Spaces extends View {
       if (!picked) return;
       this.path.set_value(picked.startsWith(home()) ? `~${picked.slice(home().length)}` : picked);
       if (this.mirror) this.match.set_value(this.path.value());
+      this.follow();
       cx.notify();
     });
   }
