@@ -29,7 +29,9 @@ Top to bottom:
   on).
 - **Column headers**, 24px, 11px `dim`: Graph (as wide as the graph), Description
   (the rest), Date (62px, right-aligned), and from a width of 600px also Author
-  (120px) and Commit (66px).
+  (120px) and Commit (66px). Each column but Description has a drag handle in the
+  gap at one edge (8px wide, column-resize cursor, `border` on hover, a 1px `accent`
+  line while dragging): Graph's on its right, the others' on their left.
 - **Rows**, 24px each, a virtual list with a scrollbar:
   - The graph cell: lanes 12px apart from a 6px inset, at most 40% of the width.
     Lines are 1.5px strokes in lane colors `ansi4, ansi2, ansi5, ansi3, ansi6, ansi1,
@@ -119,6 +121,11 @@ or `ansi1` when the action or the chosen mode destroys something.
   change refreshes only the uncommitted row, at most every 1.5 s. Remote spaces
   can't be watched: they reload every 15 s. After any action, `setShared(
   "git-graph.changed", now)` makes every copy reload.
+- **Drag** a column handle to resize it; Description takes what's left. A dragged
+  Graph stops following its lanes (24px up to 70% of the width); Date 36–240px,
+  Author 50–400px, Commit 40–200px. A double-click on a handle restores the column.
+  Releasing saves the widths to `setShared("git-graph.columns", …)`: every copy
+  takes them, and they last across restarts.
 - **Click** a commit: details open (again: they close). `Esc` closes a diff, then
   the details.
 - **Double-click** a label: a local branch other than the current one is checked
@@ -191,6 +198,11 @@ or `ansi1` when the action or the chosen mode destroys something.
 - Two copies (panel and pane) need different list and scrollbar names: a
   scrollbar finds its list by name.
 - Labels must keep the widths the hit test computes: change one, change both.
+  The dragged column widths feed its right limit too.
+- A drag lives on the panel's root (`on_mouse_move`, `on_mouse_up`); a handle only
+  starts it. A release outside the panel never arrives, so leaving it (`on_hover`
+  false) ends the drag. Scale the pointer delta as for presses. Save on release,
+  not per move, or every copy redraws during the drag.
 - A popup's tasks end when it closes, so the menu finishes its git command before
   closing; dialogs run theirs and close on success.
 - `git log HEAD` fails in a repository with no commits: that's the empty state,
@@ -239,3 +251,6 @@ or `ansi1` when the action or the chosen mode destroys something.
 - Focusing a terminal outside a repository shows `Not a git repository` with the
   folder and nothing left over from the last repository.
 - With three labels on a row in a 368px panel, the date stays in its column.
+- Dragging the Date handle left widens Date in every row; another copy takes the
+  width on release; a double-click restores 62px; double-clicking a branch label
+  still checks out the label under the pointer.

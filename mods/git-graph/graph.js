@@ -3,7 +3,7 @@
 // a pane. Labels take double-clicks (checkout) and right-clicks (menus).
 import { div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, openOverlay, home } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, setShared, openOverlay, home } from "herdr";
 import { layoutLanes } from "./lanes.js";
 import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withUncommitted, labelsOf, hitLabel,
   menuFor, menuHeight, fileArgs, joinFiles, diffArgs, diffRows } from "./git.js";
@@ -18,7 +18,11 @@ function location(folder) {
   return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
 }
 
-const PAGE = 300, ROW = 24, LANE = 12, PAD = 6, DATE = 62, AUTHOR = 120, HASH = 66, DIFF_ROW = 20;
+const PAGE = 300, ROW = 24, LANE = 12, PAD = 6, DIFF_ROW = 20;
+// side: which way a drag widens it. Graph's handle is on its right edge, the others' on their left.
+const COLUMNS = { graph: { width: null, min: 24, side: 1 }, date: { width: 62, min: 36, max: 240, side: -1 },
+  author: { width: 120, min: 50, max: 400, side: -1 }, hash: { width: 66, min: 40, max: 200, side: -1 } };
+const withDefaults = (saved) => ({ ...Object.fromEntries(Object.entries(COLUMNS).map(([k, c]) => [k, c.width])), ...saved });
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad2 = (n) => String(n).padStart(2, "0");
 const laneColors = (t) => [t.ansi4, t.ansi2, t.ansi5, t.ansi3, t.ansi6, t.ansi1, t.ansi12, t.ansi10, t.ansi13, t.ansi11, t.ansi14, t.ansi9];
@@ -88,6 +92,7 @@ export class Graph {
     this.diffId = `${this.listId}-diff`;
     this.all = true; this.remotes = true; this.wide = false; this.graphMax = 160; this.scale = null;
     this.watchToken = 0; this.seenChange = shared("git-graph.changed");
+    this.cols = withDefaults(); this.drag = null;
     this.seen = new Map(); this.commitDetails = new Map();
     this.handle = cx.focus_handle();
     this.reset();
@@ -244,11 +249,40 @@ export class Graph {
     cx.notify();
   }
 
-  graphWidth() { return Math.min(PAD * 2 + this.lanes * LANE, this.graphMax); }
+  graphWidth() { return this.cols.graph ? this.clampColumn("graph", this.cols.graph) : Math.min(PAD * 2 + this.lanes * LANE, this.graphMax); }
+  trailing() { return this.wide ? ["date", "author", "hash"] : ["date"]; }
+
+  clampColumn(key, w) {
+    const { min, max = (this.width ?? Infinity) * 0.7 } = COLUMNS[key];
+    return Math.round(Math.max(min, Math.min(max, w)));
+  }
+
+  startDrag(key, e, cx) {
+    cx.stop_propagation();
+    if (e.click_count < 2) { this.drag = { key, x: e.position.x, from: key === "graph" ? this.graphWidth() : this.cols[key] }; return; }
+    if (this.cols[key] !== COLUMNS[key].width) { this.cols = { ...this.cols, [key]: COLUMNS[key].width }; this.saveColumns(); cx.notify(); }
+  }
+
+  moveDrag(e, cx) {
+    const d = this.drag;
+    if (!d) return;
+    const w = this.clampColumn(d.key, d.from + COLUMNS[d.key].side * (e.position.x - d.x) / this.unit());
+    if (w !== this.cols[d.key]) { this.cols = { ...this.cols, [d.key]: w }; d.moved = true; cx.notify(); }
+  }
+
+  endDrag(cx) {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    if (d.moved) this.saveColumns();
+    cx.notify();
+  }
+
+  saveColumns() { this.seenCols = JSON.stringify(this.cols); setShared("git-graph.columns", this.cols); }
   // Where the description column ends: labels past it are clipped, so not clickable.
   labelLimit() {
     if (!this.width) return Infinity;
-    return this.width - 2 - 10 - DATE - LABEL.GAP - (this.wide ? AUTHOR + HASH + LABEL.GAP * 2 : 0);
+    return this.width - 2 - 10 - this.trailing().reduce((n, k) => n + this.cols[k] + LABEL.GAP, 0);
   }
   // Pointer positions come in window units; layout sizes are these units times the zoom.
   unit() { return this.scale ?? settings().zoom ?? 1; }
@@ -402,10 +436,10 @@ export class Graph {
       .child(h_flex().flex_1().min_w(0).h_full().gap(LABEL.GAP).items_center().overflow_hidden()
         .children(this.labels.get(commit.hash).map((l) => this.label(l, color, t, mono)))
         .child(div().flex_1().min_w(0).truncate().text_color(fg).when(commit.head, (e) => e.font_semibold()).child(commit.subject)))
-      .child(div().w(DATE).flex_none().text_right().truncate().text_color(t.dim).child(commit.uncommitted ? "*" : ago(commit.time)))
+      .child(div().w(this.cols.date).flex_none().text_right().truncate().text_color(t.dim).child(commit.uncommitted ? "*" : ago(commit.time)))
       .when(this.wide, (e) => e
-        .child(div().w(AUTHOR).flex_none().truncate().text_color(t.muted).child(commit.uncommitted ? "*" : commit.author))
-        .child(div().w(HASH).flex_none().font_family(mono).text_size(11).text_color(t.dim).child(commit.uncommitted ? "*" : commit.hash.slice(0, 8))));
+        .child(div().w(this.cols.author).flex_none().truncate().text_color(t.muted).child(commit.uncommitted ? "*" : commit.author))
+        .child(div().w(this.cols.hash).flex_none().font_family(mono).text_size(11).text_color(t.dim).child(commit.uncommitted ? "*" : commit.hash.slice(0, 8))));
   }
 
   iconButton(id, glyph, tip, active, action, t) {
@@ -445,10 +479,15 @@ export class Graph {
 
   columns(t, width) {
     const head = (text, w) => div().when(w !== undefined, (e) => e.w(w).flex_none()).truncate().child(text);
-    return h_flex().h(24).flex_none().pr(10).gap(LABEL.GAP).items_center().border_b(1).border_color(t.border).text_size(11).text_color(t.dim)
-      .child(head("Graph", width).pl(PAD)).child(div().flex_1().min_w(0).child("Description"))
-      .child(head("Date", DATE).text_right())
-      .when(this.wide, (e) => e.child(head("Author", AUTHOR)).child(head("Commit", HASH)));
+    const titles = { date: "Date", author: "Author", hash: "Commit" };
+    // Handles stand in for the rows' gaps, 1px wider each side.
+    const handle = (key) => div().id(`graph-col-${key}`).w(LABEL.GAP + 2).mx(-1).h_full().flex_none().flex().justify_center().cursor_col_resize()
+      .on_mouse_down("left", (e, cx) => this.startDrag(key, e, cx))
+      .child(div().w(1).h_full().when(this.drag?.key === key, (e) => e.bg(t.accent)))
+      .hover((s) => s.bg(t.border));
+    return h_flex().h(24).flex_none().pr(10).items_center().border_b(1).border_color(t.border).text_size(11).text_color(t.dim)
+      .child(head("Graph", width).pl(PAD)).child(handle("graph")).child(div().flex_1().min_w(0).child("Description"))
+      .children(this.trailing().flatMap((k) => [handle(k), head(titles[k], this.cols[k]).when(k === "date", (e) => e.text_right())]));
   }
 
   list(t, mono) {
@@ -556,10 +595,15 @@ export class Graph {
   render(cx) {
     if (this.key() !== this.context) this.refresh(cx);
     const changed = shared("git-graph.changed");
+    const savedCols = shared("git-graph.columns"), seen = JSON.stringify(savedCols ?? null);
+    if (!this.drag && seen !== this.seenCols) { this.seenCols = seen; this.cols = withDefaults(savedCols); }
     if (changed !== this.seenChange) { this.seenChange = changed; if (this.root) this.refresh(cx); }
     const t = theme(), mono = settings().font_family ?? "JetBrains Mono", ready = this.state === "ready";
     return v_flex().id("git-graph").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
       .text_color(t.foreground).text_size(12.5).track_focus(this.handle)
+      .on_mouse_move((e, cx) => this.moveDrag(e, cx))
+      .on_mouse_up("left", (_e, cx) => this.endDrag(cx))
+      .on_hover((hovered, cx) => { if (!hovered) this.endDrag(cx); })
       .on_key_down((e, cx) => {
         if (e.key !== "escape" || !this.selected) return;
         if (this.diff) this.diff = null; else { this.selected = null; this.details = null; }
