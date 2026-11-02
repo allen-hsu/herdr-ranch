@@ -209,7 +209,13 @@ or `ansi1` when the action or the chosen mode destroys something.
   is switched away and back. A hidden or fully covered window draws nothing, so
   `herdr-app shot` then returns the last frame.
 - The Show in Changes item assumes the main layout's `panel` / `panel-body` ids.
-- Untested: Linux, Windows, zoom other than 1, a remote machine's repository.
+- `paint_path` takes screen pixels and ignores the zoom; elements are scaled by it.
+  The lines multiply their coordinates, width and dash by the zoom (`unit()`) to
+  match the dots, and a row is a whole number of screen pixels (`rowPx()`; 24 ×
+  0.9 = 21.6 left a hairline gap at every row edge). The list's row height must
+  be that same `rowPx()`, or the rows and the list's cells disagree.
+- Seen at zoom 0.9 and 0.8 only. Untested: Linux, Windows, zoom above 1, the
+  diff list at a zoom other than 1, a remote machine's repository.
 
 ## Done when
 

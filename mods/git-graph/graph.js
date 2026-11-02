@@ -253,6 +253,11 @@ export class Graph {
   // Pointer positions come in window units; layout sizes are these units times the zoom.
   unit() { return this.scale ?? settings().zoom ?? 1; }
 
+  // A row is a whole number of screen pixels (21.6 at zoom 0.9 leaves hairline gaps between rows): rowPx is that,
+  // rowH the same in the units an element's h() takes (the zoom scales it back).
+  rowPx() { return Math.max(1, Math.round(ROW * (settings().zoom ?? 1))); }
+  rowH() { return this.rowPx() / (settings().zoom ?? 1); }
+
   // A left press, then on release the list names the row: together, a click on a label.
   clicked(key, cx) {
     const press = this.press; this.press = null;
@@ -280,7 +285,7 @@ export class Graph {
   contextMenu(key, e, cx) {
     const commit = this.commits[this.index.get(key)];
     if (!commit || !this.ctx) return;
-    if (e.bounds?.height) this.scale = e.bounds.height / ROW;
+    if (e.bounds?.height) this.scale = e.bounds.height / this.rowH();
     const x = (e.local_position?.x ?? 0) / this.unit();
     const hit = commit.uncommitted ? null : hitLabel(this.labels.get(key), x, this.graphWidth(), this.labelLimit());
     const target = commit.uncommitted ? { kind: "uncommitted", commit: brief(commit) }
@@ -351,19 +356,21 @@ export class Graph {
   // ---- drawing
 
   graphCell(row, commit, colors, t, width) {
-    const x = (lane) => PAD + lane * LANE + LANE / 2, y = (v) => v * ROW, paths = new Map();
+    const x = (lane) => PAD + lane * LANE + LANE / 2, y = (v) => v * this.rowH(), paths = new Map();
+    // Elements are scaled by the zoom, but paint_path takes raw pixels: scale the lines to match the dots.
+    const z = this.unit(), px = (lane) => x(lane) * z, py = (v) => y(v) * z;
     // One stroked path per color: a row is a handful of paints, however many lanes cross it.
     for (const [a, ya, b, yb, c, dashed] of row.segments) {
       const color = dashed ? t.dim : colors[c % colors.length], key = `${color}${dashed ? "-" : ""}`;
-      let p = paths.get(key)?.p ?? (dashed ? PathBuilder.stroke(1.5).dash_array([3, 3]) : PathBuilder.stroke(1.5));
-      p = p.move_to(x(a), y(ya));
-      if (a === b) p = p.line_to(x(b), y(yb));
-      else { const mid = (y(ya) + y(yb)) / 2; p = p.cubic_bezier_to(x(b), y(yb), x(a), mid, x(b), mid); }
+      let p = paths.get(key)?.p ?? (dashed ? PathBuilder.stroke(1.5 * z).dash_array([3 * z, 3 * z]) : PathBuilder.stroke(1.5 * z));
+      p = p.move_to(px(a), py(ya));
+      if (a === b) p = p.line_to(px(b), py(yb));
+      else { const mid = (py(ya) + py(yb)) / 2; p = p.cubic_bezier_to(px(b), py(yb), px(a), mid, px(b), mid); }
       paths.set(key, { p, color });
     }
     const color = commit.uncommitted ? t.dim : colors[row.lane % colors.length];
-    const dot = div().absolute().left(x(row.lane) - 4).top(ROW / 2 - 4).size(8).rounded(4);
-    return div().relative().flex_none().w(width).h(ROW).overflow_hidden()
+    const dot = div().absolute().left(x(row.lane) - 4).top(this.rowH() / 2 - 4).size(8).rounded(4);
+    return div().relative().flex_none().w(width).h(this.rowH()).overflow_hidden()
       .children([...paths.values()].map(({ p, color }) => window.paint_path(p.build(), color).absolute().top(0).left(0).size_full()))
       // HEAD is a ring, as in Git Graph; uncommitted changes a gray one.
       .child(commit.head || commit.uncommitted ? dot.bg(t.background).border(2).border_color(color) : dot.bg(color));
@@ -388,7 +395,7 @@ export class Graph {
     const commit = this.commits[i], row = this.rows[i], color = colors[row.lane % colors.length];
     // Merge commits are muted, as Git Graph does by default.
     const fg = commit.uncommitted ? t.muted : commit.parents.length > 1 ? t.dim : t.foreground;
-    return h_flex().id(`c-${commit.hash}`).w_full().h(ROW).flex_none().pr(10).gap(LABEL.GAP).items_center().overflow_hidden()
+    return h_flex().id(`c-${commit.hash}`).w_full().h(this.rowH()).flex_none().pr(10).gap(LABEL.GAP).items_center().overflow_hidden()
       .when(commit.head, (e) => e.bg(color + "14")).when(this.selected === commit.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
       .child(this.graphCell(row, commit, colors, t, width))
       // Labels and description clip together, so many labels never push the fixed columns out.
@@ -448,7 +455,7 @@ export class Graph {
     const colors = laneColors(t), width = this.graphWidth(), count = this.commits.length + (this.hasMore ? 1 : 0);
     return div().flex_1().min_h(0).relative()
       .on_mouse_down("left", (e) => { this.press = { x: (e.local_position?.x ?? 0) / this.unit(), count: e.click_count }; })
-      .child(v_virtual_list(this.listId, count, ROW, (i) => this.commits[i]?.hash ?? "more",
+      .child(v_virtual_list(this.listId, count, this.rowPx(), (i) => this.commits[i]?.hash ?? "more",
         (range, cx) => {
           // Scrolling to the end loads the next page, as Git Graph does; the row also takes a click.
           if (range.end > this.commits.length && this.hasMore && !this.loading && this.moreAsked !== this.limit) {
@@ -457,7 +464,7 @@ export class Graph {
           }
           return Array.from({ length: range.end - range.start }, (_x, k) => range.start + k).map((i) => i < this.commits.length
             ? this.row(i, t, colors, mono, width)
-            : div().id("graph-more").h(ROW).flex_none().px(14).flex().items_center().text_color(t.accent).hover((s) => s.bg(t.hover))
+            : div().id("graph-more").h(this.rowH()).flex_none().px(14).flex().items_center().text_color(t.accent).hover((s) => s.bg(t.hover))
               .child(this.loading ? "Loading more commits…" : `Load ${PAGE} more commits`));
         })
         // Rows of a virtual list can't hold their own handlers: the list reports the row's key.
