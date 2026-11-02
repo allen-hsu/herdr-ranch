@@ -272,4 +272,6 @@ assert.throws(() => G.fileArgs({ hash: "--output=unexpected", parents: [] }), /i
 assert.throws(() => G.diffArgs({ hash: tip.hash, parents: ["--bad"] }, "file"), /identity/);
 console.log("untrusted history ok");
 rmSync(base, { recursive: true, force: true });
+// Keep the original CI entry point running the action-context regressions too.
+await import("./action-context.test.mjs");
 console.log("all tests passed");

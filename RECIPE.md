@@ -213,7 +213,7 @@ or `ansi1` when the action or the chosen mode destroys something.
 
 ## Done when
 
-- `node tests/graph.test.mjs` passes: labels, the hit test and its edge limit,
+- `npm test` passes: labels, the hit test and its edge limit,
   the uncommitted row and its dashed line, lane continuity across real merges,
   menus per target, validation, every action on real repos with a bare remote
   (push, delete remote, upstream, tracking checkout, soft/mixed/hard reset,

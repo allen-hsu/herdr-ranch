@@ -97,7 +97,7 @@ herdr-app do pane.split '{"direction":"right","mod":"git-graph","props":{"folder
 ## Development
 
 ```sh
-node tests/graph.test.mjs
+npm test
 ```
 
 The tests build throwaway repositories (with a bare "remote") and check the
