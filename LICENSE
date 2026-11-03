@@ -19,7 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-The space-folders mod started as a copy of the spaces mod that ships with Herdr
-(https://herdr.dev), which is licensed under the Apache License 2.0. That code
-keeps its license; a copy is in LICENSE-APACHE.

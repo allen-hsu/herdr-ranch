@@ -52,4 +52,4 @@ Each machine's folders live in `~/.config/herdr-space-folders.json` in that mach
 
 ## License
 
-MIT, except the code that came from Herdr's own spaces mod, which stays under the Apache License 2.0. See `LICENSE`.
+MIT (`LICENSE`). The mod started as a copy of the spaces mod that ships with [Herdr](https://herdr.dev); that code keeps Herdr's Apache License 2.0 (`LICENSE-APACHE`).
