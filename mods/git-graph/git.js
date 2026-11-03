@@ -133,6 +133,7 @@ const item = (label, icon, action) => ({ label, icon, action });
 // The right-click menu for a commit, a label part or the uncommitted row:
 // Git Graph's menus, minus what needs VS Code. Sections are separated.
 export function menuFor(target, ctx) {
+  if (target.kind === "repo") return repoMenu(target, ctx);
   const cur = currentName(ctx), c = target.commit;
   let sections;
   if (target.kind === "uncommitted") {
@@ -198,6 +199,29 @@ const remoteChoice = (ctx) => ({ id: "remote", label: "Remote", value: ctx.remot
 const mergeNote = (a) => (a.merge ? " It's a merge commit: its changes against its first parent are used." : "");
 
 // The dialog an action asks first, or null when it runs at once.
+// A Manygit row's menu. Herdr's own first: an agent's tab (most picked first, as
+// its + menu) or a terminal in the repository. Then what the row's ↑/↓ asks for,
+// its uncommitted changes, and its links.
+function repoMenu(r, ctx) {
+  const st = r.status ?? {}, branch = st.branch, remote = ctx.remotes.length > 0;
+  const pull = remote && st.upstream && item("Pull…", "fetch", { type: "pull", upstream: st.upstream });
+  const push = remote && branch && item(st.upstream ? "Push…" : "Push and set upstream…", "push", { type: "push", name: branch });
+  const fetch = remote && item("Fetch", "refresh", { type: "fetch" });
+  const sync = st.behind && !st.ahead ? [pull, fetch, push] : st.ahead && !st.behind ? [push, fetch, pull]
+    : !st.upstream ? [push, fetch] : [fetch, pull, push];
+  return [
+    [...r.agents.slice(0, 3).map((a) => ({ ...item(`New ${a.name} tab`, a.icon ?? "plus", { type: "newTab", folder: r.path, name: a.name, argv: a.run }), image: Boolean(a.icon) && !a.tint })),
+      item("New terminal tab", "plus", { type: "newTab", folder: r.path })],
+    section(...sync),
+    st.dirty > 0 ? section(item("Commit…", "commit", { type: "commit", staged: st.staged > 0 }),
+      item("Stash uncommitted changes…", "stash", { type: "stash" }),
+      item("Reset uncommitted changes…", "reset", { type: "resetUncommitted" })) : [],
+    section(r.web && item(`Open on ${r.web.split("/")[2]}`, "cloud", { type: "openUrl", url: r.web }),
+      item("Copy path", "copy", { type: "copy", text: r.path }),
+      branch && item("Copy branch name", "copy", { type: "copy", text: branch })),
+  ].filter((s) => s.length).flatMap((s, i) => (i ? [{ separator: true }, ...s] : s));
+}
+
 export function dialogFor(action, ctx) {
   const cur = currentName(ctx), a = action;
   switch (a.type) {
@@ -230,6 +254,7 @@ export function dialogFor(action, ctx) {
       inputs: [{ id: "message", label: "Message", value: "", text: true }],
       // With changes already staged, commit just those unless the person ticks this.
       checks: [{ id: "all", label: "Stage every change first (untracked too)", value: !a.staged }], confirm: "Commit" };
+    case "pull": return { title: "Pull", detail: `Fast-forward ${cur} to ${a.upstream}? A pull that can't fast-forward changes nothing.`, confirm: "Pull" };
     case "stash": return { title: "Stash uncommitted changes", inputs: [{ id: "message", label: "Message", value: "", optional: true }],
       checks: [{ id: "untracked", label: "Include untracked files", value: true }], confirm: "Stash" };
     case "resetUncommitted": return { title: "Reset uncommitted changes", detail: "Reset the working tree to HEAD.", confirm: "Reset",
@@ -303,6 +328,8 @@ export function commandsFor(a, v = {}, ctx = {}) {
     case "pushTag": return [["push", v.remote, `refs/tags/${a.name}`]];
     // The message is -m's own argument, so one starting with "-" stays a message.
     case "commit": return [...(v.all ? [["add", "--all"]] : []), ["commit", "-m", message]];
+    // Fast-forward only, as manygit pulls: never a merge or a rebase.
+    case "pull": return [["pull", "--ff-only", "--quiet"]];
     case "stash": return [["stash", "push", ...(v.untracked ? ["--include-untracked"] : []), ...(message ? ["-m", message] : [])]];
     case "resetUncommitted": return [["reset", `--${v.mode}`, "HEAD"]];
     case "fetch": return [["fetch", "--all"]];
@@ -330,6 +357,7 @@ export function doneText(a, v = {}) {
     case "push": return `Pushed ${a.name} to ${v.remote}`;
     case "pushTag": return `Pushed tag ${a.name} to ${v.remote}`;
     case "commit": return "Committed";
+    case "pull": return `Pulled ${a.upstream}`;
     case "stash": return "Stashed uncommitted changes";
     case "resetUncommitted": return `Reset uncommitted changes (${v.mode})`;
     case "fetch": return "Fetched";

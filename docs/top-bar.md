@@ -1,7 +1,7 @@
-# A Graph button in the top bar
+# A Git button in the top bar
 
 Herdr's main layout has a **Files** and a **Changes** button at the right end of
-the tab bar, each opening a side panel. These steps add **Graph** beside them,
+the tab bar, each opening a side panel. These steps add **Git** beside them,
 opening `git-graph` in the same panel. They are written for the person's agent
 to follow; a person can follow them too.
 
@@ -43,7 +43,7 @@ Then add the button right after the Changes one:
 
 ```js
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-      .child(panelButton("graph", "Graph", "mods/git-graph/icons/graph.svg"))
+      .child(panelButton("graph", "Git", "mods/git-graph/icons/graph.svg"))
 ```
 
 ## 3. Add the panel: `layouts/main-graph.json`
@@ -107,7 +107,7 @@ On Herdr 0.1.9 for macOS, `herdr-app check` crashes for every mod, Herdr's own
 included (a GPUI unwrap before the first frame). There, rely on
 `herdr-app status` and look at the window instead. 0.1.10 fixes it.
 
-Click **Graph** in the top bar (or press ⌘G). If the window doesn't show your edits, switch
+Click **Git** in the top bar (or press ⌘G). If the window doesn't show your edits, switch
 layouts away and back (`ctrl-shift-l` twice): a copy that was reloaded while
 open can keep drawing its old frame.
 

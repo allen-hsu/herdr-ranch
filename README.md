@@ -4,8 +4,8 @@ A commit graph for the [Herdr](https://herdr.dev) desktop app, in the spirit of
 VS Code's [Git Graph](https://github.com/mhutchie/vscode-git-graph) extension:
 every branch's history as colored lanes, branch and tag labels, and the git
 actions you'd want from them, one double-click or right-click away. It follows
-the repository of the terminal you're focused on. If the focused folder contains
-multiple repositories, choose one from the Graph header.
+the repository of the terminal you're focused on, and in a folder of
+repositories lists them all (Manygit).
 
 ![Git Graph in Herdr](preview.png)
 ![Multi Repo Git Graph in Herdr](multi-repo.png)
@@ -18,6 +18,17 @@ extension).
 - **The graph.** Git Graph's table (graph, description, date, and when there's room
   author and commit), newest first, with a lane per branch and curves where
   branches fork and merge. Merge commits are muted.
+- **Many repositories (Manygit).** Focus a terminal in a folder that holds
+  repositories, and the panel lists them, grouped by folder, after
+  [manygit](https://github.com/rabeeh-ta/manygit): each one's branch,
+  uncommitted changes, and whether it's ahead (↑) or behind (↓) its upstream,
+  not pushed, or has no remote. Click one for its graph, with everything below;
+  its name in the header drops the list down to switch to another, and
+  **‹ Manygit** goes back. Right-click one for a new agent or terminal tab in
+  it, then pull, push or fetch (whichever its ↑/↓ asks for first), commit,
+  stash or reset its changes, open its remote's page, or copy its path. It searches 3 folders deep
+  (1 to 5: the gear's Scan depth; Show tags there adds each one's newest tag), skipping hidden folders and `node_modules`-style
+  ones, but not your home folder or `/`.
 - **Where you are.** The checked-out branch's label is filled with a ✓, the header
   shows the branch, and HEAD is a ring on a tinted row.
 - **Labels.** Local branches carry their remote (`main | origin`), remote-only
@@ -52,10 +63,12 @@ git refuses, its own message stays in the dialog.
 
 The mod runs `git` in the focused repository (on its machine, for spaces on
 another machine) and reads files there to show an untracked file's contents. If
-the focused folder isn't itself a repository, it searches below it for Git
-repositories. Git reaches the network only when you press Fetch, Push, or delete
-a remote branch. It never runs a shell: every git call is an argument list, and
-names you type can't start with `-`.
+the focused folder isn't itself a repository, one `find` looks for repositories
+in it, and each one found gets a `git status` (again every 15 seconds while the
+list shows). Git reaches the network only when you press Fetch, Fetch all (each
+listed repository with a remote, with login prompts off, as manygit does), Push,
+or delete a remote branch. It never runs a shell: every git call is an argument
+list, and names you type can't start with `-`.
 
 The mod itself makes one request of its own: at most once a day it asks GitHub's
 public API for this repository's latest release
@@ -100,7 +113,7 @@ the repository's releases on GitHub tells you too.
 ### Put it in the top bar
 
 Herdr's tab bar has Files and Changes buttons. [docs/top-bar.md](docs/top-bar.md)
-adds Graph beside them (your agent can do it in a minute), by cloning Herdr's
+adds Git beside them (your agent can do it in a minute), by cloning Herdr's
 `main` layout and `tabs` mod, and optionally ⌘G to open and close it.
 
 ### Or open it as a pane

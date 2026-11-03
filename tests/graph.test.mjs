@@ -3,9 +3,10 @@
 // and every action the menus run. Run: node tests/graph.test.mjs
 import * as G from "../mods/git-graph/git.js";
 import { layoutLanes } from "../mods/git-graph/lanes.js";
+import * as R from "../mods/git-graph/repos.js";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 
@@ -288,6 +289,75 @@ assert.throws(() => G.fileArgs({ hash: "--output=unexpected", parents: [] }), /i
 assert.throws(() => G.diffArgs({ hash: tip.hash, parents: ["--bad"] }, "file"), /identity/);
 console.log("untrusted history ok");
 rmSync(base, { recursive: true, force: true });
+// ---- Manygit: finding repositories under a folder, and one status call each
+{
+  const ws = mkdtempSync(join(tmpdir(), "herdr-manygit-"));
+  const mk = (rel) => { const d = join(ws, rel); mkdirSync(d, { recursive: true }); sh(d, "init", "-q", "-b", "main"); return d; };
+  const a = mk("a"); mk("b"); mk("group/c"); mk("node_modules/pruned"); mk(".hidden/pruned"); mk("one/two/three/deep");
+  mkdirSync(join(ws, "plain/folder"), { recursive: true });
+  const found = (depth) => R.parseFound(ws, spawnSync("find", R.findArgs(ws, depth), { encoding: "utf8" }).stdout);
+  assert.deepEqual(found(3).map((r) => [r.group, r.name]), [["", "a"], ["", "b"], ["group", "c"]], "pruned, hidden and too-deep folders are skipped");
+  assert.deepEqual(found(4).map((r) => r.name), ["a", "b", "c", "deep"], "a deeper search finds more");
+  assert.deepEqual(found(1).map((r) => r.name), ["a", "b"]);
+  assert.equal(R.depthOf(9), R.DEPTH.default); assert.equal(R.depthOf(2), 2); assert.equal(R.depthOf(undefined), 3);
+  assert.deepEqual(R.parseFound("/w", "/w/x/.git\n/elsewhere/y/.git\nfind: /w/locked: Permission denied\n").map((r) => r.name), ["x"], "only paths under the folder");
+
+  // A clone with a bare remote: ahead, behind, both, dirty, no upstream, no remote, detached.
+  const bare = join(ws, "remote.git"); sh(ws, "init", "-q", "--bare", "-b", "main", bare);
+  const status = (dir) => R.parseRepoStatus(git(dir, R.REPO_STATUS).stdout);
+  commit(a, "a1"); sh(a, "remote", "add", "origin", bare); sh(a, "push", "-q", "-u", "origin", "main");
+  assert.deepEqual(status(a), { branch: "main", detached: false, head: git(a, ["rev-parse", "HEAD"]).stdout.trim(), upstream: "origin/main", ahead: 0, behind: 0, dirty: 0, staged: 0 });
+  assert.equal(R.parseRepoStatus("# branch.oid (initial)\0# branch.head main\0").head, null, "no commits yet");
+  assert.deepEqual(R.syncOf({ ...status(a), hasRemote: true }), { kind: "ok", text: "✓" });
+  commit(a, "a2"); writeFileSync(join(a, "a1.txt"), "edited"); writeFileSync(join(a, "untracked.txt"), "x");
+  assert.deepEqual([status(a).ahead, status(a).dirty, status(a).staged], [1, 2, 0], "ahead by one, two files changed, none staged");
+  sh(a, "add", "a1.txt"); assert.equal(status(a).staged, 1, "one staged"); sh(a, "reset", "-q");
+  assert.equal(R.syncOf(status(a)).text, "↑1");
+  sh(a, "reset", "-q", "--hard", "HEAD~1"); sh(a, "commit", "-q", "--allow-empty", "-m", "other"); sh(a, "fetch", "-q");
+  const other = mkdtempSync(join(tmpdir(), "herdr-manygit-clone-")); sh(other, "clone", "-q", bare, "c"); commit(join(other, "c"), "theirs"); sh(join(other, "c"), "push", "-q");
+  sh(a, "fetch", "-q");
+  assert.deepEqual([status(a).ahead, status(a).behind], [1, 1]); assert.equal(R.syncOf(status(a)).kind, "diverged");
+  sh(a, "checkout", "-qb", "local-only");
+  assert.equal(status(a).upstream, null); assert.equal(R.syncOf({ ...status(a), hasRemote: true }).kind, "unpushed");
+  assert.equal(R.syncOf({ ...R.parseRepoStatus(""), hasRemote: false }).kind, "local");
+  assert.equal(git(a, R.LATEST_TAG).stdout, "", "no tags yet");
+  sh(a, "tag", "v1.0"); assert.equal(git(a, R.LATEST_TAG).stdout.trim(), "v1.0", "the newest tag");
+  sh(a, "checkout", "-q", "--detach"); assert.equal(status(a).detached, true);
+  // Fetch all's command: prompts off, through env, and a row behind after someone else pushed.
+  sh(join(ws, "b"), "remote", "add", "origin", join(ws, "gone.git"));
+  const fetchOut = spawnSync("env", R.FETCH, { cwd: join(ws, "b"), encoding: "utf8", env });
+  assert.ok(fetchOut.status !== 0 && fetchOut.stderr.trim(), "an unreachable remote fails with git's words for the row");
+  assert.equal(R.syncOf({ ...status(a), hasRemote: true }, "fatal: unable to access").text, "fetch failed");
+  assert.equal(R.fetchable({ upstream: null, hasRemote: false }), false, "a local-only repository isn't fetched");
+  assert.equal(R.fetchable(undefined), true); assert.equal(R.fetchable({ upstream: "origin/main" }), true);
+  sh(a, "checkout", "-q", "main"); commit(join(other, "c"), "more"); sh(join(other, "c"), "push", "-q");
+  assert.equal(spawnSync("env", R.FETCH, { cwd: a, encoding: "utf8", env }).status, 0);
+  assert.equal(status(a).behind, 2, "the fetch brought the new commit");
+  // A row's menu: Herdr's tabs first, then what its ↑/↓ asks for first.
+  const remotes = R.parseRemotes(git(a, R.REMOTES).stdout);
+  assert.deepEqual(remotes, [{ name: "origin", url: bare }]);
+  assert.equal(R.webUrl("git@github.com:rabeeh-ta/manygit.git"), "https://github.com/rabeeh-ta/manygit");
+  assert.equal(R.webUrl("ssh://git@gitlab.com/group/sub/repo.git"), "https://gitlab.com/group/sub/repo");
+  assert.equal(R.webUrl("https://user:token@github.com/o/r.git"), "https://github.com/o/r", "credentials never reach the browser");
+  assert.equal(R.webUrl(bare), null); assert.equal(R.webUrl("file:///srv/r.git"), null);
+  const rowCtx = (st) => ({ root: a, on: null, current: st.branch, head: st.head, branches: [], remotes: ["origin"] });
+  const rowMenu = (st, agents = []) => G.menuFor({ kind: "repo", path: a, status: st, agents, web: "https://github.com/o/r" }, rowCtx(st)).filter((i) => !i.separator).map((i) => i.label);
+  const claude = { name: "Claude Code", icon: "icons/claude.svg", tint: false, run: ["claude"] };
+  assert.deepEqual(rowMenu({ ...status(a), behind: 4, ahead: 0, dirty: 0 }, [claude]).slice(0, 4), ["New Claude Code tab", "New terminal tab", "Pull…", "Fetch"], "behind: Pull comes first");
+  assert.equal(rowMenu({ ...status(a), ahead: 2, behind: 0 })[1], "Push…", "ahead: Push comes first");
+  assert.equal(rowMenu({ ...status(a), upstream: null, hasRemote: true })[1], "Push and set upstream…");
+  assert.ok(rowMenu({ ...status(a), dirty: 3 }).includes("Commit…") && !rowMenu({ ...status(a), dirty: 0 }).includes("Commit…"), "change actions only with changes");
+  assert.ok(rowMenu(status(a)).includes("Open on github.com") && rowMenu(status(a)).includes("Copy path"));
+  // Pull fast-forwards, as the menu's Pull runs it.
+  sh(a, "checkout", "-q", "main"); sh(a, "reset", "-q", "--hard", "origin/main"); sh(a, "reset", "-q", "--hard", "HEAD~1");
+  assert.equal(status(a).behind, 1);
+  for (const args of G.commandsFor({ type: "pull", upstream: "origin/main" })) assert.equal(git(a, args).code, 0);
+  assert.equal(status(a).behind, 0, "pulled");
+  assert.equal(R.syncOf(undefined).kind, "loading"); assert.equal(R.syncOf({ error: "dubious ownership" }).kind, "error");
+  rmSync(ws, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true });
+  console.log("manygit ok");
+}
+
 // Keep the original CI entry point running the action-context regressions too.
 await import("./action-context.test.mjs");
 console.log("all tests passed");
