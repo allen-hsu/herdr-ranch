@@ -49,3 +49,7 @@ and give `keys.json` the same keys in a section named after that layout, `layout
 ## How folders are kept
 
 Each machine's folders live in `~/.config/herdr-space-folders.json` in that machine's home: the folders in order (name, color, start folder, rules, folded) and which space went in which folder, by the id that machine knows the space by. A change shows at once and is written to the machine right away; changes from another screen come in within 15 seconds.
+
+## License
+
+MIT, except the code that came from Herdr's own spaces mod, which stays under the Apache License 2.0. See `LICENSE`.
