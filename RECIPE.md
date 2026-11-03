@@ -312,13 +312,18 @@ or `ansi1` when the action or the chosen mode destroys something.
   is switched away and back. A hidden or fully covered window draws nothing, so
   `herdr-app shot` then returns the last frame.
 - The Show in Changes item assumes the main layout's `panel` / `panel-body` ids.
-- `paint_path` takes screen pixels and ignores the zoom; elements are scaled by it.
-  The lines multiply their coordinates, width and dash by the zoom (`unit()`) to
-  match the dots, and a row is a whole number of screen pixels (`rowPx()`; 24 ×
-  0.9 = 21.6 left a hairline gap at every row edge). The list's row height must
-  be that same `rowPx()`, or the rows and the list's cells disagree.
-- Seen at zoom 0.9 and 0.8 only. Untested: Linux, Windows, zoom above 1, the
-  diff list at a zoom other than 1, a remote machine's repository.
+- The zoom, in a list: a row is a whole number of screen pixels (`rowPx()`; 24 ×
+  0.9 = 21.6 left a hairline gap at every row edge), `rowH()` the same in the
+  units elements take. Herdr 0.1.12 zooms lists itself ("Lists in mods follow
+  the zoom"), and the two versions differ (`updates().app.version`, asked once):
+  - 0.1.12 and later: the list's row height is `rowH()` and the lines are drawn
+    in units, like the dots. Scaling them as before put every line 1.2× further
+    out than its dot at zoom 1.2, and every row 1.2× too tall.
+  - Before: `paint_path` in a list took screen pixels and ignored the zoom, so
+    the lines multiply their coordinates, width and dash by it (`unit()`), and
+    the list's row height is `rowPx()`.
+- Seen at zoom 0.9 and 0.8 before 0.1.12. Untested: Linux, Windows, the diff
+  list at a zoom other than 1 before 0.1.12.
 
 ## Done when
 

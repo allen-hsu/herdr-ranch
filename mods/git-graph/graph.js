@@ -3,13 +3,13 @@
 // a pane. Labels take double-clicks (checkout) and right-clicks (menus).
 import { div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, setShared, openOverlay, home, notify, knownAgents } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, setShared, openOverlay, home, notify, knownAgents, updates } from "herdr";
 import { layoutLanes } from "./lanes.js";
 import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withUncommitted, labelsOf, hitLabel,
   menuFor, menuHeight, fileArgs, joinFiles, diffArgs, diffRows } from "./git.js";
 import { perform, openDialog, showChanges } from "./act.js";
 import { icon } from "./menu.js";
-import { available, check, openUpdate } from "./update.js";
+import { available, check, openUpdate, newer } from "./update.js";
 import { depthOf, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
 
 function location(folder) {
@@ -21,6 +21,11 @@ function location(folder) {
 }
 
 const PAGE = 300, ROW = 24, LANE = 12, PAD = 6, DIFF_ROW = 20;
+// Herdr 0.1.12 zooms a list itself ("Lists in mods follow the zoom"): its row
+// heights and the lines painted in its rows are layout units there, where before
+// they were screen pixels. Asked once: the version doesn't change while running.
+let zoomedLists;
+const listsZoom = () => zoomedLists ??= (() => { try { const v = updates()?.app?.version; return Boolean(v) && !newer("0.1.12", v); } catch { return false; } })();
 // The graph column's default keeps room for its "Graph" heading (and a lane or two) in narrow repos.
 const GRAPH_MIN = 56;
 // side: which way a drag widens it. Graph's handle is on its right edge, the others' on their left.
@@ -431,6 +436,11 @@ export class Graph {
   // rowH the same in the units an element's h() takes (the zoom scales it back).
   rowPx() { return Math.max(1, Math.round(ROW * (settings().zoom ?? 1))); }
   rowH() { return this.rowPx() / (settings().zoom ?? 1); }
+  // The list's row height: units where Herdr zooms lists (rowH, still a whole number
+  // of pixels once zoomed), screen pixels before.
+  listRow() { return listsZoom() ? this.rowH() : this.rowPx(); }
+  // What the lines' coordinates are multiplied by: nothing where Herdr zooms them itself.
+  pathScale() { return listsZoom() ? 1 : this.unit(); }
 
   // A left press, then on release the list names the row: together, a click on a label.
   clicked(key, cx) {
@@ -531,8 +541,8 @@ export class Graph {
 
   graphCell(row, commit, colors, t, width) {
     const x = (lane) => PAD + lane * LANE + LANE / 2, y = (v) => v * this.rowH(), paths = new Map();
-    // Elements are scaled by the zoom, but paint_path takes raw pixels: scale the lines to match the dots.
-    const z = this.unit(), px = (lane) => x(lane) * z, py = (v) => y(v) * z;
+    // Elements are scaled by the zoom; before Herdr 0.1.12 a list's paint_path wasn't, so the lines scale to match the dots.
+    const z = this.pathScale(), px = (lane) => x(lane) * z, py = (v) => y(v) * z;
     // One stroked path per color: a row is a handful of paints, however many lanes cross it.
     for (const [a, ya, b, yb, c, dashed] of row.segments) {
       const color = dashed ? t.dim : colors[c % colors.length], key = `${color}${dashed ? "-" : ""}`;
@@ -725,7 +735,7 @@ export class Graph {
     const colors = laneColors(t), width = this.graphWidth(), count = this.commits.length + (this.hasMore ? 1 : 0);
     return div().flex_1().min_h(0).relative()
       .on_mouse_down("left", (e) => { this.press = { x: (e.local_position?.x ?? 0) / this.unit(), count: e.click_count }; })
-      .child(v_virtual_list(this.listId, count, this.rowPx(), (i) => this.commits[i]?.hash ?? "more",
+      .child(v_virtual_list(this.listId, count, this.listRow(), (i) => this.commits[i]?.hash ?? "more",
         (range, cx) => {
           // Scrolling to the end loads the next page, as Git Graph does; the row also takes a click.
           if (range.end > this.commits.length && this.hasMore && !this.loading && this.moreAsked !== this.limit) {
