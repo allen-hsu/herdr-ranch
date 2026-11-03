@@ -10,7 +10,7 @@ import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withU
 import { perform, openDialog, showChanges } from "./act.js";
 import { icon } from "./menu.js";
 import { available, check, openUpdate, newer } from "./update.js";
-import { depthOf, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
+import { depthOf, unsearched, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
 
 function location(folder) {
   if (folder) return { cwd: folder, on: null };
@@ -114,8 +114,7 @@ async function pool(items, limit, fn) {
 }
 const depthSetting = () => depthOf(shared("git-graph.depth"));
 const tagsShown = () => shared("git-graph.tags") === true;
-// Too big to walk on open, and on macOS it asks for Desktop, Documents and Downloads.
-const unsearched = (cwd, on) => cwd === "/" || (!on && cwd.replace(/[/\\]+$/, "") === home());
+
 
 export class Graph {
   init(cx) {
@@ -129,6 +128,8 @@ export class Graph {
     this.seen = new Map(); this.commitDetails = new Map();
     // Fetch all: its progress for one Manygit folder, and each repository's last failure.
     this.fetchAll = null; this.fetchErrors = new Map();
+    // Manygit's .git watchers, one per repository, kept while it's listed (see watchRepos).
+    this.watched = new Set();
     // Herdr's agents per machine, for a row's "New … tab" (as its + menu lists them).
     this.agents = new Map();
     this.handle = cx.focus_handle();
@@ -137,7 +138,7 @@ export class Graph {
     cx.timer.after(1500, (cx) => this.warm(cx));
     // Remote spaces can't be watched: poll them gently. New folders get read ahead.
     // The Manygit list re-reads too: edits in a working tree don't touch .git.
-    cx.timer.every(15000, (cx) => { if (!this.watching || this.state === "workspace") this.refresh(cx); this.warm(cx); check(); });
+    cx.timer.every(15000, (cx) => { if (!this.watching || this.state === "workspace") this.refresh(cx, true, true); this.warm(cx); check(); });
     check();
   }
 
@@ -145,7 +146,7 @@ export class Graph {
 
   reset() {
     Object.assign(this, folderState());
-    this.watchToken++; this.watching = null; this.picking = false; this.watched = new Set();
+    this.watchToken++; this.watching = null; this.picking = false;
   }
 
   // Leaving a folder keeps it as it was; coming back shows that at once, while refresh reads it again.
@@ -191,16 +192,19 @@ export class Graph {
   }
   // A load belongs to its folder: a new folder starts at once, and a slower
   // load for the old one finds itself stale and drops its result.
-  refresh(cx, full = true) {
+  // timer: the 15 s re-read, which doesn't search a folder again that held no repositories.
+  refresh(cx, full = true, timer = false) {
     const { cwd, on } = location(this.folder), context = this.key();
     if (context !== this.context) { this.enter(context); full = true; }
     if (!cwd) { this.state = "nofolder"; return; }
     // A repository opened from the Manygit list loads in place of the folder.
     const { all, remotes, limit } = this, opened = this.opened;
     const loadKey = JSON.stringify([context, opened]);
-    if (this.loading === loadKey) { this.again = this.again === "full" || full ? "full" : "status"; return; }
-    this.loading = loadKey; this.again = null;
-    const stale = () => this.key() !== context || this.opened !== opened;
+    if (this.loading?.key === loadKey) { this.again = this.again === "full" || full ? "full" : "status"; return; }
+    // Each load has its own id: opening a repository and coming back can't revive an older one.
+    const id = this.loadSeq = (this.loadSeq ?? 0) + 1;
+    this.loading = { key: loadKey, id }; this.again = null;
+    const stale = () => this.loadSeq !== id || this.key() !== context;
     cx.spawn(async (cx) => {
       try {
         if (full || !this.root) {
@@ -208,7 +212,7 @@ export class Graph {
           if (stale()) return;
           if (read.state === "norepo") {
             if (opened) { this.state = "error"; this.error = `${tilde(opened, on)} isn't a git repository any more.`; return; }
-            await this.scan(cwd, on, stale, cx); return;
+            await this.scan(cwd, on, stale, cx, timer); return;
           }
           if (!opened) this.workspace = null;
           if (!on) this.watch(read.root, context, cx);
@@ -228,7 +232,7 @@ export class Graph {
       } catch (e) {
         if (!stale()) { this.state = "error"; this.error = String(e?.message ?? e); }
       } finally {
-        if (this.loading === loadKey) {
+        if (this.loading?.id === id) {
           this.loading = null; cx.notify();
           if (this.again) this.refresh(cx, this.again === "full");
         }
@@ -237,9 +241,10 @@ export class Graph {
   }
 
   // Manygit: find the repositories under cwd, then read each one's status.
-  async scan(cwd, on, stale, cx) {
+  async scan(cwd, on, stale, cx, timer) {
     const depth = depthSetting();
-    if (unsearched(cwd, on)) { this.reset(); Object.assign(this, { state: "norepo", cwd, on, skipped: true }); return; }
+    if (timer && this.state === "norepo" && this.cwd === cwd) return;
+    if (unsearched(cwd, on ? null : home())) { this.reset(); Object.assign(this, { state: "norepo", cwd, on, skipped: true }); return; }
     const found = await exec("find", findArgs(cwd, depth), { on }).catch(() => ({ stdout: "" }));
     if (stale()) return;
     const repos = parseFound(cwd, found.stdout);
@@ -248,32 +253,38 @@ export class Graph {
     const same = this.workspace?.root === cwd, statuses = same ? this.statuses : new Map();
     if (!same) this.reset();
     this.workspace = { root: cwd, depth, repos }; this.statuses = statuses; this.cwd = cwd; this.on = on; this.state = "workspace";
-    // Every repository is watched, the ones a later search finds too.
-    if (!on) this.watchRepos(repos.filter((r) => !this.watched.has(r.path)), stale, cx);
+    if (!on) { this.watching = "workspace"; this.watchRepos(repos, cx); }
     cx.notify();
-    await pool(repos, 8, (repo) => this.readStatus(repo.path, stale, cx));
+    await pool(repos, 8, (repo) => this.readStatus(repo.path, on, stale, cx));
   }
 
-  async readStatus(path, stale, cx) {
-    const st = await readRepo(path, this.on, tagsShown()).catch((e) => ({ error: String(e?.message ?? e) }));
+  // on: the machine the list was read on, never whatever the panel shows by the time it runs.
+  async readStatus(path, on, stale, cx) {
+    if (stale()) return;
+    const st = await readRepo(path, on, tagsShown()).catch((e) => ({ error: String(e?.message ?? e) }));
     if (stale() || !this.workspace) return;
     if (JSON.stringify(st) !== JSON.stringify(this.statuses.get(path))) { this.statuses.set(path, st); cx.notify(); }
   }
 
-  // A commit, checkout or fetch in any listed repository updates its row (local folders).
-  watchRepos(repos, stale, cx) {
-    const token = this.watchToken;
-    this.watching = "workspace";
-    for (const { path } of repos) this.watched.add(path);
-    for (const { path } of repos) cx.spawn(async (cx) => {
-      try {
-        while (token === this.watchToken && !stale()) {
-          const paths = await watchFolder(`${path}/.git`);
-          if (token !== this.watchToken || stale()) return;
-          if (paths.some((p) => isRefChange(p.replace(/\\/g, "/")) || /[/\\]index$/.test(p))) await this.readStatus(path, stale, cx);
-        }
-      } catch {} // a worktree's .git is a file: its row updates with the list
-    });
+  // A commit, checkout or fetch in any listed repository updates its row (local
+  // folders). One loop per repository, whoever asks: opening one and coming back
+  // keeps them, and the loop of a repository no longer listed ends at its next change.
+  watchRepos(repos, cx) {
+    for (const { path } of repos) {
+      if (this.watched.has(path)) continue;
+      this.watched.add(path);
+      cx.spawn(async (cx) => {
+        try {
+          for (;;) {
+            const paths = await watchFolder(`${path}/.git`), ws = this.workspace;
+            if (!ws || this.on || !ws.repos.some((r) => r.path === path)) break;
+            const root = ws.root;
+            if (paths.some((p) => isRefChange(p.replace(/\\/g, "/")) || /[/\\]index$/.test(p))) await this.readStatus(path, null, () => this.workspace?.root !== root, cx);
+          }
+        } catch {} // a worktree's .git is a file: its row updates with the list
+        this.watched.delete(path);
+      });
+    }
   }
 
   // Manygit's fetch: every repository with a remote, 8 at a time, each row
@@ -290,7 +301,7 @@ export class Graph {
         if (out.code === 0) this.fetchErrors.delete(r.path);
         else { run.failed++; this.fetchErrors.set(r.path, (out.stderr || "git fetch failed").trim().split("\n").pop()); }
         run.done++;
-        await this.readStatus(r.path, stale, cx);
+        await this.readStatus(r.path, on, stale, cx);
         cx.notify();
       });
       if (this.fetchAll === run) this.fetchAll = null;
@@ -667,7 +678,10 @@ export class Graph {
   // Opening it reads every row again, since the list stopped watching while the graph showed.
   togglePicker(cx) {
     this.picking = !this.picking;
-    if (this.picking) { const ws = this.workspace; cx.spawn((cx) => pool(ws.repos, 8, (r) => this.readStatus(r.path, () => this.workspace !== ws, cx))); }
+    if (this.picking) {
+      const { repos, root } = this.workspace, on = this.on;
+      cx.spawn((cx) => pool(repos, 8, (r) => this.readStatus(r.path, on, () => this.workspace?.root !== root, cx)));
+    }
     cx.notify();
   }
 
@@ -677,7 +691,7 @@ export class Graph {
     const st = this.statuses.get(r.path), fetchError = this.fetchErrors.get(r.path), sync = syncOf(st, fetchError), here = r.path === this.opened;
     // ↑ and ↓ as Herdr's Spaces list draws them (ansi2, ansi1); in sync shows nothing.
     const counts = ["ahead", "behind", "diverged"].includes(sync.kind) && !fetchError;
-    const color = { loading: t.dim, error: t.ansi1, unpushed: t.ansi1, local: t.dim }[sync.kind];
+    const color = { loading: t.dim, error: t.ansi1, unpushed: t.ansi1, gone: t.ansi1, local: t.dim }[sync.kind];
     const label = counts || sync.kind === "ok" ? null : fetchError ? sync.text : { unpushed: "not pushed", error: "error" }[sync.kind] ?? sync.text;
     // A failure (reading it, or its last fetch) shows git's words where the branch goes.
     const problem = st?.error ?? fetchError;

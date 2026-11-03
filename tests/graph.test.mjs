@@ -4,9 +4,10 @@
 import * as G from "../mods/git-graph/git.js";
 import { layoutLanes } from "../mods/git-graph/lanes.js";
 import * as R from "../mods/git-graph/repos.js";
+import { executeAction } from "../mods/git-graph/execute.js";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 
@@ -299,6 +300,15 @@ rmSync(base, { recursive: true, force: true });
   assert.deepEqual(found(3).map((r) => [r.group, r.name]), [["", "a"], ["", "b"], ["group", "c"]], "pruned, hidden and too-deep folders are skipped");
   assert.deepEqual(found(4).map((r) => r.name), ["a", "b", "c", "deep"], "a deeper search finds more");
   assert.deepEqual(found(1).map((r) => r.name), ["a", "b"]);
+  // A folder reached through a symlink (macOS's /tmp, a symlinked checkout) is searched too.
+  const link = `${ws}-link`; symlinkSync(ws, link);
+  assert.deepEqual(R.parseFound(link, spawnSync("find", R.findArgs(link, 3), { encoding: "utf8" }).stdout).map((r) => r.name), ["a", "b", "c"], "symlinked folder");
+  rmSync(link);
+  // Not searched: a home, anything above one, and another machine's usual homes.
+  for (const [dir, home, skip] of [["/", "/Users/me", true], ["/Users", "/Users/me", true], ["/Users/me/", "/Users/me", true],
+    ["/Users/me/code", "/Users/me", false], ["/home/dev", null, true], ["/root", null, true], ["/mnt/data/dev-vera", null, false], ["/home/dev/work", null, false]]) {
+    assert.equal(R.unsearched(dir, home), skip, `unsearched ${dir}`);
+  }
   assert.equal(R.depthOf(9), R.DEPTH.default); assert.equal(R.depthOf(2), 2); assert.equal(R.depthOf(undefined), 3);
   assert.deepEqual(R.parseFound("/w", "/w/x/.git\n/elsewhere/y/.git\nfind: /w/locked: Permission denied\n").map((r) => r.name), ["x"], "only paths under the folder");
 
@@ -306,7 +316,7 @@ rmSync(base, { recursive: true, force: true });
   const bare = join(ws, "remote.git"); sh(ws, "init", "-q", "--bare", "-b", "main", bare);
   const status = (dir) => R.parseRepoStatus(git(dir, R.REPO_STATUS).stdout);
   commit(a, "a1"); sh(a, "remote", "add", "origin", bare); sh(a, "push", "-q", "-u", "origin", "main");
-  assert.deepEqual(status(a), { branch: "main", detached: false, head: git(a, ["rev-parse", "HEAD"]).stdout.trim(), upstream: "origin/main", ahead: 0, behind: 0, dirty: 0, staged: 0 });
+  assert.deepEqual(status(a), { branch: "main", detached: false, head: git(a, ["rev-parse", "HEAD"]).stdout.trim(), upstream: "origin/main", gone: false, ahead: 0, behind: 0, dirty: 0, staged: 0 });
   assert.equal(R.parseRepoStatus("# branch.oid (initial)\0# branch.head main\0").head, null, "no commits yet");
   assert.deepEqual(R.syncOf({ ...status(a), hasRemote: true }), { kind: "ok", text: "✓" });
   commit(a, "a2"); writeFileSync(join(a, "a1.txt"), "edited"); writeFileSync(join(a, "untracked.txt"), "x");
@@ -323,6 +333,7 @@ rmSync(base, { recursive: true, force: true });
   assert.equal(git(a, R.LATEST_TAG).stdout, "", "no tags yet");
   sh(a, "tag", "v1.0"); assert.equal(git(a, R.LATEST_TAG).stdout.trim(), "v1.0", "the newest tag");
   sh(a, "checkout", "-q", "--detach"); assert.equal(status(a).detached, true);
+  assert.equal(R.syncOf({ ...status(a), hasRemote: true }).kind, "ok", "detached isn't \"not pushed\"");
   // Fetch all's command: prompts off, through env, and a row behind after someone else pushed.
   sh(join(ws, "b"), "remote", "add", "origin", join(ws, "gone.git"));
   const fetchOut = spawnSync("env", R.FETCH, { cwd: join(ws, "b"), encoding: "utf8", env });
@@ -340,6 +351,10 @@ rmSync(base, { recursive: true, force: true });
   assert.equal(R.webUrl("ssh://git@gitlab.com/group/sub/repo.git"), "https://gitlab.com/group/sub/repo");
   assert.equal(R.webUrl("https://user:token@github.com/o/r.git"), "https://github.com/o/r", "credentials never reach the browser");
   assert.equal(R.webUrl(bare), null); assert.equal(R.webUrl("file:///srv/r.git"), null);
+  assert.equal(R.webUrl("https://user:p@ss@host.com/o/r"), "https://host.com/o/r", "a password with @ is dropped whole");
+  assert.equal(R.webUrl("ssh://git@host.example:2222/o/r.git"), "https://host.example/o/r", "the ssh port isn't the web's");
+  assert.equal(R.webUrl("https://git.example.com:3000/o/r"), "https://git.example.com:3000/o/r");
+  for (const u of ["../sibling", "github-work:o/r", "C:\\repos\\x"]) assert.equal(R.webUrl(u), null, `no page for ${u}`);
   const rowCtx = (st) => ({ root: a, on: null, current: st.branch, head: st.head, branches: [], remotes: ["origin"] });
   const rowMenu = (st, agents = []) => G.menuFor({ kind: "repo", path: a, status: st, agents, web: "https://github.com/o/r" }, rowCtx(st)).filter((i) => !i.separator).map((i) => i.label);
   const claude = { name: "Claude Code", icon: "icons/claude.svg", tint: false, run: ["claude"] };
@@ -348,11 +363,20 @@ rmSync(base, { recursive: true, force: true });
   assert.equal(rowMenu({ ...status(a), upstream: null, hasRemote: true })[1], "Push and set upstream…");
   assert.ok(rowMenu({ ...status(a), dirty: 3 }).includes("Commit…") && !rowMenu({ ...status(a), dirty: 0 }).includes("Commit…"), "change actions only with changes");
   assert.ok(rowMenu(status(a)).includes("Open on github.com") && rowMenu(status(a)).includes("Copy path"));
-  // Pull fast-forwards, as the menu's Pull runs it.
+  // Pull fast-forwards, run as the row's menu runs it: through executeAction, with a ctx built from the row's status.
   sh(a, "checkout", "-q", "main"); sh(a, "reset", "-q", "--hard", "origin/main"); sh(a, "reset", "-q", "--hard", "HEAD~1");
-  assert.equal(status(a).behind, 1);
-  for (const args of G.commandsFor({ type: "pull", upstream: "origin/main" })) assert.equal(git(a, args).code, 0);
+  const behindSt = status(a); assert.equal(behindSt.behind, 1);
+  const run = (cmd, args, o) => Promise.resolve(spawnSync(cmd, args, { cwd: o.cwd, env, encoding: "utf8" })).then((r) => ({ code: r.status, stdout: r.stdout, stderr: r.stderr }));
+  const pullCtx = { root: a, on: null, current: behindSt.branch, head: behindSt.head, branches: [], remotes: ["origin"] };
+  const moved = { ...pullCtx, head: "0".repeat(40) };
+  assert.equal((await executeAction({ type: "pull", upstream: "origin/main" }, {}, moved, run)).stale, true, "a row whose HEAD moved is refused");
+  assert.equal((await executeAction({ type: "pull", upstream: "origin/main" }, {}, pullCtx, run)).ok, true);
   assert.equal(status(a).behind, 0, "pulled");
+  // An upstream deleted on the remote: git names it but counts nothing. Not "in sync", and no Pull.
+  sh(a, "checkout", "-qb", "doomed"); sh(a, "push", "-q", "-u", "origin", "doomed"); sh(a, "push", "-q", "origin", "--delete", "doomed"); sh(a, "fetch", "-q", "--prune");
+  assert.equal(status(a).gone, true); assert.equal(R.syncOf({ ...status(a), hasRemote: true }).kind, "gone");
+  assert.ok(!rowMenu({ ...status(a), hasRemote: true }).includes("Pull…"), "no Pull from a gone upstream");
+  sh(a, "checkout", "-q", "main");
   assert.equal(R.syncOf(undefined).kind, "loading"); assert.equal(R.syncOf({ error: "dubious ownership" }).kind, "error");
   rmSync(ws, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true });
   console.log("manygit ok");

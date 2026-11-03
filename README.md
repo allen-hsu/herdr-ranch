@@ -28,7 +28,8 @@ extension).
   it, then pull, push or fetch (whichever its ↑/↓ asks for first), commit,
   stash or reset its changes, open its remote's page, or copy its path. It searches 3 folders deep
   (1 to 5: the gear's Scan depth; Show tags there adds each one's newest tag), skipping hidden folders and `node_modules`-style
-  ones, but not your home folder or `/`.
+  ones, but not your home folder or anything above it (another machine's
+  `~` and `/` included).
 - **Where you are.** The checked-out branch's label is filled with a ✓, the header
   shows the branch, and HEAD is a ring on a tinted row.
 - **Labels.** Local branches carry their remote (`main | origin`), remote-only
@@ -65,10 +66,12 @@ The mod runs `git` in the focused repository (on its machine, for spaces on
 another machine) and reads files there to show an untracked file's contents. If
 the focused folder isn't itself a repository, one `find` looks for repositories
 in it, and each one found gets a `git status` (again every 15 seconds while the
-list shows). Git reaches the network only when you press Fetch, Fetch all (each
-listed repository with a remote, with login prompts off, as manygit does), Push,
-or delete a remote branch. It never runs a shell: every git call is an argument
-list, and names you type can't start with `-`.
+list shows). Right-clicking one reads its remotes (`git config`) and asks Herdr
+which agents are installed (Herdr asks that machine's shell, as its + menu
+does). Git reaches the network only when you press Fetch, Fetch all (each
+listed repository with a remote, with login prompts off, as manygit does), Pull,
+Push, or delete a remote branch. The mod never runs a shell itself: every git
+call is an argument list, and names you type can't start with `-`.
 
 The mod itself makes one request of its own: at most once a day it asks GitHub's
 public API for this repository's latest release
@@ -126,14 +129,20 @@ herdr-app do pane.split '{"direction":"right","mod":"git-graph","props":{"folder
 
 ## Limits
 
-- Tested on macOS with Herdr 0.1.9. Linux and Windows aren't tested yet.
+- Tested on macOS with Herdr 0.1.9 to 0.1.12. Linux and Windows aren't tested yet.
+- Manygit needs `find` and `env`, so it works on macOS and Linux (and spaces on
+  them), not on Windows. It skips a repository whose own folder is hidden or
+  named like a build folder (`build`, `dist`, `vendor`, `target`).
+- Herdr stops a command after 30 seconds, so a fetch, pull or push over a slow
+  network, or a slow pre-commit hook, can fail there.
 - Labels clip when a row has many.
 - A very large history loads slower the first time if the repository has no
   commit-graph file (a fresh clone usually doesn't): openedx-platform, 78k
   commits, takes about half a second. `git commit-graph write --reachable` (or
   `git maintenance start`) in that repository brings it to about 60 ms.
-- Not in this version: Git Graph's find (Ctrl+F), a branch-picker dropdown, pull,
-  interactive rebase, and per-file actions in commit details.
+- Not in this version: Git Graph's find (Ctrl+F), a branch-picker dropdown, pull
+  in the graph (a Manygit row's menu has it), interactive rebase, and per-file
+  actions in commit details.
 
 ## Development
 

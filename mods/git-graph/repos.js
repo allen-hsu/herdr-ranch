@@ -8,12 +8,25 @@ export const DEPTH = { min: 1, max: 5, default: 3 };
 // Library (huge, and nobody keeps repositories there).
 const PRUNE = ["node_modules", "vendor", "venv", "__pycache__", "dist", "build", "target", "site-packages", "Library"];
 
+// A home folder, or a folder above one, isn't searched: too big to walk, and on
+// macOS walking it asks for Desktop, Documents and Downloads. home: this
+// machine's, or null for another machine, whose usual places count instead:
+// /, /root, /home/<name>, /Users/<name>.
+export function unsearched(cwd, home) {
+  const dir = cwd.replace(/[/\\]+$/, "") || "/";
+  if (dir === "/" || dir === "/root" || /^\/(home|Users)(\/[^/]+)?$/.test(dir)) return true;
+  return Boolean(home) && (dir === home || home.startsWith(dir + "/"));
+}
+
 export const depthOf = (value) => (Number.isInteger(value) && value >= DEPTH.min && value <= DEPTH.max ? value : DEPTH.default);
 
 // One `find` walks the whole tree, on this machine or another. A repository
-// `depth` folders down has its .git one further. Symlinks aren't followed (-P).
+// `depth` folders down has its .git one further. -H follows the folder itself
+// when it's a symlink (macOS's find lists nothing under one otherwise), and no
+// symlink below it. A repository whose own folder has a pruned name (`build`,
+// `.dotfiles`) isn't found.
 export function findArgs(root, depth) {
-  return [root, "-mindepth", "1", "-maxdepth", String(depthOf(depth) + 1),
+  return ["-H", root, "-mindepth", "1", "-maxdepth", String(depthOf(depth) + 1),
     "(", "-name", ".git", "-print", "-prune", ")", "-o",
     "(", "-type", "d", "(", "-name", ".*", ...PRUNE.flatMap((n) => ["-o", "-name", n]), ")", "-prune", ")"];
 }
@@ -35,7 +48,9 @@ export const REPO_STATUS = [...READ, "status", "--porcelain=v2", "--branch", "-z
 
 export function parseRepoStatus(stdout) {
   // head: HEAD's hash (null before the first commit); staged: changes already in the index.
-  const s = { branch: null, detached: false, head: null, upstream: null, ahead: 0, behind: 0, dirty: 0, staged: 0 };
+  // gone: the upstream is configured but no longer exists (git prints no branch.ab).
+  const s = { branch: null, detached: false, head: null, upstream: null, gone: false, ahead: 0, behind: 0, dirty: 0, staged: 0 };
+  let counted = false;
   for (const rec of stdout.split("\0")) {
     if (!rec) continue;
     if (!rec.startsWith("# ")) { s.dirty++; if (/^[12] [^.]/.test(rec)) s.staged++; continue; }
@@ -45,9 +60,10 @@ export function parseRepoStatus(stdout) {
     else if (key === "branch.upstream") s.upstream = value;
     else if (key === "branch.ab") {
       const m = /^\+(\d+) -(\d+)$/.exec(value);
-      if (m) { s.ahead = +m[1]; s.behind = +m[2]; }
+      if (m) { s.ahead = +m[1]; s.behind = +m[2]; counted = true; }
     }
   }
+  s.gone = Boolean(s.upstream) && !counted;
   return s;
 }
 
@@ -64,13 +80,17 @@ export function parseRemotes(stdout) {
   return stdout.split("\n").map((l) => /^remote\.(.+)\.url (.+)$/.exec(l.trim())).filter(Boolean).map((m) => ({ name: m[1], url: m[2] }));
 }
 
-// A remote's page in the browser: https as it is, and scp-style or ssh:// URLs
-// (git@github.com:owner/repo.git) on their host. Anything else (a path) has none.
+// A remote's page in the browser: http(s) without its credentials, and ssh://
+// or scp-style URLs (git@github.com:owner/repo.git) on their host, without the
+// ssh port. A host must have a dot, so paths, ssh aliases and `..` have none.
+const HOST = "([a-zA-Z0-9][a-zA-Z0-9-]*(?:\\.[a-zA-Z0-9-]+)+)";
 export function webUrl(url) {
-  const ssh = /^(?:ssh:\/\/)?(?:[^@/]+@)?([^:/]+)[:/](?!\/)(.+?)(?:\.git)?\/?$/.exec(url);
-  if (/^https?:\/\//.test(url)) return url.replace(/^(https?:\/\/)[^@/]+@/, "$1").replace(/\.git\/?$/, "");
-  if (ssh && !url.startsWith("/") && !url.startsWith("file:")) return `https://${ssh[1]}/${ssh[2]}`;
-  return null;
+  const tail = "\\/(.+?)(?:\\.git)?\\/?$";
+  let m = new RegExp(`^(https?):\\/\\/(?:[^/]*@)?${HOST}(:\\d+)?${tail}`).exec(url);
+  if (m) return `${m[1]}://${m[2]}${m[3] ?? ""}/${m[4]}`;
+  m = new RegExp(`^ssh:\\/\\/(?:[^@/]+@)?${HOST}(?::\\d+)?${tail}`).exec(url)
+    ?? new RegExp(`^(?:[^@/:]+@)?${HOST}:(?!\\/)(.+?)(?:\\.git)?\\/?$`).exec(url);
+  return m ? `https://${m[1]}/${m[2]}` : null;
 }
 
 // The newest tag (by creation date), as manygit's `t` shows: only read while Show tags is on.
@@ -81,7 +101,10 @@ export function syncOf(st, fetchError) {
   if (!st) return { kind: "loading", text: "…" };
   if (fetchError) return { kind: "error", text: "fetch failed" };
   if (st.error) return { kind: "error", text: "!" };
+  // A detached HEAD has no branch to push: the branch column already says "detached".
+  if (st.detached) return { kind: "ok", text: "" };
   if (!st.upstream) return st.hasRemote ? { kind: "unpushed", text: "!" } : { kind: "local", text: "no remote" };
+  if (st.gone) return { kind: "gone", text: "upstream gone" };
   if (st.ahead && st.behind) return { kind: "diverged", text: `↑${st.ahead} ↓${st.behind}` };
   if (st.ahead) return { kind: "ahead", text: `↑${st.ahead}` };
   if (st.behind) return { kind: "behind", text: `↓${st.behind}` };

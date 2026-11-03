@@ -29,7 +29,8 @@ Top to bottom:
   and the name at 11.5px semibold; detached HEAD reads `detached at <8 chars>`
   with a commit icon. On the right, 24px icon buttons in `muted`: Fetch (arrow
   down, only when the repo has remotes; it says `Fetching…` while running) and
-  Refresh, and on the Manygit list Settings (a gear). No commit count, as in
+  Refresh, and Settings (a gear) on the Manygit list and when a folder holds
+  none. No commit count, as in
   Git Graph.
 - **Manygit**, when the folder isn't a repository but holds some, after
   [manygit](https://github.com/rabeeh-ta/manygit)'s repository pane, in place of
@@ -45,7 +46,7 @@ Top to bottom:
   11.5px as Herdr's Spaces list draws it: `↑N` in `ansi2`, `↓N` in `ansi1`
   (both when it has diverged), nothing when it's in sync; then manygit's
   states Herdr has no mark for: `not pushed` in `ansi1` (a remote, but the
-  branch has no upstream), `no remote` `dim`, `…` while loading. A click opens the repository's graph with everything above;
+  branch has no upstream; nothing on a detached HEAD), `no remote` `dim`, `…` while loading. A click opens the repository's graph with everything above;
   "‹ Manygit" or `Esc` (with nothing else open) returns to the list.
   **Right-click a row**: its remotes (`git config --get-regexp
   '^remote\..*\.url$'`) and the machine's agents (`knownAgents`, kept per
@@ -133,8 +134,11 @@ Top to bottom:
   numbers in a 34px `dim` column.
 - **In place of the table**: centered, a 46px `raised` tile with a 22px icon, a
   14px semibold title and a 12px `muted` line: `No folder`, `Not a git repository`
-  (`<folder, ~-shortened> isn't inside a git repository. Focus a terminal in a
-  repository to see its history.`), `No commits yet`, `Can't read the history`
+  (`<folder, ~-shortened> isn't inside a git repository, and holds none within N
+  levels. Focus a terminal in one, or search deeper in settings.`; for a folder
+  that isn't searched, `… isn't a repository, and is too big to search for
+  them. Focus a terminal in a repository, or in a folder that holds some.`),
+  `No commits yet`, `Can't read the history`
   (git's error, icon in `ansi1`), `Loading history…`.
 
 **The menu** is a 268px popup at the pointer on `popover`, 5px padding, 30px rows
@@ -155,9 +159,11 @@ or `ansi1` when the action or the chosen mode destroys something.
 - **Which repository**: the focused pane's live folder (`panes()[i].cwd`), else
   `focused().cwd`, else the space's folder, on the space's machine. Opened with
   `props.folder` (as a pane), always that folder, here. If it's a repository,
-  use it; otherwise it's a Manygit folder when it holds repositories. `/` and
-  the home folder aren't searched (too big, and on macOS walking home asks for
-  Desktop, Documents and Downloads): they say so.
+  use it; otherwise it's a Manygit folder when it holds repositories. A home
+  folder and any folder above it aren't searched (too big, and on macOS walking
+  home asks for Desktop, Documents and Downloads): this machine's `home()`, and
+  for another machine, whose home isn't known, `/`, `/root`, `/home/<name>` and
+  `/Users/<name>`. They say so.
   A new folder starts clean (selection, page size, details) and loads at once; a
   slower load for the previous folder drops its result.
 - **Switching fast**: leaving a folder keeps it as it was (the last 24 folders).
@@ -167,19 +173,30 @@ or `ansi1` when the action or the chosen mode destroys something.
   read ahead, one at a time, this machine's first: 1.5 s after start, then every
   15 s for new ones. A commit's details are kept too (the last 200): clicking it
   again shows them at once.
-- **Manygit loading**: one `find <folder> -mindepth 1 -maxdepth <depth+1>`
-  walk (on the space's machine too, symlinks not followed) prints each `.git`
+- **Manygit loading**: one `find -H <folder> -mindepth 1 -maxdepth <depth+1>`
+  walk (on the space's machine too; `-H` follows the folder itself when it's a
+  symlink, since macOS's find lists nothing under one, and no symlink below it)
+  prints each `.git`
   and prunes there, and prunes hidden folders, `node_modules`, `vendor`,
   `venv`, `__pycache__`, `dist`, `build`, `target`, `site-packages` and
-  `Library`; its output counts even when it exits 1 (an unreadable folder), at
-  most 500 repositories. Each row's status is one `git status --porcelain=v2
+  `Library` (a repository whose own folder has one of those names isn't found);
+  its output counts even when it exits 1 (an unreadable folder), at most 500
+  repositories. Each row's status is one `git status --porcelain=v2
   --branch -z --no-renames --untracked-files=normal` (branch, upstream,
   ahead/behind and the changed count; manygit needs six to eight calls), plus
   `git remote` only when there's no upstream, at most 8 at a time, each row
-  drawing as it comes. Locally, each repository's `.git` is watched and a ref
-  or index change re-reads that row; the list re-reads every 15 s for working
-  tree edits, keeping the old values on screen until new ones differ;
-  repositories a later search finds are watched too.
+  drawing as it comes, each read on the machine the list was read on and
+  skipped once the panel has left it (a load id, new for each load, so opening
+  a repository and coming back can't revive an older one). Locally, each
+  repository's `.git` is watched by one loop for as long as it's listed
+  (opening one and coming back keeps them; a loop whose repository isn't listed
+  any more ends at its next change), and a ref or index change re-reads that
+  row; the list re-reads every 15 s for working tree edits, keeping the old
+  values on screen until new ones differ. A folder that held none isn't
+  searched again by the 15 s re-read, only by Refresh, a new depth or coming
+  back to it. An upstream that's configured but gone from the remote (git
+  prints `branch.upstream` and no `branch.ab`) reads `upstream gone` in
+  `ansi1`, and has no Pull.
 - **Loading**: resolve the root with `git rev-parse --show-toplevel`; for the
   repository, together run `git log` (all refs except `refs/stash` with All branches, or
   `HEAD` with Current; `--exclude=refs/remotes/*` too when Remotes is off;
@@ -323,7 +340,10 @@ or `ansi1` when the action or the chosen mode destroys something.
     the lines multiply their coordinates, width and dash by it (`unit()`), and
     the list's row height is `rowPx()`.
 - Seen at zoom 0.9 and 0.8 before 0.1.12. Untested: Linux, Windows, the diff
-  list at a zoom other than 1 before 0.1.12.
+  list at a zoom other than 1 before 0.1.12. Manygit needs `find` and `env`, so
+  not Windows.
+- Herdr's `exec` stops a command after 30 s: a fetch, pull or push over a slow
+  network, or a slow pre-commit hook, fails there.
 
 ## Done when
 

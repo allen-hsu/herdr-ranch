@@ -204,7 +204,7 @@ const mergeNote = (a) => (a.merge ? " It's a merge commit: its changes against i
 // its uncommitted changes, and its links.
 function repoMenu(r, ctx) {
   const st = r.status ?? {}, branch = st.branch, remote = ctx.remotes.length > 0;
-  const pull = remote && st.upstream && item("Pull…", "fetch", { type: "pull", upstream: st.upstream });
+  const pull = remote && st.upstream && !st.gone && item("Pull…", "fetch", { type: "pull", upstream: st.upstream });
   const push = remote && branch && item(st.upstream ? "Push…" : "Push and set upstream…", "push", { type: "push", name: branch });
   const fetch = remote && item("Fetch", "refresh", { type: "fetch" });
   const sync = st.behind && !st.ahead ? [pull, fetch, push] : st.ahead && !st.behind ? [push, fetch, pull]
