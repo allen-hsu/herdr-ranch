@@ -124,14 +124,22 @@ export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 
+const NEW_FOLDER = "New folder";
+
+// A path's last folder name: "~/Projects/herdr/" gives "herdr"; "~" or "/" give "".
+const lastPart = (p) => {
+  const part = p.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+  return part === "~" ? "" : part;
+};
+
 export default class Spaces extends View {
   init(_props, cx) {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, edit, machine = null, overlay } = props() ?? {};
+    const { folderMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (edit) {
-      const f = folders(machine).list.find((x) => x.id === edit) ?? {};
-      this.editing = { id: edit, machine, overlay };
+      const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
+      this.editing = { id: edit, machine, fresh, overlay };
       this.name = InputState.new({ value: f.name ?? "" });
       this.path = InputState.new({ value: f.path ?? "", placeholder: "e.g. ~/Documents/github.com/owner/repo" });
       this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. wbso-ai, ~/code/client-*" });
@@ -139,6 +147,12 @@ export default class Spaces extends View {
       this.mirror = !f.match || f.match === f.path;
       this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
       this.match.on("change", () => { this.mirror = this.match.value() === this.path.value(); });
+      // The name follows the start folder's last part while it's still the default
+      // (or already that part); typing a name of its own stops that.
+      const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.path.value());
+      this.nameMirror = named(this.name.value());
+      this.path.on("change", (_e, cx) => { this.follow(); cx.notify(); });
+      this.name.on("change", () => { this.nameMirror = named(this.name.value()); });
       for (const input of [this.name, this.path, this.match]) input.on("submit", () => this.saveFolder());
       this.name.set_selected_range({ start: 0, end: this.name.value().length });
       this.name.focus();
@@ -343,10 +357,10 @@ export default class Spaces extends View {
     });
   }
 
+  // A new folder is only made when its dialog is saved; cancelled, nothing's left.
   newFolder(machine) {
-    const f = folders(machine), id = `f${Date.now().toString(36)}`;
-    saveFolders(machine, { ...f, list: [...f.list, { id, name: "New folder", folded: false }] });
-    openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } });
+    const id = `f${Date.now().toString(36)}`;
+    openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine, fresh: true } });
   }
 
   reorder(machine, from, to) {
@@ -392,10 +406,18 @@ export default class Spaces extends View {
   }
 
   saveFolder() {
-    const { id, machine, overlay } = this.editing, f = folders(machine);
+    const { id, machine, fresh, overlay } = this.editing, f = folders(machine);
     const name = this.name.value().trim(), path = this.path.value().trim() || null, match = this.match.value().trim() || null;
-    saveFolders(machine, { ...f, list: f.list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
+    // A folder deleted while its dialog was open isn't made again; a new one is made now.
+    const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
+    saveFolders(machine, { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
     closeOverlay(overlay);
+  }
+
+  // The name, while it follows the start folder, set to that folder's last part.
+  follow() {
+    const part = lastPart(this.path.value());
+    if (this.nameMirror && part && part !== this.name.value()) this.name.set_value(part);
   }
 
   // The system's folder picker, for this computer: home written as "~".
@@ -405,6 +427,7 @@ export default class Spaces extends View {
       if (!picked) return;
       this.path.set_value(picked.startsWith(home()) ? `~${picked.slice(home().length)}` : picked);
       if (this.mirror) this.match.set_value(this.path.value());
+      this.follow();
       cx.notify();
     });
   }
