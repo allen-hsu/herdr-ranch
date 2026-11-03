@@ -18,18 +18,21 @@ Herdr's spaces list with folders: colored, foldable folders above the loose spac
 ## How it behaves
 
 - Click a folder to fold or unfold it. Press on a space and release on a folder to file it there; on another space to move it to that place (`space.move`) and into that space's folder; anywhere else in the list to take it out of its folder. Press on a folder and release on another to reorder: down puts it after, up before. Only within a machine.
+- `alt-down` / `alt-up` (and `ctrl-shift-pagedown` / `pageup`, `ctrl-space shift-n` / `shift-p`) show the space below or above the one in front, in the order the list draws them: through each folder and the machines in it, then the loose spaces, then the next machine. Spaces in a folded folder or machine are skipped; past the last space it goes round to the first. When the space in front is folded away, it steps from where that space would be.
 - A space's folder: the one it was dragged into; "" (dragged out) keeps it out; otherwise the folder whose rules match deepest into the folder its first terminal works in (`~/code/client` beats `~/code`; on a tie the first folder wins). A worktree goes with its checkout's space.
-- A machine goes in the folder on this computer whose rules match deepest into its name or the folder one of its spaces works in; a rule like `vm-*` matches a name the way it matches a folder name.
+- A machine goes in the first folder on this computer whose rules match its name or the folder one of its spaces works in; a rule like `vm-*` matches a name the way it matches a folder name.
 - Rules, comma-separated, each take a folder and everything in it: starting with `/` or `~` they're paths (`~` any home: `/home/x`, `/Users/x`, `/root`), otherwise a folder name at any depth; `*` is any one folder name.
 - A folder's + and "New space here" run `space.new` with the start folder (`~` made the machine's `$HOME`) and the machine; the first space that then appears on that machine goes in the folder (Herdr returns no id).
 - Choosing a start folder while the rules are empty (or the same as it) sets the rules to it too.
+- While a folder's name is still "New folder" (or empty, or the start folder's last part), it follows the start folder's last part, typed or chosen: `~/Projects/herdr/` names it `herdr`. Typing a name of its own stops that.
 - Every change is shown at once (shared `space-folders`, per machine, `""` for this computer) and written to `~/.config/herdr-space-folders.json` on that machine (`exec sh` with `on`, through a temp file). Every 15 seconds each connected machine's file is read again; a file whose `at` is newer than what's shown wins.
 
 ## Built from
 
-- **Mod** `mods/space-folders/`: `mod.clone` of Herdr's `spaces` (0.1.10), so its git, worktree, machine and drag-to-reorder code is Herdr's. Added: folders in `grouped` (`foldered`, `folderHead`), the drop and reorder handlers, the menu (overlay props `folderMenu, machine`) and the edit dialog (overlay props `edit, machine`) as modes of the same mod.
+- **Mod** `mods/space-folders/`: `mod.clone` of Herdr's `spaces` (0.1.10), so its git, worktree, machine and drag-to-reorder code is Herdr's. Added: folders in `grouped` (`foldered`, `folderHead`), the drop and reorder handlers, the menu (overlay props `folderMenu, machine`) and the edit dialog (overlay props `edit, machine, fresh`) as modes of the same mod.
 - **Layout** `layouts/main-folders.json`: Herdr's `main` 0.1.10 with the `spaces` block's mod set to `space-folders`.
-- **herdr**: `spaces`, `panes`, `machines`, `run` (`space.new`, `space.move`, `space.select`), `openOverlay`, `closeOverlay`, `props`, `shared` / `setShared` (`space-folders`, `space-folders.new`), `exec` (with `on`), `pickFolder`, `home`.
+- **Keys** `keys.json`: a `layout:main-folders` section binding Herdr's next/previous space keys to `space-folders.next` and `space-folders.prev`. Drawing the list fills the spaces' order (shown or folded away) as it goes; the mod's `nextCommand()` loop steps through it and runs `space.select {id}`.
+- **herdr**: `spaces`, `panes`, `machines`, `run` (`space.new`, `space.move`, `space.select`), `openOverlay`, `closeOverlay`, `props`, `shared` / `setShared` (`space-folders`, `space-folders.new`), `exec` (with `on`), `pickFolder`, `home`, `nextCommand`.
 - **Icons**: Herdr's own, from `mods/workspace-chrome/` (folder, folder-plus, chevrons, plus).
 
 ## Watch out
@@ -39,12 +42,14 @@ Herdr's spaces list with folders: colored, foldable folders above the loose spac
 - An overlay opened while its mod reloads can come up late or not at all.
 - Space ids are per machine: remote spaces show as `machine/id` here and are stored by their own id in that machine's file.
 - Herdr's right-click menu on a space can't be extended without cloning it, so there's no "Move to folder" there: drag instead.
+- Herdr's own `space.next` and `space.prev` go by the order it keeps the spaces in, which folders don't change, so they jump around the list: the keys have to name the mod's commands instead. Those reach only a copy that shows, so with the sidebar hidden (`ctrl-shift-b`) they do nothing. The section is per layout: a layout of another name needs its own `layout:<name>` section.
 
 ## Done when
 
 - `herdr-app check ~/.config/herdr-app/mods/space-folders` passes.
-- The folder-plus button makes a folder and opens Edit folder; Save renames it.
+- The folder-plus button opens Edit folder for a new folder, which is made only on Save; Cancel leaves nothing behind.
 - Dragging a space onto a folder files it; dragging it out puts it back; dragging a folder reorders the folders.
 - A folder with a start folder opens its new spaces there, in the folder.
 - A rule such as `herdr-*` collects the spaces working in matching folders.
+- `herdr-app do space-folders.next` from the last space of a folder shows the first space of the next folder, and from the last space in the list the first one.
 - `~/.config/herdr-space-folders.json` changes with every edit, and another Herdr on the same machine shows the same folders.
