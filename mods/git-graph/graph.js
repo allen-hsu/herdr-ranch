@@ -326,7 +326,7 @@ export class Graph {
     if (e.bounds?.height) this.scale = e.bounds.height / this.rowH();
     const x = (e.local_position?.x ?? 0) / this.unit();
     const hit = commit.uncommitted ? null : hitLabel(this.labels.get(key), x, this.graphWidth(), this.labelLimit());
-    const target = commit.uncommitted ? { kind: "uncommitted", commit: brief(commit) }
+    const target = commit.uncommitted ? { kind: "uncommitted", commit: brief(commit), staged: this.files.some((f) => f.staged) }
       : hit && hit.part.kind !== "head" ? { kind: hit.part.kind, name: hit.part.name, commit: brief(commit) }
       : { kind: "commit", commit: brief(commit) };
     const items = menuFor(target, this.ctx);

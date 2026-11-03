@@ -60,7 +60,8 @@ export function parseStatus(text) {
   return text.split("\0").filter(Boolean).map((entry) => {
     const xy = entry.slice(0, 2), path = entry.slice(3);
     const status = xy === "??" ? "A" : xy.includes("U") || xy === "AA" || xy === "DD" ? "U" : xy.includes("D") ? "D" : xy.includes("A") ? "A" : "M";
-    return { path, status, untracked: xy === "??" };
+    // staged: the index differs from HEAD (conflicts aren't staged changes).
+    return { path, status, untracked: xy === "??", staged: status !== "U" && xy[0] !== " " && xy[0] !== "?" };
   });
 }
 
@@ -136,6 +137,7 @@ export function menuFor(target, ctx) {
   let sections;
   if (target.kind === "uncommitted") {
     sections = [
+      section(item("Commit…", "commit", { type: "commit", staged: Boolean(target.staged) })),
       section(item("Stash uncommitted changes…", "stash", { type: "stash" })),
       section(item("Reset uncommitted changes…", "reset", { type: "resetUncommitted" })),
       section(item("Show in Changes panel", "mods/changes/changes.svg", { type: "showChanges" })),
@@ -224,6 +226,10 @@ export function dialogFor(action, ctx) {
     case "push": return { title: "Push branch", detail: `Push ${a.name}.`, choice: remoteChoice(ctx),
       checks: [{ id: "upstream", label: "Set as upstream", value: true }], confirm: "Push" };
     case "pushTag": return { title: "Push tag", detail: `Push the tag ${a.name}.`, choice: remoteChoice(ctx), confirm: "Push" };
+    case "commit": return { title: "Commit", detail: ctx.current ? `Commit to ${ctx.current}.` : "You're on a detached HEAD: the commit belongs to no branch until you create one.",
+      inputs: [{ id: "message", label: "Message", value: "", text: true }],
+      // With changes already staged, commit just those unless the person ticks this.
+      checks: [{ id: "all", label: "Stage every change first (untracked too)", value: !a.staged }], confirm: "Commit" };
     case "stash": return { title: "Stash uncommitted changes", inputs: [{ id: "message", label: "Message", value: "", optional: true }],
       checks: [{ id: "untracked", label: "Include untracked files", value: true }], confirm: "Stash" };
     case "resetUncommitted": return { title: "Reset uncommitted changes", detail: "Reset the working tree to HEAD.", confirm: "Reset",
@@ -256,6 +262,7 @@ export function validate(action, v, ctx) {
     const text = String(v[input.id] ?? "").trim();
     if (input.optional) continue;
     if (!text) return `${input.label} is empty.`;
+    if (input.text) continue; // free text, passed as one argument after its option
     if (text.startsWith("-") || /\s/.test(text)) return `${input.label} can't start with "-" or contain spaces.`;
   }
   if (spec?.choice && !spec.choice.options.some((o) => o.value === v[spec.choice.id])) return `Pick a ${spec.choice.label.toLowerCase()}.`;
@@ -275,6 +282,7 @@ export function commandsFor(a, v = {}, ctx = {}) {
   if (["push", "pushTag"].includes(a.type) && (!refName(v.remote) || !ctx.remotes?.includes(v.remote))) throw new Error("Invalid remote");
   if (a.type === "reset" && !["soft", "mixed", "hard"].includes(v.mode)) throw new Error("Invalid reset mode");
   if (a.type === "resetUncommitted" && !["mixed", "hard"].includes(v.mode)) throw new Error("Invalid reset mode");
+  if (a.type === "commit" && !String(v.message ?? "").trim()) throw new Error("Empty commit message");
   const name = String(v.name ?? "").trim(), message = String(v.message ?? "").trim();
   switch (a.type) {
     case "checkout": return [["checkout", a.name]];
@@ -293,6 +301,8 @@ export function commandsFor(a, v = {}, ctx = {}) {
     case "reset": return [["reset", `--${v.mode}`, a.hash]];
     case "push": return [["push", ...(v.upstream ? ["--set-upstream"] : []), v.remote, a.name]];
     case "pushTag": return [["push", v.remote, `refs/tags/${a.name}`]];
+    // The message is -m's own argument, so one starting with "-" stays a message.
+    case "commit": return [...(v.all ? [["add", "--all"]] : []), ["commit", "-m", message]];
     case "stash": return [["stash", "push", ...(v.untracked ? ["--include-untracked"] : []), ...(message ? ["-m", message] : [])]];
     case "resetUncommitted": return [["reset", `--${v.mode}`, "HEAD"]];
     case "fetch": return [["fetch", "--all"]];
@@ -319,6 +329,7 @@ export function doneText(a, v = {}) {
     case "reset": return `Reset to ${a.short} (${v.mode})`;
     case "push": return `Pushed ${a.name} to ${v.remote}`;
     case "pushTag": return `Pushed tag ${a.name} to ${v.remote}`;
+    case "commit": return "Committed";
     case "stash": return "Stashed uncommitted changes";
     case "resetUncommitted": return `Reset uncommitted changes (${v.mode})`;
     case "fetch": return "Fetched";

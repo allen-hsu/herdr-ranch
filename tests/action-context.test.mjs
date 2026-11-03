@@ -48,6 +48,17 @@ try {
   assert.equal((await executeAction({ type: "createBranch", hash: current.head }, { name: "detached" },
     { ...current, current: null }, exec)).ok, true);
 
+  // Staging everything mid-conflict would commit the markers: refused, nothing run.
+  git("checkout", "-q", "main"); git("checkout", "-qb", "side"); writeFileSync(join(repo, "file"), "side"); git("commit", "-qam", "side");
+  git("checkout", "-q", "main"); writeFileSync(join(repo, "file"), "main"); git("commit", "-qam", "main");
+  spawnSync("git", ["merge", "-q", "side"], { cwd: repo, env });
+  calls.length = 0;
+  const midMerge = snapshot(), conflict = await executeAction({ type: "commit" }, { message: "oops", all: true }, midMerge, exec);
+  assert.match(conflict.message ?? "", /unresolved merge conflicts/);
+  assert.equal(calls.some((args) => args[0] === "add" || args[0] === "commit"), false);
+  assert.equal(git("rev-parse", "HEAD"), midMerge.head, "nothing committed");
+  assert.equal((await executeAction({ type: "commit" }, { message: "oops", all: false }, midMerge, exec)).ok, false, "git itself refuses unmerged files");
+  git("merge", "--abort");
   const fake = async (code, head = "", branch = "") => {
     const recorded = [];
     const out = await executeAction({ type: "checkout", name: "main" }, {},

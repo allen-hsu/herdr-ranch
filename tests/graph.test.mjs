@@ -80,8 +80,8 @@ assert.ok(headRow.segments.some((s) => s[5] && s[3] === 0.5), "the dashed line e
 assert.ok(headRow.segments.filter((s) => s[1] === 0.5).every((s) => !s[5]), "HEAD's own lines are solid");
 assert.equal(G.withUncommitted(commits, 0, tip.hash), commits);
 assert.deepEqual(G.parseStatus(" M a.txt\0?? b.txt\0D  c.txt\0UU d.txt\0"), [
-  { path: "a.txt", status: "M", untracked: false }, { path: "b.txt", status: "A", untracked: true },
-  { path: "c.txt", status: "D", untracked: false }, { path: "d.txt", status: "U", untracked: false }]);
+  { path: "a.txt", status: "M", untracked: false, staged: false }, { path: "b.txt", status: "A", untracked: true, staged: false },
+  { path: "c.txt", status: "D", untracked: false, staged: true }, { path: "d.txt", status: "U", untracked: false, staged: false }]);
 // The graph reads everything from the pane's folder at once: from a subfolder,
 // status still names paths from the root and the log is the whole history.
 {
@@ -214,13 +214,29 @@ ok(run({ type: "checkout", name: "main" }));
 // Uncommitted: status, stash, reset.
 writeFileSync(join(repo, "three.txt"), "edited"); writeFileSync(join(repo, "new.txt"), "new");
 const st = G.parseStatus(git(repo, [...G.READ, ...G.STATUS]).stdout);
-assert.deepEqual(st.map((f) => [f.path, f.status]), [["three.txt", "M"], ["new.txt", "A"]]);
+assert.deepEqual(st.map((f) => [f.path, f.status, f.staged]), [["three.txt", "M", false], ["new.txt", "A", false]]);
 ok(run({ type: "stash" }, { message: "wip" }));
 assert.equal(git(repo, ["status", "--porcelain"]).stdout, "", "untracked stashed too");
 assert.ok(has(["stash", "list"], "wip"));
 sh(repo, "stash", "pop", "-q");
 ok(run({ type: "resetUncommitted" }, { mode: "hard" }));
 assert.equal(git(repo, ["status", "--porcelain"]).stdout, "?? new.txt\n", "hard reset keeps untracked files");
+// Commit: staging everything (untracked too), or only what's staged.
+assert.deepEqual(labelsIn(G.menuFor({ kind: "uncommitted" }, ctxOf())), ["Commit…", "Stash uncommitted changes…", "Reset uncommitted changes…", "Show in Changes panel"]);
+assert.match(G.validate({ type: "commit" }, { message: "  ", all: true }, ctxOf()), /empty/);
+assert.throws(() => G.commandsFor({ type: "commit" }, { message: "" }), /Empty commit message/);
+writeFileSync(join(repo, "three.txt"), "committed"); writeFileSync(join(repo, "new.txt"), "new");
+assert.equal(ok(run({ type: "commit" }, { message: "--amend: a message, not an option" })).text, "Committed");
+assert.equal(git(repo, ["log", "-1", "--format=%s"]).stdout.trim(), "--amend: a message, not an option");
+assert.equal(git(repo, ["status", "--porcelain"]).stdout, "", "everything, untracked included, committed");
+writeFileSync(join(repo, "a.txt"), "a"); writeFileSync(join(repo, "b.txt"), "b"); sh(repo, "add", "a.txt");
+assert.deepEqual(G.parseStatus(git(repo, [...G.READ, ...G.STATUS]).stdout).map((f) => [f.path, f.staged]), [["a.txt", true], ["b.txt", false]]);
+assert.equal(G.initialValues(G.menuFor({ kind: "uncommitted", staged: true }, ctxOf())[0].action, ctxOf()).all, false, "something staged: commit just that by default");
+assert.equal(G.initialValues({ type: "commit", staged: false }, ctxOf()).all, true, "nothing staged: stage everything by default");
+ok(run({ type: "commit" }, { message: "only staged", all: false }));
+assert.equal(git(repo, ["show", "--name-only", "--format=", "HEAD"]).stdout, "a.txt\n", "without staging, only the index");
+assert.ok(!run({ type: "commit" }, { message: "nothing staged", all: false }).ok, "git refuses an empty commit");
+sh(repo, "reset", "-q", "--hard", "HEAD~2"); rmSync(join(repo, "b.txt")); rmSync(join(repo, "new.txt"), { force: true });
 // The history read leaves .git untouched.
 const idx = git(repo, ["rev-parse", "--git-path", "index"]).stdout.trim();
 const m1 = statSync(join(repo, idx)).mtimeMs; git(repo, [...G.READ, ...G.STATUS]); git(repo, [...G.READ, ...G.logArgs({ all: true, remotes: true, limit: 300 })]);

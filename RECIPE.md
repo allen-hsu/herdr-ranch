@@ -140,7 +140,7 @@ or `ansi1` when the action or the chosen mode destroys something.
   a tag, Delete, Push, Copy name; anywhere else, the commit menu (Add tag,
   Create branch, Checkout, Cherry pick, Revert, Merge, Rebase, Reset, Copy hash,
   Copy subject; Checkout, Cherry pick, Merge and Rebase left out on HEAD); on the
-  uncommitted row: Stash, Reset uncommitted changes, Show in Changes panel.
+  uncommitted row: Commit, Stash, Reset uncommitted changes, Show in Changes panel.
   Push needs a remote.
 - **Actions** run as argv, stopping at the first failure. With no dialog
   (checkout of a local branch, copy, show Changes) the menu runs it, then closes.
@@ -149,11 +149,15 @@ or `ansi1` when the action or the chosen mode destroys something.
   (`push <remote> --delete <branch>`), delete tag, merge (`--no-edit`, optional
   `--no-ff`), rebase, cherry pick and revert (`-m 1` for merges; revert
   `--no-edit`), reset (soft / mixed / hard, mixed chosen), push (remote, set
-  upstream), push tag (`refs/tags/<name>`), stash (message, include untracked),
-  reset uncommitted (mixed / hard), checkout commit (`--detach`). Names must be
-  non-empty, without spaces, and not start with `-`. Success posts a toast
-  (`Checked out fix`); a failure keeps the dialog open with git's last lines
-  (hints dropped), or toasts from the menu.
+  upstream), push tag (`refs/tags/<name>`), commit (message; "Stage every
+  change first (untracked too)" runs `add --all` before `commit -m`, ticked
+  unless something is already staged, and refused while `ls-files --unmerged`
+  lists conflicts, since it would commit their markers), stash (message,
+  include untracked), reset uncommitted (mixed / hard), checkout commit
+  (`--detach`). Names must be non-empty, without spaces, and not start with
+  `-`; a commit message is free text, given as `-m`'s own argument. Success
+  posts a toast (`Checked out fix`); a failure keeps the dialog open with git's
+  last lines (hints dropped), or toasts from the menu.
 - **Fetch** runs `git fetch --all` and reloads.
 - **Copy** writes the clipboard and toasts `Copied`.
 
