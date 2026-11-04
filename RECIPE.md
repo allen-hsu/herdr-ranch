@@ -19,10 +19,12 @@ Herdr's spaces list with folders: colored, foldable folders above the loose spac
 
 - Click a folder to fold or unfold it. Press on a space and release on a folder to file it there; on another space to move it to that place (`space.move`) and into that space's folder; anywhere else in the list to take it out of its folder. Press on a folder and release on another to reorder: down puts it after, up before. Only within a machine.
 - `alt-down` / `alt-up` (and `ctrl-shift-pagedown` / `pageup`, `ctrl-space shift-n` / `shift-p`) show the space below or above the one in front, in the order the list draws them: through each folder and the machines in it, then the loose spaces, then the next machine. Spaces in a folded folder or machine are skipped; past the last space it goes round to the first. When the space in front is folded away, it steps from where that space would be.
+- When the space in front closes, the space shown above it in the list comes in front (the one below when it was at the top), instead of the one Herdr picks by its own order. Spaces in folded folders are skipped.
 - A space's folder: the one it was dragged into; "" (dragged out) keeps it out; otherwise the folder whose rules match deepest into the folder its first terminal works in (`~/code/client` beats `~/code`; on a tie the first folder wins). A worktree goes with its checkout's space.
 - A machine goes in the first folder on this computer whose rules match its name or the folder one of its spaces works in; a rule like `vm-*` matches a name the way it matches a folder name.
 - Rules, comma-separated, each take a folder and everything in it: starting with `/` or `~` they're paths (`~` any home: `/home/x`, `/Users/x`, `/root`), otherwise a folder name at any depth; `*` is any one folder name.
 - A folder's + and "New space here" run `space.new` with the start folder (`~` made the machine's `$HOME`) and the machine; the first space that then appears on that machine goes in the folder (Herdr returns no id).
+- A space made any other way (Herdr's `space.new` keys, the palette, a script) that comes up in front within 3 seconds goes right under the space in front before it, when it's on the same machine and the only new space then: in the folder that space showed in, and after it in Herdr's order (`space.move`), which the list keeps inside a folder. Spaces of a machine coming in don't count. The list's own + and a machine's + (or "New space there") make one in no folder: the first new space after them is left alone.
 - Choosing a start folder while the rules are empty (or the same as it) sets the rules to it too.
 - While a folder's name is still "New folder" (or empty, or the start folder's last part), it follows the start folder's last part, typed or chosen: `~/Projects/herdr/` names it `herdr`. Typing a name of its own stops that.
 - Every change is shown at once (shared `space-folders`, per machine, `""` for this computer) and written to `~/.config/herdr-space-folders.json` on that machine (`exec sh` with `on`, through a temp file). Every 15 seconds each connected machine's file is read again; a file whose `at` is newer than what's shown wins.
@@ -50,6 +52,8 @@ Herdr's spaces list with folders: colored, foldable folders above the loose spac
 - The folder-plus button opens Edit folder for a new folder, which is made only on Save; Cancel leaves nothing behind.
 - Dragging a space onto a folder files it; dragging it out puts it back; dragging a folder reorders the folders.
 - A folder with a start folder opens its new spaces there, in the folder.
+- Closing the space in front (`space.close`) shows the space above it in the list.
+- `herdr-app do space.new` while a space in a folder is in front puts the new space right under it, in that folder; the list's + puts it in none.
 - A rule such as `herdr-*` collects the spaces working in matching folders.
 - `herdr-app do space-folders.next` from the last space of a folder shows the first space of the next folder, and from the last space in the list the first one.
 - `~/.config/herdr-space-folders.json` changes with every edit, and another Herdr on the same machine shows the same folders.

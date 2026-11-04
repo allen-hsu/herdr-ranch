@@ -8,10 +8,10 @@ Folders for the spaces list of the [Herdr](https://herdr.dev) desktop app. Drag 
 
 - **Folders in the sidebar.** A folder has a colored tile like a space's avatar, a count, and folds away. A folded folder still shows when an agent in it is done or needs you.
 - **Drag and drop.** Drop a space on a folder to file it, on a space to put it there and in that space's folder, or below the list to take it out. Drag folders to put them in order.
-- **New spaces in a folder.** A folder's **+** (or **New space here**) opens a space in the folder's start folder, already in the folder.
+- **New spaces in a folder.** A folder's **+** (or **New space here**) opens a space in the folder's start folder, already in the folder. A space you make with Herdr's new-space keys (or the palette) goes right under the space you're in, in its folder, instead of at the bottom. The **+** at the top of the list and on a machine's header still make one in no folder.
 - **Smart folders.** A folder collects the spaces working in folders that match its rules: `wbso-ai` (a folder name anywhere), `~/code/client-*` (a path, `*` for one folder name). When several folders match, the most specific rule wins: with `~/projects` on one folder and `~/projects/client` on another, spaces in `~/projects/client` go to the second. What you drag yourself goes first.
 - **Machines in a folder.** A folder on this computer can take in another machine as well, with its header and its spaces: a rule that matches the machine's name (`vm-*`) or the folder one of its spaces works in puts it there, so throwaway VMs for a project land in that project's folder by themselves.
-- **Keys that follow the list.** Option up and down (and Herdr's other next/previous space keys) go to the space above or below in the list as it shows, folders and all, past folded folders.
+- **Keys that follow the list.** Option up and down (and Herdr's other next/previous space keys) go to the space above or below in the list as it shows, folders and all, past folded folders. Close the space you're in and you land on the one above it in the list.
 - **The same everywhere.** Folders are saved in the home of the machine the spaces run on (`~/.config/herdr-space-folders.json`), so every screen that connects to that machine shows the same folders.
 - **Everything the spaces list already does.** It's Herdr's own spaces mod with folders added: worktrees under their repo, branch and ahead/behind, a group per machine, colors, the right-click menu.
 

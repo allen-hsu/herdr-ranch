@@ -43,11 +43,13 @@ async function expand(machine, path) {
   return homes[key(machine)] + path.slice(1);
 }
 
-// A new space for a folder, in its start folder. Herdr names no id back, so the
-// sidebar puts the first space that appears on that machine in it (see adopt).
+// A new space for a folder, in its start folder; with no folder (id null), one
+// in none, whichever space is in front. Herdr names no id back, so the sidebar
+// gives the first space that appears (on that machine, for a folder) its place
+// (see adopt).
 async function newSpaceIn(machine, id) {
   setShared("space-folders.new", { machine, id, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
-  const path = folders(machine).list.find((f) => f.id === id)?.path;
+  const path = id && folders(machine).list.find((f) => f.id === id)?.path;
   const folder = path ? await expand(machine, path).catch(() => null) : null;
   run("space.new", { ...(machine ? { machine } : {}), ...(folder ? { folder } : {}) });
 }
@@ -190,6 +192,11 @@ export default class Spaces extends View {
     // worktree appears under its repo instead of jumping there.
     this.shown = new Set(spaces().map((s) => s.id));
     this.born = {};
+    // The space in front at the last look and the folder it showed in, so a
+    // space made from there (a key, the palette) can join it (see join).
+    this.known = new Set(spaces().map((s) => s.id));
+    this.front = null;
+    this.coming = {}; // a new space -> { at, from: this.front then }
     this.pressed = null;
     this.over = null;
     this.machines = [];
@@ -231,7 +238,8 @@ export default class Spaces extends View {
     const now = Date.now();
     const sp = spaces();
     for (const s of sp) if (!this.shown.has(s.id)) this.born[s.id] ??= now;
-    this.adopt(sp, now);
+    this.closed(sp);
+    this.join(sp, now, this.adopt(sp, now));
     const due = this.due(now, sp, panes());
     if (due.size) this.refreshGit(due, cx);
     if (sp.some((s) => !this.shown.has(s.id))) cx.notify();
@@ -410,15 +418,70 @@ export default class Spaces extends View {
   }
 
   // A space made from a folder (its + or its menu) goes in it: the first new space
-  // on that machine, once Herdr has made it.
+  // on that machine, once Herdr has made it. Returns that space's id, also for
+  // one made in no folder (a machine's +), so join leaves it alone.
   adopt(sp, now) {
     const want = shared("space-folders.new");
-    if (!want) return;
-    const before = new Set(want.before), fresh = sp.find((s) => !before.has(s.id) && (s.machine ?? null) === (want.machine ?? null));
+    if (!want) return null;
+    // In no folder, Herdr picks the machine (the one in front): any will do.
+    const on = (s) => !want.id || (s.machine ?? null) === (want.machine ?? null);
+    const before = new Set(want.before), fresh = sp.find((s) => !before.has(s.id) && on(s));
     if (fresh || now > want.until) setShared("space-folders.new", null);
-    if (!fresh) return;
+    if (!fresh) return null;
     const f = folders(want.machine);
     if (f.list.some((x) => x.id === want.id)) saveFolders(want.machine, { ...f, of: { ...f.of, [localId(fresh)]: want.id } });
+    return fresh.id;
+  }
+
+  // A space made from the one in front (Herdr's new-space keys, the palette)
+  // goes right under it (see settle): a new space that comes up in front
+  // within a few seconds, on the same machine, the only one that appeared then.
+  // Not one a + made (`made`), nor the spaces of a machine coming in.
+  join(sp, now, made) {
+    const fresh = sp.filter((s) => !this.known.has(s.id));
+    for (const s of fresh) {
+      this.known.add(s.id);
+      if (fresh.length === 1 && s.id !== made && this.front) this.coming[s.id] = { at: now, from: this.front };
+    }
+    for (const [id, c] of Object.entries(this.coming)) if (now - c.at > 3000) delete this.coming[id];
+    const front = sp.find((s) => s.active), c = front && this.coming[front.id];
+    if (c) {
+      delete this.coming[front.id];
+      if ((front.machine ?? null) === c.from.machine) this.settle(sp, front, c.from);
+    }
+    // A space just made isn't where the next one comes from until it shows.
+    if (front && !fresh.some((s) => s.id === front.id)) {
+      const machine = front.machine ?? null, shown = this.seen.find((e) => e.id === front.id);
+      this.front = { id: front.id, machine, folder: shown ? shown.folder : folderOf(front, folders(machine), panes()), near: this.near(front.id) };
+    }
+  }
+
+  // A new space `s` under the space it was made from: in that one's folder, and
+  // after it in Herdr's order, which the list keeps inside a folder (a checkout's
+  // worktrees stay between them). space.move's index is where it ends up, from 1.
+  settle(sp, s, from) {
+    const f = folders(from.machine);
+    if (from.folder && f.of[localId(s)] === undefined && f.list.some((x) => x.id === from.folder)) {
+      saveFolders(from.machine, { ...f, of: { ...f.of, [localId(s)]: from.folder } });
+    }
+    const i = sp.findIndex((w) => w.id === from.id), j = sp.findIndex((w) => w.id === s.id);
+    if (i >= 0 && j >= 0 && j !== i + 1) run("space.move", { id: s.id, index: j > i ? i + 2 : i + 1 });
+  }
+
+  // Where to go when this space closes: the space shown above it in the list,
+  // else the one below. Spaces in folded folders don't count.
+  near(id) {
+    const list = this.seen.filter((e) => e.shown || e.id === id), i = list.findIndex((e) => e.id === id);
+    return i < 0 ? null : (list[i - 1] ?? list[i + 1])?.id ?? null;
+  }
+
+  // The space in front is gone (closed): show the one above it in the list,
+  // where Herdr picks by its own order, which folders don't change.
+  closed(sp) {
+    const was = this.front;
+    if (!was?.id || sp.some((s) => s.id === was.id)) return;
+    this.front = null;
+    if (was.near && sp.some((s) => s.id === was.near)) run("space.select", { id: was.near });
   }
 
   saveFolder() {
@@ -454,7 +517,7 @@ export default class Spaces extends View {
   // for the keys that step through the list.
   foldered(rows, machine, t, collapsed, { guests = [], nested = false, hidden = false, seen = [] } = {}) {
     const draw = (r, away) => {
-      seen.push({ id: r.w.id, shown: !away });
+      seen.push({ id: r.w.id, shown: !away, folder: r.folder });
       return away ? [] : [collapsed ? this.compact(r, t) : this.row(r, t)];
     };
     const f = folders(machine), { list } = f, ps = panes();
@@ -617,12 +680,12 @@ export default class Spaces extends View {
         .when(connected, el => el.child(div().id(`machine-folder-${m ?? "local"}`).flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx) => { cx.stop_propagation(); this.newFolder(m); }).child(svg("mods/workspace-chrome/folder-plus.svg").size(12))))
         .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
+          .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(m, null); }).child("+")))
         .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
         .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
     const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().pl(nested ? 26 : 8).pr(8).gap(7).items_center().rounded(7)
       .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
-      .on_click(() => run("space.new", m ? { machine: m } : {}))
+      .on_click(() => newSpaceIn(m, null))
       .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
     const body = mine.length || guests.length ? this.foldered(mine, m, t, collapsed, { guests, nested, hidden: hidden || folded, seen })
       : [this.machineLoading(m) ? this.loadingRow(m, t, collapsed) : empty];
@@ -773,7 +836,7 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child("Spaces"))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null))))
-          .child(button("space-new", "plus", () => run("space.new")))))
+          .child(button("space-new", "plus", () => newSpaceIn(null, null)))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         // Released anywhere but on a space or a folder: out of its folder.
         .on_mouse_up("left", (_e, cx) => {
