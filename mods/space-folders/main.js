@@ -26,6 +26,10 @@ const all = () => shared("space-folders") ?? {};
 const folders = (machine) => all()[key(machine)] ?? { list: [], of: {} };
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
 const URGENT = ["blocked", "done", "working"];
+// Left padding of a row: 8 at the top, a step of 18 under a folder; a machine
+// in a folder has its header at 26 and what's under it a step further, at 44.
+const STEP = 18;
+const indent = (folder, nested) => 8 + (nested ? 2 * STEP : 0) + (folder ? STEP : 0);
 
 async function readFolders(machine) {
   const r = await exec("sh", ["-c", `cat ${FILE} 2>/dev/null`], { on: machine });
@@ -533,7 +537,7 @@ export default class Spaces extends View {
         const counted = [...inside, ...visitors.flatMap((g) => g.rows)];
         const away = hidden || f.folded;
         return [
-          ...(hidden ? [] : [this.folderHead(f, n, machine, counted, t, collapsed)]),
+          ...(hidden ? [] : [this.folderHead(f, n, machine, counted, t, collapsed, nested)]),
           ...inside.flatMap((r) => draw(r, away)),
           ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true, hidden: away, seen })),
         ];
@@ -542,13 +546,13 @@ export default class Spaces extends View {
     ];
   }
 
-  folderHead(f, n, machine, inside, t, collapsed) {
+  folderHead(f, n, machine, inside, t, collapsed, nested = false) {
     const status = URGENT.find((s) => inside.some((r) => r.w.status === s));
     const target = this.pressed !== null && this.overFolder === f.id;
     // A folder dragged over this one: a line where it would go, as for spaces.
     const moving = this.moving, aimed = moving && moving.id !== f.id && this.overMove === f.id;
     // As tall as a space's row, with an 18px tile where a space has its avatar.
-    const head = h_flex().relative().id(`folder-${f.id}`).h(30).flex_none().px(collapsed ? 2 : 8).gap(9).items_center().rounded(8)
+    const head = h_flex().relative().id(`folder-${f.id}`).h(30).flex_none().px(collapsed ? 2 : 8).when(!collapsed, (el) => el.pl(indent(null, nested))).gap(9).items_center().rounded(8)
       .text_color(t.foreground).cursor_pointer()
       .when(target, (el) => el.bg(t.selected).border_1().border_color(t.accent))
       .when(!target, (el) => el.hover((s) => s.bg(t.hover)))
@@ -662,7 +666,7 @@ export default class Spaces extends View {
 
   // A machine's header and, unless it's folded, its folders and spaces. In a
   // folder on this computer (`nested`) the header is indented like the
-  // folder's spaces, and so are the machine's spaces.
+  // folder's spaces, and the machine's folders and spaces a step further (see indent).
   machineSection(m, mine, t, collapsed, { nested = false, guests = [], hidden = false, seen = [] } = {}) {
     const machine = this.machines.find(k => k.name === m);
     const connected = !m || machine?.state === "connected";
@@ -683,7 +687,7 @@ export default class Spaces extends View {
           .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(m, null); }).child("+")))
         .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
         .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
-    const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().pl(nested ? 26 : 8).pr(8).gap(7).items_center().rounded(7)
+    const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().pl(indent(null, nested)).pr(8).gap(7).items_center().rounded(7)
       .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_click(() => newSpaceIn(m, null))
       .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
@@ -744,7 +748,7 @@ export default class Spaces extends View {
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
-      .pl(folder || nested ? 26 : 8)
+      .pl(indent(folder, nested))
       .pr(8)
       .h(rowHeight({ tree }))
       .flex_none()
