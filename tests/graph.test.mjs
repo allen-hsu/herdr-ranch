@@ -262,6 +262,16 @@ assert.notEqual(git(empty, G.logArgs({ all: false, remotes: true, limit: 300 }))
 const allEmpty = git(empty, G.logArgs({ all: true, remotes: true, limit: 300 }));
 assert.equal(allEmpty.code, 0); assert.equal(G.parseLog(allEmpty.stdout).length, 0);
 assert.ok(load({ all: true, remotes: false, limit: 300 }).every((c) => G.labelsOf(c, false).every((l) => l.kind !== "remote")));
+// Refs outside branches, tags and remotes (another tool's checkpoints, a stash) are not walked; a detached HEAD is.
+{
+  const orphan = git(repo, ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "t3 checkpoint"]).stdout.trim();
+  sh(repo, "update-ref", "refs/t3/checkpoints/s/turn/0", orphan);
+  assert.ok(!load().some((c) => c.hash === orphan), "a tool ref is not in the graph");
+  sh(repo, "checkout", "-q", "--detach", orphan);
+  assert.ok(load().some((c) => c.hash === orphan), "a detached HEAD is in the graph");
+  sh(repo, "checkout", "-q", "main");
+  sh(repo, "update-ref", "-d", "refs/t3/checkpoints/s/turn/0");
+}
 console.log("files ok");
 
 // Commit metadata is untrusted: control characters stay inside their field.

@@ -198,8 +198,9 @@ or `ansi1` when the action or the chosen mode destroys something.
   prints `branch.upstream` and no `branch.ab`) reads `upstream gone` in
   `ansi1`, and has no Pull.
 - **Loading**: resolve the root with `git rev-parse --show-toplevel`; for the
-  repository, together run `git log` (all refs except `refs/stash` with All branches, or
-  `HEAD` with Current; `--exclude=refs/remotes/*` too when Remotes is off;
+  repository, together run `git log` (`--branches --tags --ignore-missing HEAD`, plus
+  `--remotes` when Remotes is on, with All branches, or `HEAD` with Current; not
+  `--all`, which also walks other tools' refs such as `refs/t3/checkpoints/*`;
   `--date-order --decorate=full -n301`: one past the page says whether there
   are more, as Git Graph asks), `rev-parse HEAD`, `symbolic-ref --short HEAD`,
   `for-each-ref refs/heads`, `git remote` and `git status --porcelain=v1 -z
