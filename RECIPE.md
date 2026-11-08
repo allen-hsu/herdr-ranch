@@ -246,10 +246,12 @@ or `ansi1` when the action or the chosen mode destroys something.
   unless something is already staged, and refused while `ls-files --unmerged`
   lists conflicts, since it would commit their markers), stash (message,
   include untracked), reset uncommitted (mixed / hard), checkout commit
-  (`--detach`). Names must be non-empty, without spaces, and not start with
-  `-`; a commit message is free text, given as `-m`'s own argument. Success
-  posts a toast (`Checked out fix`); a failure keeps the dialog open with git's
-  last lines (hints dropped), or toasts from the menu.
+  (`--detach`). Checkout of a local branch is `checkout <name> --`, so a branch
+  deleted since the graph was drawn fails instead of naming a path. Names must
+  be non-empty, without spaces, and not start with `-`; a commit message is
+  free text, given as `-m`'s own argument. Success posts a toast (`Checked out
+  fix`); a failure keeps the dialog open with git's last lines (hints dropped),
+  or toasts from the menu.
 - **Fetch** runs `git fetch --all` and reloads.
 - **Copy** writes the clipboard and toasts `Copied`.
 

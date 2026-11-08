@@ -7,7 +7,7 @@ import * as R from "../mods/git-graph/repos.js";
 import { executeAction } from "../mods/git-graph/execute.js";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 
@@ -213,6 +213,12 @@ sh(repo, "merge", "--abort");
 // Checkout a commit: detached.
 ok(run({ type: "checkoutCommit", hash: hashOf("two"), short: "x" })); assert.equal(ctxOf().current, null);
 ok(run({ type: "checkout", name: "main" }));
+// A branch deleted since the graph was drawn, named like a changed path: checkout
+// fails instead of restoring that path from the index (issue #13).
+commit(repo, "gone"); writeFileSync(join(repo, "gone.txt"), "edited");
+assert.ok(!run({ type: "checkout", name: "gone.txt" }).ok, "no branch: checkout fails");
+assert.equal(readFileSync(join(repo, "gone.txt"), "utf8"), "edited", "the path's changes stay");
+sh(repo, "reset", "-q", "--hard", "HEAD~1");
 // Uncommitted: status, stash, reset.
 writeFileSync(join(repo, "three.txt"), "edited"); writeFileSync(join(repo, "new.txt"), "new");
 const st = G.parseStatus(git(repo, [...G.READ, ...G.STATUS]).stdout);
