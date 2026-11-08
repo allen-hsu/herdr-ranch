@@ -249,6 +249,22 @@ sh(repo, "reset", "-q", "--hard", "HEAD~2"); rmSync(join(repo, "b.txt")); rmSync
 const idx = git(repo, ["rev-parse", "--git-path", "index"]).stdout.trim();
 const m1 = statSync(join(repo, idx)).mtimeMs; git(repo, [...G.READ, ...G.STATUS]); git(repo, [...G.READ, ...G.logArgs({ all: true, remotes: true, limit: 300 })]);
 assert.equal(statSync(join(repo, idx)).mtimeMs, m1, "reads don't touch the index");
+// Reading a folder ahead runs no command from the repository's own config: a
+// clean filter runs for status, never for the history and refs (issue #12).
+{
+  const marker = join(base, "filter-ran"), filtered = join(base, "filtered");
+  sh(base, "init", "-q", "-b", "main", filtered); commit(filtered, "a");
+  writeFileSync(join(filtered, ".gitattributes"), "* filter=p\n"); sh(filtered, "add", "."); sh(filtered, "commit", "-qm", "attrs");
+  sh(filtered, "config", "filter.p.clean", `sh -c 'touch "${marker}"; cat'`);
+  writeFileSync(join(filtered, "a.txt"), "a"); // same content, new stat info
+  for (const args of [G.logArgs({ all: true, remotes: true, limit: 300 }), ["rev-parse", "--verify", "-q", "HEAD"],
+    ["symbolic-ref", "-q", "--short", "HEAD"], ["for-each-ref", "--format=%(refname)", "refs/heads"], ["remote"]]) {
+    assert.equal(git(filtered, [...G.READ, ...args]).code, 0, args.join(" "));
+  }
+  assert.ok(!existsSync(marker), "read-ahead runs no filter");
+  git(filtered, [...G.READ, ...G.STATUS]);
+  assert.ok(existsSync(marker), "status does (so read-ahead leaves it out)");
+}
 console.log("actions ok");
 
 // ---- files and diffs of a commit

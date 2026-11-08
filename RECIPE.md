@@ -171,8 +171,10 @@ or `ansi1` when the action or the chosen mode destroys something.
   and redraws only if something changed (the log, HEAD, branches, remotes or the
   uncommitted files). Like manygit, the folders open in other spaces' panes are
   read ahead, one at a time, this machine's first: 1.5 s after start, then every
-  15 s for new ones. A commit's details are kept too (the last 200): clicking it
-  again shows them at once.
+  15 s for new ones. Read-ahead leaves out `git status` (it runs the clean
+  filters a repository's own config defines): the uncommitted row comes with
+  the read when the folder is shown. A commit's details are kept too (the last
+  200): clicking it again shows them at once.
 - **Manygit loading**: one `find -H <folder> -mindepth 1 -maxdepth <depth+1>`
   walk (on the space's machine too; `-H` follows the folder itself when it's a
   symlink, since macOS's find lists nothing under one, and no symlink below it)

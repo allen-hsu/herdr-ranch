@@ -75,13 +75,16 @@ const folderState = () => ({
 
 // Everything the table shows for a folder, in one round of git calls: each
 // answers from any subfolder, and status names paths from the repository root.
-async function readFolder(cwd, on, { all, remotes, limit }) {
+// status: false leaves the working tree unread. `git status` runs the clean
+// filters a repository's own config defines, so a folder is only read ahead
+// (warm) for its history and refs; its uncommitted row comes when it's shown.
+async function readFolder(cwd, on, { all, remotes, limit, status: withStatus = true }) {
   const git = (args) => exec("git", [...READ, ...args], { cwd, on });
   const [top, log, head, current, branches, remoteNames, status] = await Promise.all([
     // One commit past the page says whether there are more, as Git Graph asks.
     exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }), git(logArgs({ all, remotes, limit: limit + 1 })),
     git(["rev-parse", "--verify", "-q", "HEAD"]), git(["symbolic-ref", "-q", "--short", "HEAD"]),
-    git(["for-each-ref", "--format=%(refname)", "refs/heads"]), git(["remote"]), git(STATUS)]);
+    git(["for-each-ref", "--format=%(refname)", "refs/heads"]), git(["remote"]), withStatus ? git(STATUS) : null]);
   if (top.code !== 0) return { state: "norepo", cwd, on };
   // A log that fails without a HEAD is a repository with no commits yet.
   if (log.code !== 0 && head.code === 0) throw new Error(log.stderr.trim());
@@ -91,7 +94,7 @@ async function readFolder(cwd, on, { all, remotes, limit }) {
     head: head.code === 0 ? head.stdout.trim() : null, current: current.code === 0 ? current.stdout.trim() : null,
     branches: branches.stdout.split("\n").filter(Boolean).map((r) => r.replace(/^refs\/heads\//, "")),
     remoteNames: remoteNames.stdout.split("\n").filter(Boolean),
-    files: status.code === 0 ? parseStatus(status.stdout) : [],
+    files: status?.code === 0 ? parseStatus(status.stdout) : [],
     signature: [log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout].join("\0"), scope: scopeOf({ all, remotes }),
   };
 }
@@ -181,7 +184,7 @@ export class Graph {
       try {
         for (const [key, { cwd, on }] of order) {
           const scope = scopeOf(this);
-          const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, limit: PAGE }).catch(() => null);
+          const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, limit: PAGE, status: false }).catch(() => null);
           if (read && key !== this.context && !this.seen.has(key) && scope === scopeOf(this)) {
             // A folder that isn't a repository may hold some: entering it searches (Manygit).
             keep(this.seen, key, { ...folderState(), state: read.state ?? "ready", ...read, warmed: read.state === "norepo" }, SEEN);

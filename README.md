@@ -51,10 +51,11 @@ extension).
 - **Live.** It reloads when refs move (a commit, checkout or fetch from any
   terminal), refreshes the uncommitted row as you edit, and fetches with one
   button. 300 commits at first, and 300 more each time you scroll to the end.
-- **Fast to switch.** Every repository you've looked at is kept, and the ones open
-  in your other spaces are read ahead, so switching agents shows its graph at
-  once (then checks for changes in the background). Clicking a commit shows its
-  header at once; the files follow, and a commit you've opened before is instant.
+- **Fast to switch.** Every repository you've looked at is kept, and the history
+  of the ones open in your other spaces is read ahead, so switching agents shows
+  its graph at once (then checks for changes in the background). Clicking a
+  commit shows its header at once; the files follow, and a commit you've opened
+  before is instant.
 
 Everything that changes the repository asks first in a dialog, except checking
 out a local branch and the Fetch button. Destructive choices are red, and when
@@ -72,6 +73,13 @@ does). Git reaches the network only when you press Fetch, Fetch all (each
 listed repository with a remote, with login prompts off, as manygit does), Pull,
 Push, or delete a remote branch. The mod never runs a shell itself: every git
 call is an argument list, and names you type can't start with `-`.
+
+`git status` runs the clean filters a repository's own `.git/config` defines
+(as it does in your terminal), so it runs only for what the panel shows: the
+focused repository, or the repositories listed under the focused folder. The
+folders open in your other spaces are read ahead for their history and branches
+only (`git log`, `rev-parse`, `for-each-ref`, `git remote`), which run no
+command from the repository's config.
 
 The mod itself makes one request of its own: at most once a day it asks GitHub's
 public API for this repository's latest release
