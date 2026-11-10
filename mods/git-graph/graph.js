@@ -64,7 +64,8 @@ const tilde = (path, on) => (!on && path?.startsWith(home()) ? "~" + path.slice(
 const brief = (c) => ({ hash: c.hash, subject: c.subject, parents: c.parents });
 const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const sameFiles = (a, b) => a.length === b.length && a.every((f, i) => f.path === b[i].path && f.status === b[i].status);
-const scopeOf = ({ all, remotes, view }) => `${all} ${remotes} ${view ?? ""}`;
+const scopeOf = ({ all, remotes, view, compare }) => `${all} ${remotes} ${view ?? ""} ${compare ? `${compare.base}..${compare.head}` : ""}`;
+const shortRef = (r) => String(r ?? "").replace(/^refs\/(heads|remotes)\//, "");
 // herdr-extensions: the branch picker's rows, newest commit first; remote HEAD aliases left out.
 const REF_LIST = ["for-each-ref", "--sort=-committerdate", "--format=%(refname)%09%(refname:short)%09%(committerdate:relative)%09%(upstream:track)", "refs/heads", "refs/remotes"];
 const parseRefList = (text) => text.split("\n").filter(Boolean).map((l) => { const [ref, name, when, track] = l.split("\t"); return { ref, name, when, track: track ?? "" }; })
@@ -89,11 +90,11 @@ const folderState = () => ({
 // status: false leaves the working tree unread. `git status` runs the clean
 // filters a repository's own config defines, so a folder is only read ahead
 // (warm) for its history and refs; its uncommitted row comes when it's shown.
-async function readFolder(cwd, on, { all, remotes, limit, view, status: withStatus = true }) {
+async function readFolder(cwd, on, { all, remotes, limit, view, compare, status: withStatus = true }) {
   const git = (args) => exec("git", [...READ, ...args], { cwd, on });
   const [top, log, head, current, branches, remoteNames, status] = await Promise.all([
     // One commit past the page says whether there are more, as Git Graph asks.
-    exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }), git(logArgs({ all, remotes, view, limit: limit + 1 })),
+    exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }), git(logArgs({ all, remotes, view, compare, limit: limit + 1 })),
     git(["rev-parse", "--verify", "-q", "HEAD"]), git(["symbolic-ref", "-q", "--short", "HEAD"]),
     git(["for-each-ref", "--format=%(refname)", "refs/heads"]), git(["remote"]), withStatus ? git(STATUS) : null]);
   if (top.code !== 0) return { state: "norepo", cwd, on };
@@ -106,7 +107,7 @@ async function readFolder(cwd, on, { all, remotes, limit, view, status: withStat
     branches: branches.stdout.split("\n").filter(Boolean).map((r) => r.replace(/^refs\/heads\//, "")),
     remoteNames: remoteNames.stdout.split("\n").filter(Boolean),
     files: status?.code === 0 ? parseStatus(status.stdout) : [],
-    signature: [log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout].join("\0"), scope: scopeOf({ all, remotes, view }),
+    signature: [log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout].join("\0"), scope: scopeOf({ all, remotes, view, compare }),
   };
 }
 
@@ -139,6 +140,7 @@ export class Graph {
     this.all = true; this.remotes = true; this.wide = false; this.graphMax = 160; this.scale = null;
     // herdr-extensions: branch picker state. view = the one ref graphed (null: All branches / Current).
     this.view = null; this.branchPicking = false; this.refList = null;
+    this.compare = null; this.pickMode = "view"; this.compareCount = null;
     this.prs = { root: null, at: 0, byBranch: new Map(), loading: false };
     this.branchSearch = InputState.new({ placeholder: "Filter branches" });
     this.branchSearch.on("change", (_e, cx) => cx.notify());
@@ -168,6 +170,7 @@ export class Graph {
     Object.assign(this, folderState());
     this.watchToken++; this.watching = null; this.picking = false;
     this.view = null; this.branchPicking = false; this.refList = null;
+    this.compare = null; this.pickMode = "view"; this.compareCount = null;
   }
 
   // Leaving a folder keeps it as it was; coming back shows that at once, while refresh reads it again.
@@ -202,7 +205,7 @@ export class Graph {
       try {
         for (const [key, { cwd, on }] of order) {
           const scope = scopeOf(this);
-          const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, view: this.view, limit: PAGE, status: false }).catch(() => null);
+          const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, view: this.view, compare: this.compare, limit: PAGE, status: false }).catch(() => null);
           if (read && key !== this.context && !this.seen.has(key) && scope === scopeOf(this)) {
             // A folder that isn't a repository may hold some: entering it searches (Manygit).
             keep(this.seen, key, { ...folderState(), state: read.state ?? "ready", ...read, warmed: read.state === "norepo" }, SEEN);
@@ -220,7 +223,7 @@ export class Graph {
     if (context !== this.context) { this.enter(context); full = true; }
     if (!cwd) { this.state = "nofolder"; return; }
     // A repository opened from the Manygit list loads in place of the folder.
-    const { all, remotes, limit, view } = this, opened = this.opened;
+    const { all, remotes, limit, view, compare } = this, opened = this.opened;
     const loadKey = JSON.stringify([context, opened]);
     if (this.loading?.key === loadKey) { this.again = this.again === "full" || full ? "full" : "status"; return; }
     // Each load has its own id: opening a repository and coming back can't revive an older one.
@@ -230,7 +233,7 @@ export class Graph {
     cx.spawn(async (cx) => {
       try {
         if (full || !this.root) {
-          const read = await readFolder(opened ?? cwd, on, { all, remotes, limit, view });
+          const read = await readFolder(opened ?? cwd, on, { all, remotes, limit, view, compare });
           if (stale()) return;
           if (read.state === "norepo") {
             if (opened) { this.state = "error"; this.error = `${tilde(opened, on)} isn't a git repository any more.`; return; }
@@ -413,7 +416,7 @@ export class Graph {
   }
 
   loadMore(cx) { this.limit += PAGE; this.refresh(cx); cx.notify(); }
-  setScope(all, cx) { if (this.all !== all || this.view) { this.all = all; this.view = null; this.limit = PAGE; this.refresh(cx); } cx.notify(); }
+  setScope(all, cx) { if (this.all !== all || this.view || this.compare) { this.all = all; this.view = null; this.compare = null; this.limit = PAGE; this.refresh(cx); } cx.notify(); }
 
   // herdr-extensions: open PRs of the shown repository, by head branch (see prs.js). Every 2 minutes at most.
   maybeLoadPRs(cx) {
@@ -440,12 +443,13 @@ export class Graph {
 
   // herdr-extensions: graph one branch (a full ref), or null for the All branches / Current scope.
   setView(ref, cx) {
-    this.view = ref; this.branchPicking = false; this.limit = PAGE; this.selected = null; this.details = null;
+    this.view = ref; this.compare = null; this.branchPicking = false; this.limit = PAGE; this.selected = null; this.details = null;
     this.refresh(cx); cx.notify();
   }
 
-  toggleBranches(cx) {
-    this.branchPicking = !this.branchPicking;
+  toggleBranches(cx, mode = "view") {
+    this.branchPicking = this.branchPicking && this.pickMode === mode ? false : true;
+    this.pickMode = mode;
     if (this.branchPicking) {
       this.branchSearch.set_value("");
       const root = this.root, on = this.on;
@@ -459,10 +463,50 @@ export class Graph {
     cx.notify();
   }
 
+  // herdr-extensions: compare head against base (commits head has that base lacks). Base defaults to the
+  // remote's default branch (origin/HEAD), else main / master.
+  async defaultBase() {
+    const git = (args) => exec("git", [...READ, ...args], { cwd: this.root, on: this.on });
+    const sym = await git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"]);
+    if (sym.code === 0 && sym.stdout.trim()) return sym.stdout.trim();
+    for (const r of ["refs/heads/main", "refs/heads/master", "refs/remotes/origin/main", "refs/remotes/origin/master"]) {
+      if ((await git(["show-ref", "--verify", "--quiet", r])).code === 0) return r;
+    }
+    return null;
+  }
+
+  startCompare(head, cx) {
+    this.branchPicking = false;
+    cx.spawn(async (cx) => {
+      let base = await this.defaultBase();
+      if (!base || base === head) base = base === "refs/heads/main" ? "refs/remotes/origin/main" : base;
+      if (!base || base === head) { notify({ title: "Pick a base branch", body: "No default branch found to compare against.", level: "info" }); base = head; }
+      this.setCompare({ base, head }, cx);
+    });
+    cx.notify();
+  }
+
+  setCompare(next, cx) {
+    const c = { ...(this.compare ?? {}), ...next };
+    if (!c.base || !c.head) return;
+    this.compare = c; this.view = null; this.branchPicking = false; this.limit = PAGE; this.selected = null; this.details = null;
+    this.compareCount = null;
+    const root = this.root, on = this.on, key = `${c.base}...${c.head}`;
+    cx.spawn(async (cx) => {
+      const r = await exec("git", [...READ, "rev-list", "--left-right", "--count", `${c.base}...${c.head}`], { cwd: root, on }).catch(() => null);
+      if (this.root !== root || !this.compare || `${this.compare.base}...${this.compare.head}` !== key) return;
+      const [behind, ahead] = (r?.code === 0 ? r.stdout.trim().split(/\s+/) : []).map(Number);
+      this.compareCount = Number.isFinite(ahead) ? { ahead, behind } : null;
+      cx.notify();
+    });
+    this.refresh(cx); cx.notify();
+  }
+
   // The dropdown under the header: shortcuts, then local and remote branches (newest first), filtered.
   branchPicker(t) {
     const q = this.branchSearch.value().trim().toLowerCase();
-    const row = (id, on, label, right, action, color, checkout, pr) => h_flex().id(id).h(28).flex_none().pl(14).pr(8).gap(8).items_center().cursor_pointer()
+    const mode = this.pickMode;
+    const row = (id, on, label, right, action, color, checkout, pr, compare) => h_flex().id(id).h(28).flex_none().pl(14).pr(8).gap(8).items_center().cursor_pointer()
       .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click(action)
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(color ?? (on ? t.accent : t.foreground)).child(label))
       .when(Boolean(pr), (e) => e.child(this.prBadge(pr, t, `${id}-pr`)))
@@ -470,23 +514,32 @@ export class Graph {
       .when(Boolean(checkout), (e) => e.child(div().id(`${id}-co`).flex_none().px(6).py(1).rounded(5).border_1().border_color(t.border)
         .text_size(10.5).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
         .tooltip("Check this branch out (asks first if you have uncommitted changes)")
-        .on_click((_e, cx) => { cx.stop_propagation(); checkout(cx); }).child("Checkout")));
+        .on_click((_e, cx) => { cx.stop_propagation(); checkout(cx); }).child("Checkout")))
+      .when(Boolean(compare), (e) => e.child(div().id(`${id}-cmp`).flex_none().px(6).py(1).rounded(5).border_1().border_color(t.border)
+        .text_size(10.5).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
+        .tooltip("Compare this branch against the default branch (commits it would bring in a PR)")
+        .on_click((_e, cx) => { cx.stop_propagation(); compare(cx); }).child("Compare")));
     const heading = (text) => div().px(14).pt(8).pb(3).text_size(10).font_semibold().text_color(t.dim).child(text);
     const rows = [
       div().px(10).pt(6).pb(4).child(Input.new(this.branchSearch)),
-      row("gb-all", this.all && !this.view, "All branches", null, (_e, cx) => { this.branchPicking = false; this.setScope(true, cx); }),
-      row("gb-cur", !this.all && !this.view, `Current${this.current ? ` (${this.current})` : ""}`, null, (_e, cx) => { this.branchPicking = false; this.setScope(false, cx); }),
+      ...(mode !== "view" ? [div().px(14).pb(4).text_size(10.5).text_color(t.accent).child(mode === "base" ? "Pick the base branch (what the PR merges into)" : "Pick the head branch (what the PR brings in)")] : []),
     ];
+    if (mode === "view") rows.push(
+      row("gb-all", this.all && !this.view, "All branches", null, (_e, cx) => { this.branchPicking = false; this.setScope(true, cx); }),
+      row("gb-cur", !this.all && !this.view, `Current${this.current ? ` (${this.current})` : ""}`, null, (_e, cx) => { this.branchPicking = false; this.setScope(false, cx); }));
     if (!this.refList) rows.push(div().px(14).py(6).text_size(11).text_color(t.dim).child("Reading branches…"));
     else {
       const hit = (r) => !q || r.name.toLowerCase().includes(q);
       const branchRow = (r, i) => {
         const isCurrent = r.ref === `refs/heads/${this.current}`, isLocal = r.ref.startsWith("refs/heads/");
-        return row(`gb-${i}`, this.view === r.ref, r.name,
+        const picked = mode === "view" ? this.view === r.ref : this.compare?.[mode] === r.ref;
+        const pick = mode === "view" ? (_e, cx) => this.setView(r.ref, cx) : (_e, cx) => this.setCompare({ [mode]: r.ref }, cx);
+        return row(`gb-${i}`, picked, r.name,
           [isCurrent ? "current" : null, r.track ? r.track.replace(/[[\]]/g, "") : null, r.when].filter(Boolean).join(" · "),
-          (_e, cx) => this.setView(r.ref, cx), isCurrent ? t.accent : null,
-          isCurrent ? null : (cx) => this.checkoutBranch(isLocal ? r.name : null, isLocal ? null : r.name, cx),
-          prForPart({ kind: isLocal ? "branch" : "remote", name: r.name }, this.prs.byBranch));
+          pick, isCurrent ? t.accent : null,
+          mode !== "view" || isCurrent ? null : (cx) => this.checkoutBranch(isLocal ? r.name : null, isLocal ? null : r.name, cx),
+          prForPart({ kind: isLocal ? "branch" : "remote", name: r.name }, this.prs.byBranch),
+          mode === "view" ? (cx) => this.startCompare(r.ref, cx) : null);
       };
       const local = this.refList.filter((r) => r.ref.startsWith("refs/heads/") && hit(r));
       const remote = this.refList.filter((r) => r.ref.startsWith("refs/remotes/") && hit(r));
@@ -889,6 +942,24 @@ export class Graph {
     const segment = (id, text, on, action) => div().id(id).h(22).px(9).flex().items_center().rounded(5).text_size(11.5).cursor_pointer()
       .bg(on ? t.raised : t.background).text_color(on ? t.foreground : t.muted).when(on, (e) => e.border_1().border_color(t.border))
       .hover((s) => s.text_color(t.foreground)).on_click(action).child(text);
+    if (this.compare) {
+      const c = this.compare, n = this.compareCount;
+      const chip = (id, ref, mode) => h_flex().id(id).h(22).px(7).gap(4).min_w(0).items_center().rounded(6).cursor_pointer()
+        .bg(this.branchPicking && this.pickMode === mode ? t.selected : t.raised).border_1().border_color(t.border).hover((s) => s.bg(t.hover))
+        .tooltip(mode === "base" ? "Base: what the PR merges into" : "Head: what the PR brings in")
+        .on_click((_e, cx) => this.toggleBranches(cx, mode))
+        .child(div().min_w(0).max_w(150).truncate().text_size(11.5).text_color(t.foreground).child(shortRef(ref)))
+        .child(div().flex_none().text_size(10).text_color(t.dim).child("\u25be"));
+      const icon2 = (id, text, tip, action) => div().id(id).px(6).py(1).rounded(5).cursor_pointer().text_color(t.muted).tooltip(tip)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(action).child(text);
+      return h_flex().h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).bg(t.accent + "0f")
+        .child(div().flex_none().text_size(11.5).font_semibold().text_color(t.accent).child("Compare"))
+        .child(chip("cmp-base", c.base, "base")).child(div().flex_none().text_color(t.dim).child("\u2190")).child(chip("cmp-head", c.head, "head"))
+        .child(div().flex_none().text_size(11).text_color(t.dim).child(n ? `${n.ahead} ahead \u00b7 ${n.behind} behind` : "\u2026"))
+        .child(div().flex_1())
+        .child(icon2("cmp-swap", "\u21c4", "Swap base and head", (_e, cx) => this.setCompare({ base: c.head, head: c.base }, cx)))
+        .child(icon2("cmp-close", "\u00d7", "Stop comparing", (_e, cx) => this.setScope(true, cx)));
+    }
     return h_flex().h(34).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
       .child(h_flex().p(2).gap(2).rounded(7).bg(t.background).border_1().border_color(t.border)
         .child(segment("graph-all", "All branches", this.all && !this.view, (_e, cx) => this.setScope(true, cx)))

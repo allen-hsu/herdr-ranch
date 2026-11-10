@@ -23,12 +23,15 @@ function checkCommit(commit) {
 // herdr-extensions: `view` (a full ref name such as refs/heads/feature or refs/remotes/origin/main)
 // graphs that one branch's history only.
 export const isRefName = (r) => typeof r === "string" && /^refs\/(heads|remotes)\/[^\s~^:?*\[\\]+$/.test(r) && !r.includes("..");
-export function logArgs({ all, remotes, limit, view }) {
+// herdr-extensions: `compare` = { base, head } (full refs) graphs the commits in head that base lacks
+// (what a PR from head into base would contain): `git log head ^base`.
+export function logArgs({ all, remotes, limit, view, compare }) {
   // All branches walks local branches, tags, remote branches (with Remotes) and HEAD, as other Git tools do.
   // Not `--all`: it also walks the private refs of other tools, such as the per-turn checkpoints of
   // T3 Code (refs/t3/checkpoints/*), which have no label and show up as orphan commits.
   // `--ignore-missing` keeps a repository with no commits (no HEAD yet) an empty log.
-  const scope = isRefName(view) ? [view] : all ? ["--branches", "--tags", ...(remotes ? ["--remotes"] : []), "--ignore-missing", "HEAD"] : ["HEAD"];
+  const scope = compare && isRefName(compare.base) && isRefName(compare.head) ? [compare.head, `^${compare.base}`]
+    : isRefName(view) ? [view] : all ? ["--branches", "--tags", ...(remotes ? ["--remotes"] : []), "--ignore-missing", "HEAD"] : ["HEAD"];
   return ["log", "-z", ...scope, "--date-order", "--decorate=full", `-n${limit}`, `--format=${FORMAT}`];
 }
 
