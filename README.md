@@ -6,9 +6,9 @@ an agent inspector (health / config / trace / cost), and an account usage bar.
 
 Two layouts, switched from the top-right or with ⌃⌘1 / ⌃⌘2:
 
-| Layout | Left | Center | Right panel (tabs, ⌃⌘G toggles) |
+| Layout | Left | Center | Right panel (one panel, ⌃⌘G / ▣ toggles) |
 |---|---|---|---|
-| **Overview** | spaces in folders | **agent board**: Needs you → Idle → Working → Done | Pull requests · Agent inspector · Git graph |
+| **Overview** | spaces in folders | **agent board**: Needs you → Idle → Working → Done | Files · Changes · Git graph · Pull requests · Agent inspector |
 | **Focus** | spaces + agent list (context %) | the active tab | same panel, Agent inspector first |
 
 Bottom bar: Claude / Codex / Grok / Cursor plan usage with reset times.
@@ -42,7 +42,11 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 | `pr-panel` + `pr-diff` | Mine / To review / Space / Issues. PRs grouped by whose move it is. Buttons start an agent in a worktree: Fix CI, Fix comments, AI review, Ask Claude (with the diff beside it), Diff, plus configurable requesters (e.g. Slack). Fork PRs are never checked out. |
 | `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |
 | `agents-ctx` | Herdr's agent list (cloned) + a context-used badge per Claude agent. |
-| `layout-switch`, `stack-tabs`, `title-strip` | Top-right layout switcher + panel toggle, generic tab strip for stack nodes, plain title strip. |
+| `changes-plus` | Herdr's shipped Changes panel (0.1.14) with GitHub-like colored diffs. A frozen clone: re-clone and re-apply `diffRow` when Herdr updates `changes`. |
+| `layout-switch`, `stack-tabs`, `title-strip` | Top-right layout switcher + panel toggle; tab strip for stack nodes (`sync_panels` registers its tabs in Herdr's per-space panel memory); plain title strip. |
+
+The right panel *is* Herdr's own `panel` / `panel-body`, so the tab bar's Files and Changes buttons open
+tabs in the same panel instead of a second column.
 
 Third-party (pinned in `vendor.json`, reviewed in `docs/security-reviews.md`):
 `space-folders` (jankeesvw) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).

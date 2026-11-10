@@ -102,7 +102,7 @@
                     "win98",
                     "terminals"
                   ],
-                  "panel": "side"
+                  "panel": "panel"
                 }
               }
             }
@@ -130,6 +130,24 @@
                 {
                   "id": "panel-body",
                   "type": "stack",
+                  "active": "prs",
+                  "header": {
+                    "content": {
+                      "mod": "stack-tabs",
+                      "props": {
+                        "stack": "panel-body",
+                        "labels": {
+                          "files": "Files",
+                          "changes": "Changes",
+                          "git": "Git graph",
+                          "prs": "Pull requests",
+                          "inspector": "Agent inspector"
+                        },
+                        "sync_panels": true
+                      }
+                    },
+                    "height": 36
+                  },
                   "children": [
                     {
                       "id": "files",
@@ -142,71 +160,44 @@
                       "id": "changes",
                       "type": "block",
                       "content": {
-                        "mod": "changes"
+                        "mod": "changes-plus"
+                      }
+                    },
+                    {
+                      "id": "git",
+                      "type": "block",
+                      "content": {
+                        "mod": "git-graph"
+                      }
+                    },
+                    {
+                      "id": "prs",
+                      "type": "block",
+                      "content": {
+                        "mod": "pr-panel"
+                      }
+                    },
+                    {
+                      "id": "inspector",
+                      "type": "block",
+                      "content": {
+                        "mod": "agent-inspector"
                       }
                     }
-                  ],
-                  "active": "files"
+                  ]
                 }
               ],
               "size": {
-                "px": 368
-              },
-              "min": 280,
-              "max": 900,
-              "hidden": true
-            },
-            {
-              "id": "side",
-              "type": "stack",
-              "size": {
-                "px": 420
+                "px": 440
               },
               "min": 300,
-              "max": 760,
+              "max": 900,
+              "hidden": false,
               "radius": 10,
               "border": {
                 "width": 1,
                 "color": "border"
-              },
-              "header": {
-                "content": {
-                  "mod": "stack-tabs",
-                  "props": {
-                    "stack": "side",
-                    "labels": {
-                      "prs": "Pull requests",
-                      "inspector": "Agent inspector",
-                      "git": "Git graph"
-                    }
-                  }
-                },
-                "height": 36
-              },
-              "active": "prs",
-              "children": [
-                {
-                  "id": "prs",
-                  "type": "block",
-                  "content": {
-                    "mod": "pr-panel"
-                  }
-                },
-                {
-                  "id": "inspector",
-                  "type": "block",
-                  "content": {
-                    "mod": "agent-inspector"
-                  }
-                },
-                {
-                  "id": "git",
-                  "type": "block",
-                  "content": {
-                    "mod": "git-graph"
-                  }
-                }
-              ]
+              }
             }
           ],
           "padding": 8,
