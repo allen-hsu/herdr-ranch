@@ -192,7 +192,7 @@ export default class PRPanel extends View {
           return el
             .when(g === "failing", (el) => el.child(this.pill(t, `fx-${key}`, "Fix CI", (_e, cx) => this.launch(cx, key, pr, "checks"), fork ? noFork : { tone: "danger", tip: "Claude in a worktree: read failing CI logs, fix, commit (asks before push)" })))
             .when(g === "comments", (el) => el.child(this.pill(t, `ad-${key}`, "Fix comments", (_e, cx) => this.launch(cx, key, pr, "comments"), fork ? noFork : { tone: "danger", tip: "Claude in a worktree: fix review feedback, commit, ask before push; then offers to reply + resolve threads" })))
-            .child(this.pill(t, `rv-${key}`, "AI review", (_e, cx) => this.launch(cx, key, pr, "review"), { tip: fork ? "Fork PR: Claude reviews `gh pr diff` from your main checkout (no fork code checked out)" : "Claude in a worktree writes a code review (bugs, risks, tests). Nothing is posted." }))
+            .child(this.pill(t, `rv-${key}`, "AI review", (_e, cx) => this.launch(cx, key, pr, "review"), { tip: "Claude reviews the PR from your main checkout (diff read as data, branch never checked out). Nothing is posted." }))
             .child(this.pill(t, `ak-${key}`, "Ask Claude", (_e, cx) => this.launch(cx, key, pr, "ask"), { tone: "accent", tip: "Claude reads the PR, summarizes it and waits for your questions; the diff opens beside it" }))
             .child(this.pill(t, `df-${key}`, "Diff", () => openDiffBeside(pr), { tip: "Open the diff next to the focused pane" }))
             .children(this.requestPills(t, pr))

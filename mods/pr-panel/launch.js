@@ -88,8 +88,18 @@ export async function startPR(repo, pr, action, agent = ["claude"]) {
     notify({ title: `Started ${action} for fork PR #${pr.number}`, body: "Diff only, no checkout", level: "success" });
     return;
   }
+  if (action === "review" || action === "ask") {
+    // Read-only actions never check the PR branch out: its tree could carry .claude/settings.json hooks,
+    // CLAUDE.md or .mcp.json. The agent starts in the trusted main checkout and reads the branch as data.
+    await launch(`#${pr.number} ${action}`, repo, agent,
+      PROMPTS[action](pr) + ` Do not check out the PR branch or create a worktree. For full file context use \`git fetch origin ${pr.headRefName}\` and \`git show origin/${pr.headRefName}:<path>\`.`,
+      pr, action === "ask");
+    notify({ title: `Started ${action} for #${pr.number}`, body: "Main checkout, PR read as data", level: "success" });
+    return;
+  }
+  // Fix CI / Fix comments must edit and commit, so they need the branch checked out in a worktree.
   const path = await ensureWorktree(repo, name, pr.headRefName, `${pr.headRefName}:refs/remotes/origin/${pr.headRefName}`, `origin/${pr.headRefName}`);
-  await launch(`#${pr.number} ${action}`, path, agent, PROMPTS[action](pr), pr, action === "ask");
+  await launch(`#${pr.number} ${action}`, path, agent, PROMPTS[action](pr), pr, false);
   notify({ title: `Started ${action} for #${pr.number}`, body: path.replace(home(), "~"), level: "success" });
 }
 
