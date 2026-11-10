@@ -118,7 +118,13 @@ Top to bottom:
   - With more history, a last row `Load 300 more commits` in `accent`. Scrolling
     it into view loads the next 300, as Git Graph does (`Loading more commits…`
     meanwhile); a click does the same.
-- **Details**, 320px under the list when a commit is selected, top border. A 32px
+- **Details**, under the list when a commit is selected. 320px tall by default,
+  and taller when the history leaves more room than that, so a short history
+  doesn't sit above an empty gap (never more than 85% of the pane, never under
+  120px, and under 320px when the pane is short). Its top edge is a 6px grip with
+  the border, the pointer turning to a row resize: dragging it sets the height,
+  double-clicking it goes back to the automatic one, and it is kept in shared
+  state (`git-graph.details`, 0 for automatic) as the columns are. A 32px
   bar with `Commit <8 chars>` (or `Uncommitted changes` and an `Open Changes`
   link) and a `×`. Below, scrolling: the subject semibold, then label/value rows
   at 11.5px (64px `dim` labels): Commit (full hash, monospace, `accent`),
@@ -131,7 +137,7 @@ Top to bottom:
   the name, `+a` `ansi2`, `−d` `ansi1`. Clicking a file turns the area into its
   diff: a `← Files` back link and the path, then 20px monospace rows, hunk headers
   on `raised`, added lines on `ansi2` at 9%, removed on `ansi1` at 9%, line
-  numbers in a 34px `dim` column.
+  numbers in a 34px `dim` column, in that same strip and at the same height.
 - **In place of the table**: centered, a 46px `raised` tile with a 22px icon, a
   14px semibold title and a 12px `muted` line: `No folder`, `Not a git repository`
   (`<folder, ~-shortened> isn't inside a git repository, and holds none within N

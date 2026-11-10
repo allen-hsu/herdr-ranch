@@ -47,7 +47,9 @@ extension).
   - uncommitted changes: commit (staging every change first, or only what's
     staged), stash, reset, show them in Herdr's Changes panel
 - **Commit details.** Click a commit for its message, hash, parents, author, date
-  and changed files; click a file for its diff.
+  and changed files; click a file for its diff. The top edge of the details
+  drags to make it taller or shorter (double-click it for the automatic height),
+  and it fills the room a short history leaves instead of keeping a gap above.
 - **Live.** It reloads when refs move (a commit, checkout or fetch from any
   terminal), refreshes the uncommitted row as you edit, and fetches with one
   button. 300 commits at first, and 300 more each time you scroll to the end.
