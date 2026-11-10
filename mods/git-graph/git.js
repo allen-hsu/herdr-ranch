@@ -232,8 +232,13 @@ function repoMenu(r, ctx) {
 export function dialogFor(action, ctx) {
   const cur = currentName(ctx), a = action;
   switch (a.type) {
-    case "checkoutRemote": return { title: "Checkout remote branch", detail: `Create a local branch that tracks ${a.name}, and check it out.`,
-      inputs: [{ id: "name", label: "Local branch name", value: a.branch }], confirm: "Checkout" };
+    case "checkoutRemote": return { title: "Checkout remote branch", detail: `Create a local branch that tracks ${a.name}, and check it out.`
+        + (a.dirty ? ` You have ${a.dirty} uncommitted change${a.dirty === 1 ? "" : "s"}.` : ""),
+      inputs: [{ id: "name", label: "Local branch name", value: a.branch }], ...(a.dirty ? { checks: [{ id: "stash", label: "Stash them first (git stash push --include-untracked)", value: true }] } : {}), confirm: "Checkout" };
+    // herdr-extensions: checking out with uncommitted changes asks first (git would carry them along silently).
+    case "checkoutDirty": return { title: `Checkout ${a.name}`,
+      detail: `You have ${a.dirty} uncommitted change${a.dirty === 1 ? "" : "s"}. Without stashing, Git carries them to ${a.name} when they don't conflict, and refuses when they do.`,
+      checks: [{ id: "stash", label: "Stash them first (git stash push --include-untracked)", value: true }], confirm: "Checkout" };
     case "checkoutCommit": return { title: "Checkout commit", detail: `Check out commit ${a.short}? You'll be on a detached HEAD: new commits belong to no branch until you create one.`, confirm: "Checkout" };
     case "createBranch": return { title: "Create branch", detail: `At commit ${a.short}.`,
       inputs: [{ id: "name", label: "Branch name", value: "" }], checks: [{ id: "checkout", label: "Check out the new branch", value: false }], confirm: "Create" };
@@ -301,11 +306,14 @@ export function validate(action, v, ctx) {
   return null;
 }
 
+// herdr-extensions: the stash made before a checkout, labelled so `git stash list` says why it exists.
+const stashBefore = (target) => ["stash", "push", "--include-untracked", "-m", `herdr git-graph: before checkout ${target}`];
+
 // The git commands an action runs, in order.
 export function commandsFor(a, v = {}, ctx = {}) {
   // Validate again at the execution boundary, including actions without dialogs.
   const hashes = ["checkoutCommit", "createBranch", "addTag", "cherryPick", "revert", "reset"];
-  const names = ["checkout", "checkoutRemote", "renameBranch", "deleteBranch", "deleteRemoteBranch", "deleteTag", "push", "pushTag"];
+  const names = ["checkout", "checkoutDirty", "checkoutRemote", "renameBranch", "deleteBranch", "deleteRemoteBranch", "deleteTag", "push", "pushTag"];
   if (hashes.includes(a.type) && !objectId(a.hash)) throw new Error("Invalid commit identity");
   if (names.includes(a.type) && !refName(a.name)) throw new Error("Invalid ref name");
   if (["merge", "rebase"].includes(a.type) && !refName(a.ref)) throw new Error("Invalid ref name");
@@ -320,7 +328,8 @@ export function commandsFor(a, v = {}, ctx = {}) {
     // "--" ends the arguments: a branch deleted since the graph was drawn fails
     // instead of naming a path to restore from the index.
     case "checkout": return [["checkout", a.name, "--"]];
-    case "checkoutRemote": return [["checkout", "-b", name, "--track", a.name]];
+    case "checkoutDirty": return [...(v.stash ? [stashBefore(a.name)] : []), ["checkout", a.name, "--"]];
+    case "checkoutRemote": return [...(v.stash ? [stashBefore(a.name)] : []), ["checkout", "-b", name, "--track", a.name]];
     case "checkoutCommit": return [["checkout", "--detach", a.hash]];
     case "createBranch": return [v.checkout ? ["checkout", "-b", name, a.hash] : ["branch", name, a.hash]];
     case "addTag": return [message ? ["tag", "-a", name, "-m", message, a.hash] : ["tag", name, a.hash]];
@@ -350,6 +359,7 @@ export function doneText(a, v = {}) {
   const name = String(v.name ?? "").trim();
   switch (a.type) {
     case "checkout": return `Checked out ${a.name}`;
+    case "checkoutDirty": return `Checked out ${a.name}${v.stash ? " (changes stashed)" : ""}`;
     case "checkoutRemote": return `Checked out ${name}, tracking ${a.name}`;
     case "checkoutCommit": return `Checked out ${a.short}`;
     case "createBranch": return `Created branch ${name}`;

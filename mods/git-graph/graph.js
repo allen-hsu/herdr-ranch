@@ -436,10 +436,14 @@ export class Graph {
   // The dropdown under the header: shortcuts, then local and remote branches (newest first), filtered.
   branchPicker(t) {
     const q = this.branchSearch.value().trim().toLowerCase();
-    const row = (id, on, label, right, action, color) => h_flex().id(id).h(28).flex_none().px(14).gap(8).items_center().cursor_pointer()
+    const row = (id, on, label, right, action, color, checkout) => h_flex().id(id).h(28).flex_none().pl(14).pr(8).gap(8).items_center().cursor_pointer()
       .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click(action)
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(color ?? (on ? t.accent : t.foreground)).child(label))
-      .when(Boolean(right), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(right)));
+      .when(Boolean(right), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(right)))
+      .when(Boolean(checkout), (e) => e.child(div().id(`${id}-co`).flex_none().px(6).py(1).rounded(5).border_1().border_color(t.border)
+        .text_size(10.5).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
+        .tooltip("Check this branch out (asks first if you have uncommitted changes)")
+        .on_click((_e, cx) => { cx.stop_propagation(); checkout(cx); }).child("Checkout")));
     const heading = (text) => div().px(14).pt(8).pb(3).text_size(10).font_semibold().text_color(t.dim).child(text);
     const rows = [
       div().px(10).pt(6).pb(4).child(Input.new(this.branchSearch)),
@@ -449,9 +453,13 @@ export class Graph {
     if (!this.refList) rows.push(div().px(14).py(6).text_size(11).text_color(t.dim).child("Reading branches…"));
     else {
       const hit = (r) => !q || r.name.toLowerCase().includes(q);
-      const branchRow = (r, i) => row(`gb-${i}`, this.view === r.ref, r.name,
-        [r.ref === `refs/heads/${this.current}` ? "current" : null, r.track ? r.track.replace(/[[\]]/g, "") : null, r.when].filter(Boolean).join(" · "),
-        (_e, cx) => this.setView(r.ref, cx), r.ref === `refs/heads/${this.current}` ? t.accent : null);
+      const branchRow = (r, i) => {
+        const isCurrent = r.ref === `refs/heads/${this.current}`, isLocal = r.ref.startsWith("refs/heads/");
+        return row(`gb-${i}`, this.view === r.ref, r.name,
+          [isCurrent ? "current" : null, r.track ? r.track.replace(/[[\]]/g, "") : null, r.when].filter(Boolean).join(" · "),
+          (_e, cx) => this.setView(r.ref, cx), isCurrent ? t.accent : null,
+          isCurrent ? null : (cx) => this.checkoutBranch(isLocal ? r.name : null, isLocal ? null : r.name, cx));
+      };
       const local = this.refList.filter((r) => r.ref.startsWith("refs/heads/") && hit(r));
       const remote = this.refList.filter((r) => r.ref.startsWith("refs/remotes/") && hit(r));
       if (local.length) rows.push(heading(`LOCAL · ${local.length}`), ...local.map((r) => branchRow(r, `l${r.ref}`)));
@@ -564,13 +572,30 @@ export class Graph {
   }
 
   checkout(part, cx) {
+    if (part.kind === "branch") this.checkoutBranch(part.name, null, cx);
+    else if (part.kind === "remote") this.checkoutBranch(null, part.name, cx);
+  }
+
+  // herdr-extensions: one path for every checkout (label double-click, branch picker). A remote branch with
+  // a local twin checks the local one out. Uncommitted changes ask first, offering to stash them.
+  checkoutBranch(local, remote, cx) {
     const ctx = this.ctx;
-    if (part.kind === "branch" && part.name !== ctx.current) cx.spawn(async () => { await perform({ type: "checkout", name: part.name }, {}, ctx); });
-    else if (part.kind === "remote") {
-      const branch = part.name.slice(part.name.indexOf("/") + 1);
-      if (ctx.branches.includes(branch)) { if (branch !== ctx.current) cx.spawn(async () => { await perform({ type: "checkout", name: branch }, {}, ctx); }); }
-      else openDialog({ type: "checkoutRemote", name: part.name, remote: part.name.slice(0, part.name.indexOf("/")), branch }, ctx);
+    if (!ctx) return;
+    const dirty = (this.files ?? []).length;
+    if (remote) {
+      const branch = remote.slice(remote.indexOf("/") + 1);
+      if (!ctx.branches.includes(branch)) {
+        openDialog({ type: "checkoutRemote", name: remote, remote: remote.slice(0, remote.indexOf("/")), branch, dirty }, ctx);
+        this.branchPicking = false; cx.notify();
+        return;
+      }
+      local = branch;
     }
+    if (!local || local === ctx.current) return;
+    this.branchPicking = false; this.view = null;
+    if (dirty) openDialog({ type: "checkoutDirty", name: local, dirty }, ctx);
+    else cx.spawn(async () => { await perform({ type: "checkout", name: local }, {}, ctx); });
+    cx.notify();
   }
 
   contextMenu(key, e, cx) {
