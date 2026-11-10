@@ -1,0 +1,12 @@
+{
+  "requesters": [
+    {
+      "id": "slack-bot",
+      "label": "Ask reviewer bot",
+      "type": "command",
+      "confirm": true,
+      "tip": "Post '@bot please review <PR>' to your review channel as you (click, then confirm)",
+      "argv": ["python3", "~/.config/herdr-app/ranch/requesters/slack-post.py"]
+    }
+  ]
+}

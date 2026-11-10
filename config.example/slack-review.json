@@ -1,0 +1,5 @@
+{
+  "channel": "C0123ABCD",
+  "bot": "U0456EFGH",
+  "template": "<@{bot}> please review {url}"
+}

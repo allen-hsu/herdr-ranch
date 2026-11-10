@@ -1,0 +1,19 @@
+{
+  "global": {
+    "ctrl-cmd-1": "layout.switch:overview",
+    "ctrl-cmd-2": "layout.switch:focus",
+    "ctrl-cmd-g": "layout.toggle:side"
+  },
+  "layout:overview": {
+    "alt-down": "space-folders.next",
+    "alt-up": "space-folders.prev",
+    "ctrl-shift-pagedown": "space-folders.next",
+    "ctrl-shift-pageup": "space-folders.prev"
+  },
+  "layout:focus": {
+    "alt-down": "space-folders.next",
+    "alt-up": "space-folders.prev",
+    "ctrl-shift-pagedown": "space-folders.next",
+    "ctrl-shift-pageup": "space-folders.prev"
+  }
+}

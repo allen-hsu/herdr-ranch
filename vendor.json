@@ -1,0 +1,19 @@
+{
+  "_comment": "Third-party mods: fetched by install.sh at a pinned commit, never vendored here. Review the diff before bumping a commit (see docs/security-reviews.md).",
+  "mods": [
+    {
+      "name": "space-folders",
+      "repo": "https://github.com/jankeesvw/herdr-space-folders.git",
+      "path": "mods/space-folders",
+      "commit": "63a78b20d5ed30d57166a3c7165a6eb558c3ef84"
+    },
+    {
+      "name": "git-graph",
+      "repo": "https://github.com/allen-hsu/herdr-git-graph.git",
+      "path": "mods/git-graph",
+      "ref": "herdr-extensions",
+      "commit": "099ddb96bfde853b2b6bf23b4e18aed23e4f2934",
+      "note": "Fork of rabeeh-ta/herdr-git-graph; our extensions live on branch herdr-extensions."
+    }
+  ]
+}
