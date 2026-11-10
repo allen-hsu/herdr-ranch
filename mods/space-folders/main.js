@@ -17,6 +17,7 @@ import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props,
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { WorktreeDialog } from "./wtviews.js";
+import { ResourcesPill, ResourcesWindow } from "./resources.js";
 const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
@@ -167,6 +168,9 @@ export default class Spaces extends View {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
     const { folderMenu, edit, machine = null, fresh = false, overlay, wt } = props() ?? {};
     if (wt) { this.wtd = new WorktreeDialog({ ...props(), overlay }, cx); return; }
+    const res = props()?.resources;
+    if (res === "pill") { this.res = new ResourcesPill(cx); return; }
+    if (res === "window") { this.res = new ResourcesWindow({ ...props(), overlay }, cx); return; }
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
@@ -862,6 +866,7 @@ export default class Spaces extends View {
   render() {
     const t = theme();
     if (this.wtd) return this.wtd.render(t);
+    if (this.res) return this.res.render(t);
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
