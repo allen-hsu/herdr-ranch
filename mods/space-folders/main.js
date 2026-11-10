@@ -13,7 +13,11 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
+import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
+
+import { PRCache, prColor, prTip, revealPR } from "./prs.js";
+import { WorktreeDialog } from "./wtviews.js";
+const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
@@ -156,8 +160,13 @@ const lastPart = (p) => {
 
 export default class Spaces extends View {
   init(_props, cx) {
+    this.prs = new PRCache();
+    // PR data lands outside render: flag it and redraw on the next tick (cheap, only when something changed).
+    this.notifyLater = () => { this.prDirty = true; };
+    cx.timer.every(3000, (cx) => { if (this.prDirty) { this.prDirty = false; cx.notify(); } });
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
+    const { folderMenu, edit, machine = null, fresh = false, overlay, wt } = props() ?? {};
+    if (wt) { this.wtd = new WorktreeDialog({ ...props(), overlay }, cx); return; }
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
@@ -334,7 +343,9 @@ export default class Spaces extends View {
       const common = await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, on });
       const repo = common.stdout.trim();
       const name = repo.endsWith("/.git") ? base(repo.slice(0, -5)) : base(repo).replace(/\.git$/, "");
-      const info = { name, branch: null, ahead: 0, behind: 0, repo: JSON.stringify([on, repo]), linked: repo !== `${top.stdout.trim()}/.git` };
+      const info = { name, branch: null, ahead: 0, behind: 0, repo: JSON.stringify([on, repo]), top: top.stdout.trim(), linked: repo !== `${top.stdout.trim()}/.git` };
+      info.dirty = r.stdout.split("\n").filter((l) => /^(1|2|u|\?) /.test(l)).length;
+      info.slug = await this.prs.slug(repo, on).catch(() => null);
       for (const line of r.stdout.split("\n")) {
         if (line.startsWith("# branch.head ")) info.branch = line.slice(14);
         else if (line.startsWith("# branch.ab ")) {
@@ -721,7 +732,8 @@ export default class Spaces extends View {
   // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
   // branch goes when the name already says it (a worktree is named after its branch),
   // and master/main go: nearly every space is on one.
-  gitTail(g, tree, name, t) {
+  gitTail(g, tree, name, t, on) {
+    const pr = this.prs.get(g.slug, g.branch, on, () => this.notifyLater?.());
     const raw = g.branch ?? "detached";
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
@@ -737,11 +749,26 @@ export default class Spaces extends View {
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)))
+      // herdr-extensions: uncommitted changes and the branch's open PR (colored by CI; click reveals it).
+      .when(g.dirty > 0, (el) => el.child(h_flex().flex_none().gap(3).items_center().text_color(t.blocked)
+        .child(div().size(5).rounded(3).bg(t.blocked)).child(String(g.dirty))))
+      .when(Boolean(pr), (el) => {
+        const c = prColor(pr, t);
+        return el.child(div().id(`pr-${name}-${pr.number}`).flex_none().px(4).rounded(4).border_1().border_color(c + "66").bg(c + "1a")
+          .text_size(10.5).text_color(c).cursor_pointer().hover((s) => s.bg(c + "33")).tooltip(prTip(pr))
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+          .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); }).child(`#${pr.number}`));
+      });
   }
 
   row({ w, i, g, tree, folder, nested }, t) {
     const on = w.active;
+    // herdr-extensions: the most urgent agent here sets a dot; one that finished unseen makes the name bold.
+    const mine = agents().filter((a) => a.space === w.id);
+    const top = mine.reduce((m, a) => ((STATUS_RANK[a.status] ?? 0) > (STATUS_RANK[m] ?? 0) ? a.status : m), null);
+    const unread = mine.some((a) => a.status === "done");
+    const dot = top === "blocked" || top === "error" ? t.blocked : top === "working" ? t.working : top === "done" ? t.done : null;
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -786,15 +813,36 @@ export default class Spaces extends View {
         cx.notify();
       })
       .on_mouse_down("right", () => this.menu(w))
+      .on_hover((h, cx) => { if (h) this.hovered = w.id; else if (this.hovered === w.id) this.hovered = null; cx.notify(); })
       .child(
         h_flex()
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
+          .child(g ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
+          .when(this.hovered === w.id && Boolean(g), (el) => el.children(this.worktreeActions(w, g, t)))
+          .when(Boolean(dot), (el) => el.child(div().flex_none().size(7).rounded(4).bg(dot)
+            .when(top === "working", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })))),
       );
+  }
+
+  // herdr-extensions: hover actions. A repo's own row: new worktree, clean up; a worktree's row: delete it.
+  worktreeActions(w, g, t) {
+    const [on, common] = JSON.parse(g.repo);
+    if (!common?.endsWith("/.git")) return [];
+    const root = common.slice(0, -5);
+    const icon = (id, glyph, tip, open) => div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim)
+      .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child(svg(`mods/workspace-chrome/${glyph}.svg`).size(12));
+    const dialog = (props, height) => openOverlay({ mod: "space-folders", kind: "dialog", width: 480, height, props: { ...props, root, on } });
+    if (g.linked) return [icon(`wt-del-${w.id}`, "x", "Delete this worktree (and its branch)…", () => dialog({ wt: "remove", path: g.top }, 280))];
+    return [
+      icon(`wt-new-${w.id}`, "plus", "New worktree…", () => dialog({ wt: "new" }, 400)),
+      icon(`wt-clean-${w.id}`, "archive", "Clean up worktrees…", () => dialog({ wt: "clean" }, 420)),
+    ];
   }
 
   compact({ w, i }, t) {
@@ -813,6 +861,7 @@ export default class Spaces extends View {
 
   render() {
     const t = theme();
+    if (this.wtd) return this.wtd.render(t);
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
