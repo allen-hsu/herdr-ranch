@@ -1,6 +1,7 @@
 // Generic tab strip for a layout `stack` node (use as its header). Reads the stack's children and
 // active child from layout(); click selects with layout.select. Props: { "stack": "<id>",
-// "labels": { "<child id>": "Label" }, "sync_panels": true } — children without a label show their id.
+// "labels": { "<child id>": "Label" }, "hide": ["<child id>"], "sync_panels": true } — children without a
+// label show their id; hidden children get no tab but stay selectable (e.g. by the tab bar's buttons).
 // sync_panels: add the children's ids to shared "workspace.panels", which Herdr's tab bar uses to remember
 // per space which panel child was open (it only restores ids listed there).
 import { View, div } from "gpui-kit";
@@ -19,11 +20,13 @@ export default class StackTabs extends View {
     const p = props() ?? {};
     const stack = find(layout(), p.stack);
     const labels = p.labels && typeof p.labels === "object" ? p.labels : {};
-    const kids = (stack?.children ?? []).filter((c) => c?.id && !c.hidden);
+    const hide = new Set(Array.isArray(p.hide) ? p.hide : []);
+    const all = (stack?.children ?? []).filter((c) => c?.id && !c.hidden);
+    const kids = all.filter((c) => !hide.has(c.id));
     const active = stack?.active ?? kids[0]?.id;
     if (p.sync_panels) {
       const have = shared("workspace.panels") ?? ["files", "changes"];
-      const missing = kids.map((c) => c.id).filter((id) => !have.includes(id));
+      const missing = all.map((c) => c.id).filter((id) => !have.includes(id));
       if (missing.length) setShared("workspace.panels", [...have, ...missing]);
     }
     return h_flex().id("stack-tabs").size_full().px(8).gap(2).items_center().bg(t.chrome).border_b(1).border_color(t.border)

@@ -143,7 +143,10 @@
                           "prs": "Pull requests",
                           "inspector": "Agent inspector"
                         },
-                        "sync_panels": true
+                        "sync_panels": true,
+                        "hide": [
+                          "changes"
+                        ]
                       }
                     },
                     "height": 36
