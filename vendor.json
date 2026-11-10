@@ -12,7 +12,7 @@
       "repo": "https://github.com/allen-hsu/herdr-git-graph.git",
       "path": "mods/git-graph",
       "ref": "herdr-extensions",
-      "commit": "099ddb96bfde853b2b6bf23b4e18aed23e4f2934",
+      "commit": "bb3a6b3b1f4dd0404fd743768fdf3baa145fd64e",
       "note": "Fork of rabeeh-ta/herdr-git-graph; our extensions live on branch herdr-extensions."
     }
   ]
