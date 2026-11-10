@@ -600,7 +600,10 @@ export class Graph {
         let details;
         if (commit.uncommitted) {
           const numstat = this.head ? await git(["diff", "--no-renames", "--no-ext-diff", "--numstat", "HEAD"]) : { stdout: "" };
-          const stats = joinFiles(this.files.map((f) => `${f.status}\t${f.path}`).join("\n"), numstat.stdout);
+          // Keep the untracked flag: openDiff reads an untracked file itself (git diff HEAD shows nothing for it).
+          const untracked = new Set(this.files.filter((f) => f.untracked).map((f) => f.path));
+          const stats = joinFiles(this.files.map((f) => `${f.status}\t${f.path}`).join("\n"), numstat.stdout)
+            .map((f) => (untracked.has(f.path) ? { ...f, untracked: true } : f));
           details = { files: stats.slice(0, 500), more: Math.max(0, stats.length - 500) };
         } else {
           const args = fileArgs(commit);
