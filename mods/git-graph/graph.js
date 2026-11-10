@@ -557,6 +557,9 @@ export class Graph {
       if (hit) this.checkout(hit.part, cx);
       return;
     }
+    // herdr-extensions: the Uncommitted row opens Herdr's Changes panel (stage, diff, commit) instead of a
+    // second file list here — when the graph shows the focused terminal's repository, as Changes does.
+    if (commit.uncommitted && !this.opened && !this.folder) { showChanges(); return; }
     this.pick(commit, cx);
   }
 
