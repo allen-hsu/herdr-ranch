@@ -53,14 +53,34 @@ function sharedDirs(text) {
   return out;
 }
 
+// Both ends must really live where they claim: the source inside the main checkout, the destination's
+// deepest existing parent inside the new worktree, and the destination not a symlink. A branch can commit
+// symlinks, so without this a listed path could read or write outside the two trees.
+const CONFINE = `import os, sys
+root, wt, src, dst = sys.argv[1:5]
+real = os.path.realpath
+inside = lambda p, base: p == base or p.startswith(base + os.sep)
+if not inside(real(src), real(root)): print("source leaves the main checkout"); sys.exit()
+if os.path.islink(dst): print("destination is a symlink"); sys.exit()
+parent = os.path.dirname(dst)
+while not os.path.exists(parent): parent = os.path.dirname(parent)
+if not inside(real(parent), real(wt)): print("destination leaves the worktree"); sys.exit()
+print("ok")`;
+async function confined(root, path, src, dst, on) {
+  const r = await exec("python3", ["-c", CONFINE, root, path, src, dst], { on, timeout: 10000 }).catch(() => null);
+  return r?.code === 0 ? r.stdout.trim() : "could not check the path";
+}
+
 // Copy .worktreeinclude files (APFS clone on macOS) and link sharedDirectories. Returns what it did.
 export async function prepare(root, path, on) {
-  const done = { copied: [], linked: [], missing: [] };
+  const done = { copied: [], linked: [], missing: [], refused: [] };
   const inc = includeList(await readTextFile(`${root}/.worktreeinclude`, { on }).catch(() => null));
   for (const rel of inc) {
     const src = `${root}/${rel}`, dst = `${path}/${rel}`;
     if ((await exec("test", ["-e", src], { on })).code !== 0) { done.missing.push(rel); continue; }
     if ((await exec("test", ["-e", dst], { on })).code === 0) continue;
+    const why = await confined(root, path, src, dst, on);
+    if (why !== "ok") { done.refused.push(`${rel} (${why})`); continue; }
     await exec("mkdir", ["-p", dst.replace(/\/[^/]+$/, "")], { on });
     let r = await exec("cp", ["-Rpc", src, dst], { on });
     if (r.code !== 0) r = await exec("cp", ["-Rp", src, dst], { on });
@@ -69,6 +89,8 @@ export async function prepare(root, path, on) {
   for (const rel of sharedDirs(await readTextFile(`${root}/orca.yaml`, { on }).catch(() => null))) {
     const src = `${root}/${rel}`, dst = `${path}/${rel}`;
     if ((await exec("test", ["-d", src], { on })).code !== 0 || (await exec("test", ["-e", dst], { on })).code === 0) continue;
+    const why = await confined(root, path, src, dst, on);
+    if (why !== "ok") { done.refused.push(`${rel} (${why})`); continue; }
     await exec("mkdir", ["-p", dst.replace(/\/[^/]+$/, "")], { on });
     if ((await exec("ln", ["-s", src, dst], { on })).code === 0) done.linked.push(rel);
   }

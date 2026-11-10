@@ -69,7 +69,7 @@ export class WorktreeDialog {
       const { path, prep } = await create(this.root, branch, from, this.on);
       run("space.new", { name: branch, folder: path, ...(this.on ? { machine: this.on } : {}), ...(this.agent ? { argv: this.agent.run } : {}) });
       const extra = [prep.copied.length ? `copied ${prep.copied.join(", ")}` : "", prep.linked.length ? `linked ${prep.linked.join(", ")}` : "",
-        prep.missing.length ? `missing ${prep.missing.join(", ")}` : ""].filter(Boolean).join(" · ");
+        prep.missing.length ? `missing ${prep.missing.join(", ")}` : "", prep.refused.length ? `refused ${prep.refused.join(", ")}` : ""].filter(Boolean).join(" · ");
       notify({ title: `Worktree ${branch} ready`, body: extra || "No .worktreeinclude files", level: "success" });
       this.close();
     } catch (e) { this.error = String(e.message ?? e); }
