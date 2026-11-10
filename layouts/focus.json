@@ -206,7 +206,14 @@
                       "id": "prs",
                       "type": "block",
                       "content": {
-                        "mod": "pr-panel"
+                        "mod": "pr-panel",
+                        "props": {
+                          "reveal": {
+                            "panel": "panel",
+                            "stack": "panel-body",
+                            "child": "prs"
+                          }
+                        }
                       }
                     },
                     {

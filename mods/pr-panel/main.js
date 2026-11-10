@@ -2,9 +2,9 @@
 // one click to an agent in a worktree (Review, Address comments, Fix CI). Data: the user's `gh`.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme, focused, panes, spaces, notify, pickFolder } from "herdr";
+import { exec, theme, focused, panes, spaces, notify, pickFolder, props, run, shared, setShared } from "herdr";
 import { loadRequesters, runRequester } from "./requesters.js";
-import { TABS, GROUPS, load, groupOf, checksOf, unresolvedOf, repoAt, mainCheckout } from "./github.js";
+import { TABS, GROUPS, load, loadOne, groupOf, checksOf, unresolvedOf, repoAt, mainCheckout } from "./github.js";
 import { startPR, startIssue, openDiffBeside } from "./launch.js";
 
 const ago = (iso) => {
@@ -28,6 +28,11 @@ export default class PRPanel extends View {
     this.sent = JSON.parse(localStorage.getItem("requested") ?? "{}"); // "<id>|<url>" -> ms
     this.refresh(cx);
     cx.timer.every(120000, (cx) => this.refresh(cx));
+    // Reveal requests from other mods (e.g. git-graph's PR badges): shared "pr-panel.reveal" = {repo, number, at}.
+    // A heartbeat says someone listens, so senders fall back to opening GitHub when no panel is installed.
+    this.started = Date.now();
+    setShared("pr-panel.listening", Date.now());
+    cx.timer.every(60000, () => setShared("pr-panel.listening", Date.now()));
   }
 
   save() {
@@ -264,8 +269,25 @@ export default class PRPanel extends View {
     return out;
   }
 
+  // Show a requested PR at the top of the panel and bring the panel forward (props.reveal = {stack, child, panel}).
+  handleReveal(cx) {
+    const rv = shared("pr-panel.reveal");
+    if (!rv?.at || rv.at === this.seenReveal || rv.at < this.started - 5000) return;
+    this.seenReveal = rv.at;
+    const where = props()?.reveal;
+    if (where?.panel) run("layout.show", { id: where.panel });
+    if (where?.stack && where?.child) run("layout.select", { stack: where.stack, child: where.child });
+    const known = Object.values(this.data).flatMap((d) => d.items ?? []).find((p) => p.url === rv.url);
+    this.revealed = { repo: rv.repo, number: rv.number, url: rv.url, pr: known ?? null };
+    if (!known) cx.spawn(async (cx) => {
+      const pr = await loadOne(rv.repo, Number(rv.number)).catch(() => null);
+      if (this.revealed?.url === rv.url) { this.revealed.pr = pr; this.revealed.missing = !pr; cx.notify(); }
+    });
+  }
+
   render(cx) {
     const t = theme();
+    this.handleReveal(cx);
     const d = this.data[this.tab] ?? {};
     // Space tab follows the selected space.
     const sid = focused()?.space ?? null;
@@ -300,6 +322,14 @@ export default class PRPanel extends View {
         .child(div().text_size(10.5).text_color(t.dim).child("Group by"))
         .child(seg("status", "Status")).child(seg("repo", "Repo"))
         .when(this.tab === "space" && this.spaceRepos.length > 0, (el) => el.child(div().flex_1()).child(div().min_w(0).truncate().text_size(10.5).text_color(t.dim).child(this.spaceRepos.map((r) => r.split("/")[1]).join(" · "))))))
+      .when(Boolean(this.revealed), (el) => el.child(v_flex().flex_none().pt(8).pb(4).bg(t.accent + "12").border_b(1).border_color(t.border)
+        .child(h_flex().px(12).pb(6).gap(6).items_center().text_size(11)
+          .child(div().text_color(t.accent).child(`From Git graph · #${this.revealed.number}`))
+          .child(div().flex_1())
+          .child(div().id("rv-close").px(5).rounded(4).cursor_pointer().text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+            .on_click((_e, cx) => { this.revealed = null; cx.notify(); }).child("\u00d7")))
+        .child(this.revealed.pr ? this.prCard(t, this.revealed.pr, cx)
+          : div().px(14).pb(6).text_size(11.5).text_color(t.dim).child(this.revealed.missing ? "Couldn't load this PR." : "Loading…"))))
       .child(v_flex().id("pr-list").flex_1().min_h(0).pb(10).overflow_y_scrollbar().children(this.body(t, cx)));
   }
 }

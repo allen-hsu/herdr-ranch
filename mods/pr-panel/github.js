@@ -27,6 +27,16 @@ async function search(q, fields) {
   return (d.data?.search?.nodes ?? []).filter((n) => n && n.number);
 }
 
+// One PR by number (for reveal requests from other mods).
+export async function loadOne(repo, number) {
+  const [owner, name] = String(repo).split("/");
+  if (!owner || !name || !Number.isInteger(number)) return null;
+  const query = `query($owner: String!, $name: String!, $n: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $n) { ${PR_FIELDS} } } }`;
+  const r = await exec("gh", ["api", "graphql", "-f", `query=${query}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `n=${number}`], { timeout: 20000 });
+  if (r.code !== 0) return null;
+  try { return JSON.parse(r.stdout)?.data?.repository?.pullRequest ?? null; } catch { return null; }
+}
+
 export function checksOf(pr) {
   return pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null; // SUCCESS FAILURE ERROR PENDING EXPECTED
 }
