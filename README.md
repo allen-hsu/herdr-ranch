@@ -50,6 +50,9 @@ tabs in the same panel instead of a second column.
 
 Third-party (pinned in `vendor.json`, reviewed in `docs/security-reviews.md`):
 `space-folders` (jankeesvw) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).
+The fork adds: a branch picker (graph any local/remote branch), checkout from the picker with a stash prompt
+for uncommitted changes, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state on
+branch labels (click reveals the PR in the PR panel), GitHub-like diff colors, and an untracked-diff fix.
 
 ## Data and credentials
 
