@@ -2,7 +2,7 @@
 // commit) for the focused pane's repository, or `props.folder` when opened as
 // a pane. Labels take double-clicks (checkout) and right-clicks (menus).
 import { div, svg, PathBuilder } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar, v_virtual_list } from "gpui-base";
+import { v_flex, h_flex, Scrollbar, v_virtual_list, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, readTextFile, theme, settings, props, shared, setShared, openOverlay, home, notify, knownAgents, updates } from "herdr";
 import { layoutLanes } from "./lanes.js";
 import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withUncommitted, labelsOf, hitLabel,
@@ -63,7 +63,11 @@ const tilde = (path, on) => (!on && path?.startsWith(home()) ? "~" + path.slice(
 const brief = (c) => ({ hash: c.hash, subject: c.subject, parents: c.parents });
 const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const sameFiles = (a, b) => a.length === b.length && a.every((f, i) => f.path === b[i].path && f.status === b[i].status);
-const scopeOf = ({ all, remotes }) => `${all} ${remotes}`;
+const scopeOf = ({ all, remotes, view }) => `${all} ${remotes} ${view ?? ""}`;
+// herdr-extensions: the branch picker's rows, newest commit first; remote HEAD aliases left out.
+const REF_LIST = ["for-each-ref", "--sort=-committerdate", "--format=%(refname)%09%(refname:short)%09%(committerdate:relative)%09%(upstream:track)", "refs/heads", "refs/remotes"];
+const parseRefList = (text) => text.split("\n").filter(Boolean).map((l) => { const [ref, name, when, track] = l.split("\t"); return { ref, name, when, track: track ?? "" }; })
+  .filter((r) => r.ref && !/^refs\/remotes\/[^/]+\/HEAD$/.test(r.ref));
 // Folders kept as they were last read, and commits' details (a commit never changes).
 const SEEN = 24, DETAILS = 200;
 const keep = (map, key, value, max) => { map.delete(key); map.set(key, value); if (map.size > max) map.delete(map.keys().next().value); };
@@ -84,11 +88,11 @@ const folderState = () => ({
 // status: false leaves the working tree unread. `git status` runs the clean
 // filters a repository's own config defines, so a folder is only read ahead
 // (warm) for its history and refs; its uncommitted row comes when it's shown.
-async function readFolder(cwd, on, { all, remotes, limit, status: withStatus = true }) {
+async function readFolder(cwd, on, { all, remotes, limit, view, status: withStatus = true }) {
   const git = (args) => exec("git", [...READ, ...args], { cwd, on });
   const [top, log, head, current, branches, remoteNames, status] = await Promise.all([
     // One commit past the page says whether there are more, as Git Graph asks.
-    exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }), git(logArgs({ all, remotes, limit: limit + 1 })),
+    exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }), git(logArgs({ all, remotes, view, limit: limit + 1 })),
     git(["rev-parse", "--verify", "-q", "HEAD"]), git(["symbolic-ref", "-q", "--short", "HEAD"]),
     git(["for-each-ref", "--format=%(refname)", "refs/heads"]), git(["remote"]), withStatus ? git(STATUS) : null]);
   if (top.code !== 0) return { state: "norepo", cwd, on };
@@ -101,7 +105,7 @@ async function readFolder(cwd, on, { all, remotes, limit, status: withStatus = t
     branches: branches.stdout.split("\n").filter(Boolean).map((r) => r.replace(/^refs\/heads\//, "")),
     remoteNames: remoteNames.stdout.split("\n").filter(Boolean),
     files: status?.code === 0 ? parseStatus(status.stdout) : [],
-    signature: [log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout].join("\0"), scope: scopeOf({ all, remotes }),
+    signature: [log.stdout, head.stdout, current.stdout, branches.stdout, remoteNames.stdout].join("\0"), scope: scopeOf({ all, remotes, view }),
   };
 }
 
@@ -132,6 +136,10 @@ export class Graph {
     this.listId = `graph-rows-${Math.random().toString(36).slice(2)}`;
     this.diffId = `${this.listId}-diff`;
     this.all = true; this.remotes = true; this.wide = false; this.graphMax = 160; this.scale = null;
+    // herdr-extensions: branch picker state. view = the one ref graphed (null: All branches / Current).
+    this.view = null; this.branchPicking = false; this.refList = null;
+    this.branchSearch = InputState.new({ placeholder: "Filter branches" });
+    this.branchSearch.on("change", (_e, cx) => cx.notify());
     this.watchToken = 0; this.seenChange = shared("git-graph.changed");
     this.cols = withDefaults(); this.drag = null;
     this.detail = Number(shared("git-graph.details")) || 0; this.seenDetail = this.detail;
@@ -157,6 +165,7 @@ export class Graph {
   reset() {
     Object.assign(this, folderState());
     this.watchToken++; this.watching = null; this.picking = false;
+    this.view = null; this.branchPicking = false; this.refList = null;
   }
 
   // Leaving a folder keeps it as it was; coming back shows that at once, while refresh reads it again.
@@ -191,7 +200,7 @@ export class Graph {
       try {
         for (const [key, { cwd, on }] of order) {
           const scope = scopeOf(this);
-          const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, limit: PAGE, status: false }).catch(() => null);
+          const read = await readFolder(cwd, on, { all: this.all, remotes: this.remotes, view: this.view, limit: PAGE, status: false }).catch(() => null);
           if (read && key !== this.context && !this.seen.has(key) && scope === scopeOf(this)) {
             // A folder that isn't a repository may hold some: entering it searches (Manygit).
             keep(this.seen, key, { ...folderState(), state: read.state ?? "ready", ...read, warmed: read.state === "norepo" }, SEEN);
@@ -208,7 +217,7 @@ export class Graph {
     if (context !== this.context) { this.enter(context); full = true; }
     if (!cwd) { this.state = "nofolder"; return; }
     // A repository opened from the Manygit list loads in place of the folder.
-    const { all, remotes, limit } = this, opened = this.opened;
+    const { all, remotes, limit, view } = this, opened = this.opened;
     const loadKey = JSON.stringify([context, opened]);
     if (this.loading?.key === loadKey) { this.again = this.again === "full" || full ? "full" : "status"; return; }
     // Each load has its own id: opening a repository and coming back can't revive an older one.
@@ -218,7 +227,7 @@ export class Graph {
     cx.spawn(async (cx) => {
       try {
         if (full || !this.root) {
-          const read = await readFolder(opened ?? cwd, on, { all, remotes, limit });
+          const read = await readFolder(opened ?? cwd, on, { all, remotes, limit, view });
           if (stale()) return;
           if (read.state === "norepo") {
             if (opened) { this.state = "error"; this.error = `${tilde(opened, on)} isn't a git repository any more.`; return; }
@@ -401,7 +410,57 @@ export class Graph {
   }
 
   loadMore(cx) { this.limit += PAGE; this.refresh(cx); cx.notify(); }
-  setScope(all, cx) { if (this.all !== all) { this.all = all; this.limit = PAGE; this.refresh(cx); } cx.notify(); }
+  setScope(all, cx) { if (this.all !== all || this.view) { this.all = all; this.view = null; this.limit = PAGE; this.refresh(cx); } cx.notify(); }
+
+  // herdr-extensions: graph one branch (a full ref), or null for the All branches / Current scope.
+  setView(ref, cx) {
+    this.view = ref; this.branchPicking = false; this.limit = PAGE; this.selected = null; this.details = null;
+    this.refresh(cx); cx.notify();
+  }
+
+  toggleBranches(cx) {
+    this.branchPicking = !this.branchPicking;
+    if (this.branchPicking) {
+      this.branchSearch.set_value("");
+      const root = this.root, on = this.on;
+      cx.spawn(async (cx) => {
+        const r = await exec("git", [...READ, ...REF_LIST], { cwd: root, on }).catch(() => null);
+        if (this.root !== root) return;
+        this.refList = r?.code === 0 ? parseRefList(r.stdout) : [];
+        cx.notify();
+      });
+    }
+    cx.notify();
+  }
+
+  // The dropdown under the header: shortcuts, then local and remote branches (newest first), filtered.
+  branchPicker(t) {
+    const q = this.branchSearch.value().trim().toLowerCase();
+    const row = (id, on, label, right, action, color) => h_flex().id(id).h(28).flex_none().px(14).gap(8).items_center().cursor_pointer()
+      .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click(action)
+      .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(color ?? (on ? t.accent : t.foreground)).child(label))
+      .when(Boolean(right), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(right)));
+    const heading = (text) => div().px(14).pt(8).pb(3).text_size(10).font_semibold().text_color(t.dim).child(text);
+    const rows = [
+      div().px(10).pt(6).pb(4).child(Input.new(this.branchSearch)),
+      row("gb-all", this.all && !this.view, "All branches", null, (_e, cx) => { this.branchPicking = false; this.setScope(true, cx); }),
+      row("gb-cur", !this.all && !this.view, `Current${this.current ? ` (${this.current})` : ""}`, null, (_e, cx) => { this.branchPicking = false; this.setScope(false, cx); }),
+    ];
+    if (!this.refList) rows.push(div().px(14).py(6).text_size(11).text_color(t.dim).child("Reading branches…"));
+    else {
+      const hit = (r) => !q || r.name.toLowerCase().includes(q);
+      const branchRow = (r, i) => row(`gb-${i}`, this.view === r.ref, r.name,
+        [r.ref === `refs/heads/${this.current}` ? "current" : null, r.track ? r.track.replace(/[[\]]/g, "") : null, r.when].filter(Boolean).join(" · "),
+        (_e, cx) => this.setView(r.ref, cx), r.ref === `refs/heads/${this.current}` ? t.accent : null);
+      const local = this.refList.filter((r) => r.ref.startsWith("refs/heads/") && hit(r));
+      const remote = this.refList.filter((r) => r.ref.startsWith("refs/remotes/") && hit(r));
+      if (local.length) rows.push(heading(`LOCAL · ${local.length}`), ...local.map((r) => branchRow(r, `l${r.ref}`)));
+      if (remote.length) rows.push(heading(`REMOTE · ${remote.length}`), ...remote.map((r) => branchRow(r, `r${r.ref}`)));
+      if (!local.length && !remote.length) rows.push(div().px(14).py(6).text_size(11).text_color(t.dim).child("No branch matches."));
+    }
+    return v_flex().id(`${this.listId}-branches`).max_h(320).flex_none().py(2).overflow_y_scrollbar()
+      .bg(t.raised).border_b(1).border_color(t.border).children(rows);
+  }
   setRemotes(cx) { this.remotes = !this.remotes; this.refresh(cx); cx.notify(); }
 
   fetch(cx) {
@@ -660,8 +719,17 @@ export class Graph {
         .child(h_flex().id("graph-repository").h(22).px(7).gap(5).min_w(0).items_center().rounded(6).cursor_pointer()
           .bg(this.picking ? t.selected : t.raised).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.togglePicker(cx))
           .child(svg(icon("folder")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(repo.name))))
-      .when(ready && Boolean(where), (e) => e.child(h_flex().h(22).px(7).gap(5).min_w(0).items_center().rounded(6).bg(t.accent + "26").text_color(t.accent)
-        .child(svg(icon(this.current ? "branch" : "commit")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(where))))
+      .when(ready && Boolean(where || this.view), (e) => e.child(h_flex().id("graph-branch-chip").h(22).pl(7).pr(5).gap(5).min_w(0).items_center().rounded(6)
+        .bg(this.view ? t.working + "2e" : t.accent + "26").text_color(this.view ? t.working : t.accent).cursor_pointer()
+        .when(this.branchPicking, (el) => el.border_1().border_color(this.view ? t.working : t.accent))
+        .hover((s) => s.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.toggleBranches(cx))
+        .tooltip(this.view ? `Showing only ${this.view.replace(/^refs\/(heads|remotes)\//, "")} · click to pick another` : "Pick a branch to graph")
+        .child(svg(icon(this.view || this.current ? "branch" : "commit")).size(12).flex_none())
+        .child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(this.view ? this.view.replace(/^refs\/(heads|remotes)\//, "") : where))
+        .child(div().flex_none().text_size(10).text_color(t.dim).child("\u25be"))
+        .when(Boolean(this.view), (el) => el.child(div().id("graph-branch-clear").flex_none().px(3).rounded(4).text_color(t.dim)
+          .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip("Back to all branches")
+          .on_click((_e, cx) => { cx.stop_propagation(); this.setView(null, cx); }).child("\u00d7")))))
       .when(this.state === "workspace", (e) => e.child(div().flex_none().text_size(11.5).text_color(t.dim).child(count(ws.repos.length, "repo"))))
       .child(div().flex_1())
       // A newer release: a dot, and the update window on click.
@@ -757,8 +825,9 @@ export class Graph {
       .hover((s) => s.text_color(t.foreground)).on_click(action).child(text);
     return h_flex().h(34).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
       .child(h_flex().p(2).gap(2).rounded(7).bg(t.background).border_1().border_color(t.border)
-        .child(segment("graph-all", "All branches", this.all, (_e, cx) => this.setScope(true, cx)))
-        .child(segment("graph-current", "Current", !this.all, (_e, cx) => this.setScope(false, cx))))
+        .child(segment("graph-all", "All branches", this.all && !this.view, (_e, cx) => this.setScope(true, cx)))
+        .child(segment("graph-current", "Current", !this.all && !this.view, (_e, cx) => this.setScope(false, cx)))
+        .when(Boolean(this.view), (e) => e.child(segment("graph-view", `Branch: ${this.view.replace(/^refs\/(heads|remotes)\//, "")}`, true, (_e, cx) => this.toggleBranches(cx)))))
       .child(h_flex().id("graph-remotes").h(24).px(6).gap(6).items_center().rounded(6).cursor_pointer().text_size(11.5).text_color(t.muted)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => this.setRemotes(cx))
         .child(div().size(13).rounded(3).border_1().border_color(this.remotes ? t.accent : t.input).when(this.remotes, (e) => e.bg(t.accent)).flex().items_center().justify_center()
@@ -909,6 +978,7 @@ export class Graph {
       .on_mouse_up("left", (_e, cx) => this.endDrag(cx))
       .on_hover((hovered, cx) => { if (!hovered) this.endDrag(cx); })
       .on_key_down((e, cx) => {
+        if (e.key === "escape" && this.branchPicking) { this.branchPicking = false; cx.stop_propagation(); cx.notify(); return; }
         if (e.key !== "escape" || !(this.selected || this.opened)) return;
         // Esc closes the dropdown, a diff, then the details, then goes back to the Manygit list.
         if (this.picking) this.picking = false; else if (this.diff) this.diff = null; else if (this.selected) { this.selected = null; this.details = null; } else this.back(cx);
@@ -925,6 +995,7 @@ export class Graph {
       .child(this.header(t))
       .when(this.state === "workspace", (e) => e.child(this.workspaceList(t)))
       .when(Boolean(this.picking && this.workspace && this.opened), (e) => e.child(this.picker(t)))
+      .when(Boolean(this.branchPicking && ready), (e) => e.child(this.branchPicker(t)))
       .when(ready, (e) => e.child(this.toolbar(t)).child(this.columns(t, this.graphWidth())).child(this.list(t, mono))
         .when(Boolean(this.selected), (el) => el.child(this.detailsPane(t, mono))))
       .when(!ready && this.state !== "workspace", (e) => e.child(this.empty(t)));
