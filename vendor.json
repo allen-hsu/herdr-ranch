@@ -5,7 +5,7 @@
       "name": "space-folders",
       "repo": "https://github.com/allen-hsu/herdr-space-folders.git",
       "path": "mods/space-folders",
-      "commit": "fd4b255d5a10650ed41153aee721a81fe59dd6d4",
+      "commit": "858473f993010fcf6c7a20c4081738bdfc27e056",
       "ref": "herdr-extensions",
       "note": "Fork of jankeesvw/herdr-space-folders; our extensions live on branch herdr-extensions."
     },
