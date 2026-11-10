@@ -938,11 +938,17 @@ export class Graph {
       .when(d.more > 0, (e) => e.child(div().text_size(11).text_color(t.dim).child(`and ${d.more} more`))));
   }
 
+  // herdr-extensions: GitHub-like rows — tinted background, stronger gutter, +/− marker, accent hunk headers.
   diffRow({ kind, number, text }, t) {
-    if (kind === "@") return div().w_full().px(12).h(DIFF_ROW).flex_none().truncate().bg(t.raised).text_color(t.dim).child(text);
-    return h_flex().w_full().h(DIFF_ROW).flex_none().gap(10).when(kind === "+", (e) => e.bg(t.ansi2 + "18")).when(kind === "-", (e) => e.bg(t.ansi1 + "18"))
-      .child(div().w(34).flex_none().text_right().text_color(t.dim).child(number === undefined ? "" : String(number)))
-      .child(div().flex_1().min_w(0).truncate().child(text));
+    if (kind === "@") return h_flex().w_full().h(DIFF_ROW).flex_none().px(12).items_center().bg(t.accent + "1a").text_color(t.accent)
+      .child(div().min_w(0).truncate().child(text));
+    if (kind === "") return div().w_full().px(12).h(DIFF_ROW).flex_none().truncate().text_color(t.dim).child(text);
+    const tint = kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : null;
+    return h_flex().w_full().h(DIFF_ROW).flex_none().when(Boolean(tint), (e) => e.bg(tint + "26"))
+      .child(div().w(42).flex_none().pr(6).text_right().text_color(tint ?? t.dim).when(Boolean(tint), (e) => e.bg(tint + "40"))
+        .child(number === undefined ? "" : String(number)))
+      .child(div().w(18).flex_none().text_center().text_color(tint ?? t.dim).child(kind === "+" ? "+" : kind === "-" ? "\u2212" : ""))
+      .child(div().flex_1().min_w(0).pr(12).truncate().text_color(t.foreground).child(text));
   }
 
   empty(t) {
