@@ -9,6 +9,7 @@ import { READ, STATUS, UNCOMMITTED, LABEL, logArgs, parseLog, parseStatus, withU
   menuFor, menuHeight, fileArgs, joinFiles, diffArgs, diffRows } from "./git.js";
 import { perform, openDialog, showChanges } from "./act.js";
 import { icon } from "./menu.js";
+import { loadPRs, prForPart, badgeOf, revealPR, TTL as PR_TTL } from "./prs.js";
 import { available, check, openUpdate, newer } from "./update.js";
 import { depthOf, unsearched, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
 
@@ -138,6 +139,7 @@ export class Graph {
     this.all = true; this.remotes = true; this.wide = false; this.graphMax = 160; this.scale = null;
     // herdr-extensions: branch picker state. view = the one ref graphed (null: All branches / Current).
     this.view = null; this.branchPicking = false; this.refList = null;
+    this.prs = { root: null, at: 0, byBranch: new Map(), loading: false };
     this.branchSearch = InputState.new({ placeholder: "Filter branches" });
     this.branchSearch.on("change", (_e, cx) => cx.notify());
     this.watchToken = 0; this.seenChange = shared("git-graph.changed");
@@ -213,6 +215,7 @@ export class Graph {
   // load for the old one finds itself stale and drops its result.
   // timer: the 15 s re-read, which doesn't search a folder again that held no repositories.
   refresh(cx, full = true, timer = false) {
+    if (!timer) this.prs.at = 0;
     const { cwd, on } = location(this.folder), context = this.key();
     if (context !== this.context) { this.enter(context); full = true; }
     if (!cwd) { this.state = "nofolder"; return; }
@@ -412,6 +415,29 @@ export class Graph {
   loadMore(cx) { this.limit += PAGE; this.refresh(cx); cx.notify(); }
   setScope(all, cx) { if (this.all !== all || this.view) { this.all = all; this.view = null; this.limit = PAGE; this.refresh(cx); } cx.notify(); }
 
+  // herdr-extensions: open PRs of the shown repository, by head branch (see prs.js). Every 2 minutes at most.
+  maybeLoadPRs(cx) {
+    const root = this.root, on = this.on, p = this.prs;
+    if (!root || p.loading || (p.root === root && Date.now() - p.at < PR_TTL)) return;
+    p.loading = true;
+    cx.spawn(async (cx) => {
+      try {
+        const r = await loadPRs(root, on);
+        if (this.root === root) { this.prs = { root, at: Date.now(), byBranch: r.byBranch, loading: false }; cx.notify(); return; }
+      } catch {}
+      this.prs.loading = false;
+    });
+  }
+
+  prBadge(pr, t, id) {
+    const b = badgeOf(pr, t);
+    return h_flex().id(id).flex_none().h(18).px(5).gap(3).items_center().rounded(4).border_1().border_color(b.color + "66").bg(b.color + "1a")
+      .text_size(10.5).text_color(b.color).cursor_pointer().hover((s) => s.bg(b.color + "33")).tooltip(b.tip)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); })
+      .child(b.text).when(Boolean(b.glyph), (e) => e.child(b.glyph)).when(Boolean(b.review), (e) => e.child(div().text_color(t.dim).child(b.review)));
+  }
+
   // herdr-extensions: graph one branch (a full ref), or null for the All branches / Current scope.
   setView(ref, cx) {
     this.view = ref; this.branchPicking = false; this.limit = PAGE; this.selected = null; this.details = null;
@@ -436,9 +462,10 @@ export class Graph {
   // The dropdown under the header: shortcuts, then local and remote branches (newest first), filtered.
   branchPicker(t) {
     const q = this.branchSearch.value().trim().toLowerCase();
-    const row = (id, on, label, right, action, color, checkout) => h_flex().id(id).h(28).flex_none().pl(14).pr(8).gap(8).items_center().cursor_pointer()
+    const row = (id, on, label, right, action, color, checkout, pr) => h_flex().id(id).h(28).flex_none().pl(14).pr(8).gap(8).items_center().cursor_pointer()
       .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click(action)
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(color ?? (on ? t.accent : t.foreground)).child(label))
+      .when(Boolean(pr), (e) => e.child(this.prBadge(pr, t, `${id}-pr`)))
       .when(Boolean(right), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(right)))
       .when(Boolean(checkout), (e) => e.child(div().id(`${id}-co`).flex_none().px(6).py(1).rounded(5).border_1().border_color(t.border)
         .text_size(10.5).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
@@ -458,7 +485,8 @@ export class Graph {
         return row(`gb-${i}`, this.view === r.ref, r.name,
           [isCurrent ? "current" : null, r.track ? r.track.replace(/[[\]]/g, "") : null, r.when].filter(Boolean).join(" · "),
           (_e, cx) => this.setView(r.ref, cx), isCurrent ? t.accent : null,
-          isCurrent ? null : (cx) => this.checkoutBranch(isLocal ? r.name : null, isLocal ? null : r.name, cx));
+          isCurrent ? null : (cx) => this.checkoutBranch(isLocal ? r.name : null, isLocal ? null : r.name, cx),
+          prForPart({ kind: isLocal ? "branch" : "remote", name: r.name }, this.prs.byBranch));
       };
       const local = this.refList.filter((r) => r.ref.startsWith("refs/heads/") && hit(r));
       const remote = this.refList.filter((r) => r.ref.startsWith("refs/remotes/") && hit(r));
@@ -720,6 +748,13 @@ export class Graph {
       // Labels and description clip together, so many labels never push the fixed columns out.
       .child(h_flex().flex_1().min_w(0).h_full().gap(LABEL.GAP).items_center().overflow_hidden()
         .children(this.labels.get(commit.hash).map((l) => this.label(l, color, t, mono)))
+        .children((() => {
+          for (const l of this.labels.get(commit.hash)) for (const part of l.parts) {
+            const pr = prForPart(part, this.prs.byBranch);
+            if (pr) return [this.prBadge(pr, t, `pr-${commit.hash}`)];
+          }
+          return [];
+        })())
         .child(div().flex_1().min_w(0).truncate().text_color(fg).when(commit.head, (e) => e.font_semibold()).child(commit.subject)))
       .child(div().w(this.cols.date).flex_none().text_right().truncate().text_color(t.dim).child(commit.uncommitted ? "*" : ago(commit.time)))
       .when(this.wide, (e) => e
@@ -1009,6 +1044,7 @@ export class Graph {
     const setting = `${depthSetting()} ${tagsShown()}`;
     if (setting !== this.seenSetting) { const first = this.seenSetting === undefined; this.seenSetting = setting; if (!first && !this.opened) this.refresh(cx); }
     const t = theme(), mono = settings().font_family ?? "JetBrains Mono", ready = this.state === "ready";
+    if (ready) this.maybeLoadPRs(cx);
     return v_flex().id("git-graph").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
       .text_color(t.foreground).text_size(12.5).track_focus(this.handle)
       .on_mouse_move((e, cx) => this.moveDrag(e, cx))
