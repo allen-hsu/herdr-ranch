@@ -89,10 +89,13 @@ export async function startPR(repo, pr, action, agent = ["claude"]) {
     return;
   }
   if (action === "review" || action === "ask") {
+    // Only the PR number (an integer) goes into the prompt: branch names are chosen by the PR author.
+    const n = Number(pr.number);
+    if (!Number.isInteger(n) || n <= 0) throw new Error("Invalid PR number");
     // Read-only actions never check the PR branch out: its tree could carry .claude/settings.json hooks,
     // CLAUDE.md or .mcp.json. The agent starts in the trusted main checkout and reads the branch as data.
     await launch(`#${pr.number} ${action}`, repo, agent,
-      PROMPTS[action](pr) + ` Do not check out the PR branch or create a worktree. For full file context use \`git fetch origin ${pr.headRefName}\` and \`git show origin/${pr.headRefName}:<path>\`.`,
+      PROMPTS[action](pr) + ` Do not check out the PR branch or create a worktree. For full file context use \`git fetch origin pull/${n}/head:refs/remotes/origin/pr-${n}\` and \`git show origin/pr-${n}:<path>\`.`,
       pr, action === "ask");
     notify({ title: `Started ${action} for #${pr.number}`, body: "Main checkout, PR read as data", level: "success" });
     return;
