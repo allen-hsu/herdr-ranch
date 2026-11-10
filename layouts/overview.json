@@ -232,6 +232,19 @@
               }
             },
             {
+              "id": "worktrees",
+              "type": "block",
+              "size": {
+                "px": 230
+              },
+              "content": {
+                "mod": "space-folders",
+                "props": {
+                  "resources": "pill"
+                }
+              }
+            },
+            {
               "id": "usage",
               "type": "block",
               "size": {

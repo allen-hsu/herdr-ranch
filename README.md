@@ -11,7 +11,7 @@ Two layouts, switched from the top-right or with ⌃⌘1 / ⌃⌘2:
 | **Overview** | spaces in folders | **agent board**: Needs you → Idle → Working → Done | Files · Changes · Git graph · Pull requests · Agent inspector |
 | **Focus** | spaces + agent list (context %) | the active tab | same panel, Agent inspector first |
 
-Bottom bar: Claude / Codex / Grok / Cursor plan usage with reset times.
+Bottom bar: worktree resource manager pill, then Claude / Codex / Grok / Cursor plan usage with reset times.
 
 ## Install
 
@@ -51,7 +51,8 @@ tabs in the same panel instead of a second column.
 Third-party (pinned in `vendor.json`, reviewed in `docs/security-reviews.md`):
 `space-folders` (our fork of jankeesvw/herdr-space-folders: agent status dot / unread bold / dirty count / PR badge on
 space rows; hover a repo row for New worktree (base / existing / PR, copies `.worktreeinclude`, links orca.yaml
-`worktree.sharedDirectories`) and Clean up; hover a worktree row for a guarded Delete) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).
+`worktree.sharedDirectories`) and Clean up; hover a worktree row for a guarded Delete; a status-bar pill opens a worktree resource manager window with
+every repo's worktrees, sizes and cleanable picks) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).
 The fork adds: a branch picker (graph any local/remote branch), checkout from the picker with a stash prompt
 for uncommitted changes, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state on
 branch labels (click reveals the PR in the PR panel), GitHub-like diff colors, and an untracked-diff fix.
