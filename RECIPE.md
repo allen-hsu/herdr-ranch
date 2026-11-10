@@ -120,8 +120,8 @@ Top to bottom:
     meanwhile); a click does the same.
 - **Details**, under the list when a commit is selected. 320px tall by default,
   and taller when the history leaves more room than that, so a short history
-  doesn't sit above an empty gap (never more than 85% of the pane, never under
-  120px, and under 320px when the pane is short). Its top edge is a 6px grip with
+  doesn't sit above an empty gap (never under 120px, and always leaving the list
+  room for three commits, so under 320px when the pane is short). Its top edge is a 6px grip with
   the border, the pointer turning to a row resize: dragging it sets the height,
   double-clicking it goes back to the automatic one, and it is kept in shared
   state (`git-graph.details`, 0 for automatic) as the columns are. A 32px

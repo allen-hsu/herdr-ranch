@@ -30,7 +30,8 @@ const listsZoom = () => zoomedLists ??= (() => { try { const v = updates()?.app?
 const GRAPH_MIN = 56;
 // The commit details strip: a height the person dragged to, or (before any drag) the room the
 // commit list leaves, so a short history doesn't leave the strip a fixed 320 with a gap above it.
-const DETAIL_DEFAULT = 320, DETAIL_MIN = 120, DETAIL_SHARE = 0.85;
+// It always leaves the list room for DETAIL_ROWS commits.
+const DETAIL_DEFAULT = 320, DETAIL_MIN = 120, DETAIL_ROWS = 3;
 // Above the list and the strip: the header (42), the toolbar (34) and the column headings (24), plus the border.
 const CHROME_H = 102;
 // side: which way a drag widens it. Graph's handle is on its right edge, the others' on their left.
@@ -452,7 +453,7 @@ export class Graph {
 
   // The details strip's height (it holds the diff too): a dragged height, else what the list leaves.
   clampDetail(h) {
-    const room = Math.max(DETAIL_MIN, (this.height ?? 900) * DETAIL_SHARE);
+    const room = Math.max(DETAIL_MIN, (this.height ?? 900) - CHROME_H - DETAIL_ROWS * this.rowH());
     return Math.round(Math.max(DETAIL_MIN, Math.min(room, h)));
   }
   detailHeight() {
@@ -460,8 +461,7 @@ export class Graph {
     // The room the history leaves: a short history hands it all to the strip, a long one keeps 320
     // and a short pane gets whatever fits rather than clipping the list.
     const rows = (this.commits.length + (this.hasMore ? 1 : 0)) * this.rowH();
-    const room = (this.height ?? 900) - CHROME_H - rows;
-    return this.clampDetail(room >= DETAIL_DEFAULT ? room : Math.min(DETAIL_DEFAULT, Math.max(DETAIL_MIN, room)));
+    return this.clampDetail(Math.max(DETAIL_DEFAULT, (this.height ?? 900) - CHROME_H - rows));
   }
   startDetailDrag(e, cx) {
     cx.stop_propagation();
@@ -918,8 +918,9 @@ export class Graph {
         const width = size.width / this.unit(), wide = width >= 600, graphMax = Math.max(60, Math.round(width * 0.4));
         this.width = width;
         // The details strip fills what the history leaves, so it needs the pane's height too.
-        this.height = size.height / this.unit();
-        if (wide !== this.wide || graphMax !== this.graphMax) { this.wide = wide; this.graphMax = graphMax; cx.notify(); }
+        const height = size.height / this.unit(), resized = height !== this.height && Boolean(this.selected);
+        this.height = height;
+        if (wide !== this.wide || graphMax !== this.graphMax || resized) { this.wide = wide; this.graphMax = graphMax; cx.notify(); }
       })
       .child(this.header(t))
       .when(this.state === "workspace", (e) => e.child(this.workspaceList(t)))
