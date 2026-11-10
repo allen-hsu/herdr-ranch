@@ -49,7 +49,9 @@ The right panel *is* Herdr's own `panel` / `panel-body`, so the tab bar's Files 
 tabs in the same panel instead of a second column.
 
 Third-party (pinned in `vendor.json`, reviewed in `docs/security-reviews.md`):
-`space-folders` (jankeesvw) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).
+`space-folders` (our fork of jankeesvw/herdr-space-folders: agent status dot / unread bold / dirty count / PR badge on
+space rows; hover a repo row for New worktree (base / existing / PR, copies `.worktreeinclude`, links orca.yaml
+`worktree.sharedDirectories`) and Clean up; hover a worktree row for a guarded Delete) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).
 The fork adds: a branch picker (graph any local/remote branch), checkout from the picker with a stash prompt
 for uncommitted changes, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state on
 branch labels (click reveals the PR in the PR panel), GitHub-like diff colors, and an untracked-diff fix.

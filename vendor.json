@@ -3,9 +3,11 @@
   "mods": [
     {
       "name": "space-folders",
-      "repo": "https://github.com/jankeesvw/herdr-space-folders.git",
+      "repo": "https://github.com/allen-hsu/herdr-space-folders.git",
       "path": "mods/space-folders",
-      "commit": "63a78b20d5ed30d57166a3c7165a6eb558c3ef84"
+      "commit": "fd4b255d5a10650ed41153aee721a81fe59dd6d4",
+      "ref": "herdr-extensions",
+      "note": "Fork of jankeesvw/herdr-space-folders; our extensions live on branch herdr-extensions."
     },
     {
       "name": "git-graph",
