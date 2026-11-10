@@ -372,7 +372,7 @@ export class Graph {
   }
 
   build() {
-    const commits = withUncommitted(this.base, this.files.length, this.head);
+    const commits = this.compare ? this.base : withUncommitted(this.base, this.files.length, this.head);
     const { rows, width } = layoutLanes(commits);
     this.commits = commits; this.rows = rows; this.lanes = width;
     this.labels = new Map(commits.map((c) => [c.hash, labelsOf(c, this.remotes)]));
@@ -946,9 +946,9 @@ export class Graph {
       const c = this.compare, n = this.compareCount;
       const chip = (id, ref, mode) => h_flex().id(id).h(22).px(7).gap(4).min_w(0).items_center().rounded(6).cursor_pointer()
         .bg(this.branchPicking && this.pickMode === mode ? t.selected : t.raised).border_1().border_color(t.border).hover((s) => s.bg(t.hover))
-        .tooltip(mode === "base" ? "Base: what the PR merges into" : "Head: what the PR brings in")
+        .tooltip(`${mode === "base" ? "Base (what the PR merges into)" : "Head (what the PR brings in)"}: ${shortRef(ref)}`)
         .on_click((_e, cx) => this.toggleBranches(cx, mode))
-        .child(div().min_w(0).max_w(150).truncate().text_size(11.5).text_color(t.foreground).child(shortRef(ref)))
+        .child(div().min_w(0).max_w(180).truncate().text_size(11.5).text_color(t.foreground).child(shortRef(ref)))
         .child(div().flex_none().text_size(10).text_color(t.dim).child("\u25be"));
       const icon2 = (id, text, tip, action) => div().id(id).px(6).py(1).rounded(5).cursor_pointer().text_color(t.muted).tooltip(tip)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(action).child(text);
@@ -986,6 +986,14 @@ export class Graph {
   }
 
   list(t, mono) {
+    if (this.compare && !this.commits.length) {
+      const c = this.compare, n = this.compareCount;
+      return v_flex().flex_1().min_h(0).items_center().justify_center().gap(6).px(28).pb(40)
+        .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child("Nothing to bring in"))
+        .child(div().text_size(11.5).text_color(t.dim).text_center()
+          .child(`${shortRef(c.head)} has no commits that ${shortRef(c.base)} lacks — it's merged or was never committed to.`
+            + (n?.behind ? ` ${shortRef(c.base)} is ${n.behind} commit${n.behind === 1 ? "" : "s"} ahead of it.` : "")));
+    }
     const colors = laneColors(t), width = this.graphWidth(), count = this.commits.length + (this.hasMore ? 1 : 0);
     return div().flex_1().min_h(0).relative()
       .on_mouse_down("left", (e) => { this.press = { x: (e.local_position?.x ?? 0) / this.unit(), count: e.click_count }; })
