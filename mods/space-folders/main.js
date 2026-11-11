@@ -17,7 +17,7 @@ import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOver
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
-import { AgentData, agentRow, childrenOf } from "./agentrows.js";
+import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
 import { TS } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
@@ -177,6 +177,7 @@ export default class Spaces extends View {
     this.logos = {};
     // "By space" view: each space lists its agents (lib/agentrows.js), the same rows the "by status" view shows.
     this.adata = new AgentData();
+    try { this.agentsFold = new Set(JSON.parse(localStorage.getItem("agents-fold") ?? "[]")); } catch { this.agentsFold = new Set(); }
     this.adata.mod = "space-folders";
     if (!props()?.overlay) this.adata.start(cx);
     if (!props()?.overlay) {
@@ -558,7 +559,11 @@ export default class Spaces extends View {
       seen.push({ id: r.w.id, shown: !away, folder: r.folder });
       if (away) return [];
       if (collapsed) return [this.compact(r, t)];
-      return [this.row(r, t), ...this.agentsOf(r, t)];
+      const below = this.agentsOf(r, t);
+      // Orca-style: the current space and its agents sit on one faint card.
+      if (r.w.active) return [v_flex().id(`card-${r.w.id}`).my(2).rounded(10).border_1().border_color(t.border).bg(t.raised + "66").pb(below.length ? 4 : 0)
+        .child(this.row(r, t)).children(below)];
+      return [this.row(r, t), ...below];
     };
     const f = folders(machine), { list } = f, ps = panes();
     let parent = null;
@@ -593,7 +598,24 @@ export default class Spaces extends View {
     if (!mine.length) return [];
     this.adata.track(all);
     const pad = indent(r.folder, r.nested) + (r.tree ? 22 : 27);
-    return mine.flatMap((a) => [agentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })]);
+    const folded = this.agentsFold.has(r.w.id);
+    const need = mine.filter((a) => a.status === "blocked" || a.status === "error").length;
+    const working = mine.filter((a) => a.status === "working").length;
+    const fold = h_flex().id(`afold-${r.w.id}`).h(22).pl(pad).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
+      .text_size(TS.meta).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.muted))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        folded ? this.agentsFold.delete(r.w.id) : this.agentsFold.add(r.w.id);
+        try { localStorage.setItem("agents-fold", JSON.stringify([...this.agentsFold])); } catch {}
+        cx.notify();
+      })
+      .child(div().flex_1().child(`${mine.length} agent${mine.length === 1 ? "" : "s"}`))
+      .when(folded && need > 0, (el) => el.child(div().text_color(t.blocked).child(`${need} needs you`)))
+      .when(folded && !need && working > 0, (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).text_color(t.working).spin(900)))
+      .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).text_color(t.dim)));
+    if (folded) return [fold];
+    return [fold, ...mine.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })])];
   }
 
   // Every row ends the same way: a fixed-width column (a folder's count + chevron, a space's status dot), with the
@@ -919,6 +941,9 @@ export default class Spaces extends View {
             : mine.length ? div().size(7).rounded(4).border_1().border_color(t.dim)
             : div().size(5).rounded(3).bg(t.border))))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(w.name))
+          // Orca's tag: the repository's main checkout (worktrees show a branch icon instead).
+          .when(Boolean(g) && !g.linked && !tree, (el) => el.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border)
+            .text_size(TS.tiny).text_color(t.dim).child("primary")))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
           .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
           .when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))
