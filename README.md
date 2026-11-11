@@ -4,12 +4,10 @@ A workspace for running many coding agents (Claude Code, Codex) across projects 
 [Herdr](https://herdr.dev) desktop app: an agent board, a PR panel that hands work to agents,
 an agent inspector (health / config / trace / cost), and an account usage bar.
 
-Two layouts, switched from the top-right or with ⌃⌘1 / ⌃⌘2:
-
-| Layout | Left | Center | Right panel (one panel, ⌃⌘G / ▣ toggles) |
-|---|---|---|---|
-| **Overview** | spaces in folders | **agent board**: Needs you → Idle → Working → Done | Files · Changes · Git graph · Pull requests · Agent inspector |
-| **Focus** | one list, two views (switch in its header): **Spaces** — folders → spaces → their agents (same rows as the agent list, with sub-agents and background subagents); **Agents** — by status, needs-you first | the active tab | same panel, Agent inspector first |
+One layout (Focus): the sidebar (folders → spaces → agents, or agents by status), the active tab, and the right
+panel (Files · Changes · Git · PRs · Inspector). **Board** (top right, or ⌃⌘B) opens every space as a card in
+Todo / In progress / In review / Done over the window — drag cards between columns (kept), drop on Pinned, click
+to go there; Esc or × closes it without touching anything underneath.
 
 Bottom bar: worktree resource manager pill, then Claude / Codex / Grok / Cursor plan usage with reset times.
 
@@ -38,7 +36,8 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 
 | Mod | What it does |
 |---|---|
-| `agent-board` | Kanban of all agents. Each card: project · branch, your last prompt, what it is doing *now* (tool call / question / reply, from transcript tails), context bar, cost. Space filter via `agent-board-picker` (All / Current / folders / spaces). Click → Focus. |
+| `space-board` | The Board overlay: spaces as cards in Todo / In progress / In review / Done; drag between columns (shared board.columns, ↺ auto to undo), Pinned row, search; auto placement from agents (working / needs you) and open PRs. |
+| `agent-board` | (Not in the layout any more.) Kanban of all agents. Each card: project · branch, your last prompt, what it is doing *now* (tool call / question / reply, from transcript tails), context bar, cost. Space filter via `agent-board-picker` (All / Current / folders / spaces). Click → Focus. |
 | `agent-inspector` | For the focused agent: **Skills** (which skills really loaded, by the model or by your /command, when, how many tokens; skills you named that never loaded; per-turn ⚡ chips in Trace), **MCP** (every server: connected / needs sign-in / failed, tools available · loaded · called, context cost), **Health** (hook errors and timeouts, tool errors, permission blocks incl. auto-mode classifier, MCP failures, compactions, cache drops), **Config** (memory/rules files, skills listed vs loaded, hooks that ran, MCP servers, mode, model), **Trace** (per turn: thinking, tool calls with duration / size / who approved), **Cost** (context added per tool and turn, subagents). Claude Code and Codex. |
 | `pr-panel` + `pr-diff` | Mine / To review / Space / Issues. PRs grouped by whose move it is. Buttons start an agent in a worktree: Fix CI, Fix comments, AI review, Ask Claude (with the diff beside it), Diff, plus configurable requesters (e.g. Slack). Fork PRs are never checked out. |
 | `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |

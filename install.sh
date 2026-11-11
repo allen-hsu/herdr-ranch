@@ -172,5 +172,5 @@ if [ "$DRY" = 0 ] && [ "$HAVE_HERDR" = 1 ]; then
     if herdr-app check "$d" >/dev/null 2>&1; then say "ok   $n"; else say "FAIL $n"; fail=1; fi
   done
   [ "$fail" = 0 ] || { echo "Some mods failed herdr-app check; see: herdr-app check <mod folder>" >&2; exit 1; }
-  echo "Done. Switch with ⌃⌘1 (Overview) / ⌃⌘2 (Focus), or: herdr-app do layout.switch --name overview"
+  echo "Done. Board: ⌃⌘B (or the Board button top right)."
 fi

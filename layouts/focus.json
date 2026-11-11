@@ -88,7 +88,7 @@
               "id": "layout-switch",
               "type": "block",
               "size": {
-                "px": 176
+                "px": 120
               },
               "window_drag": true,
               "content": {
@@ -103,11 +103,14 @@
                     "focus"
                   ],
                   "hide": [
+                    "focus",
                     "main",
-                    "win98",
-                    "terminals"
+                    "overview",
+                    "terminals",
+                    "win98"
                   ],
-                  "panel": "panel"
+                  "panel": "panel",
+                  "board": "space-board"
                 }
               }
             }

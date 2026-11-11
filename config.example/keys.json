@@ -1,16 +1,9 @@
 {
   "global": {
-    "ctrl-cmd-1": "layout.switch:overview",
-    "ctrl-cmd-2": "layout.switch:focus",
     "ctrl-cmd-g": "layout.toggle:panel",
     "ctrl-cmd-t": "mod.open:agent-team",
-    "ctrl-cmd-n": "mod.open:team-launch"
-  },
-  "layout:overview": {
-    "alt-down": "space-folders.next",
-    "alt-up": "space-folders.prev",
-    "ctrl-shift-pagedown": "space-folders.next",
-    "ctrl-shift-pageup": "space-folders.prev"
+    "ctrl-cmd-n": "mod.open:team-launch",
+    "ctrl-cmd-b": "mod.open:space-board"
   },
   "layout:focus": {
     "alt-down": "space-folders.next",
