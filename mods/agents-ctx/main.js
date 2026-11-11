@@ -3,7 +3,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile, appHome } from "herdr";
 import { TS } from "./ui.js";
 
 // ---- context usage (added): Claude Code session -> % of context used ----
@@ -83,6 +83,23 @@ function icon(p, size, color) {
 
 export default class Agents extends View {
   init(_props, cx) {
+    // ranch: Claude Code background subagents (Agent tool) per agent, from ./subs.py — not terminals, so hc
+    // doesn't list them; shown under their agent like hc's sub-agents while they run.
+    this.csubs = {};
+    const pollSubs = (cx) => {
+      if (this.subsBusy) return;
+      const addrs = agents().filter((a) => a.program?.key === "claude" || a.app === "claude-code").map((a) => a.address).filter((a) => /^[A-Za-z0-9_-]+$/.test(a));
+      if (!addrs.length) { this.csubs = {}; return; }
+      this.subsBusy = true;
+      cx.spawn(async (cx) => {
+        const r = await exec("python3", [appHome() + "/mods/agents-ctx/subs.py", ...addrs], { timeout: 15000 }).catch(() => null);
+        try { this.csubs = JSON.parse(r?.stdout || "{}"); } catch {}
+        this.subsBusy = false; cx.notify();
+      });
+    };
+    pollSubs(cx);
+    cx.timer.every(5000, (cx) => pollSubs(cx));
+
     if (props()?.sortMenu) return;
     this.folded = new Set();
     // Each agent's last state and when it changed (ms), kept across restarts.
@@ -143,7 +160,7 @@ export default class Agents extends View {
       .tooltip(parts.map(([s, label]) => `${counts[s]} ${label}`).join(" · "))
       .children(parts.map(([s]) => h_flex().gap(3).items_center()
         .child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim))
-        .child(div().text_size(TS.tiny).text_color(s === "idle" ? t.dim : t.muted).child(String(counts[s])))));
+        .child(div().text_size(TS.meta).text_color(s === "idle" ? t.dim : t.muted).child(String(counts[s])))));
   }
 
   ctxBadge(t, pct) {
@@ -152,7 +169,7 @@ export default class Agents extends View {
     return h_flex().flex_none().gap(4).items_center().tooltip(`Context used: ${Math.round(pct)}%`)
       .child(div().w(w).h(4).rounded(2).bg(t.border)
         .child(div().h(4).rounded(2).bg(color).w(Math.max(1, Math.round(w * Math.min(pct, 100) / 100)))))
-      .child(div().text_size(TS.tiny).text_color(color).child(`${Math.round(pct)}%`));
+      .child(div().text_size(TS.meta).text_color(color).child(`${Math.round(pct)}%`));
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -278,6 +295,18 @@ export default class Agents extends View {
       .child(this.status(t, { status: st }, compact));
   }
 
+  // ranch: a running Claude Code background subagent under its agent; opens the Team map with it selected.
+  bgRow(t, a, b, last) {
+    const pic = icon(a.program, 14, t.dim);
+    return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(26).flex_none().items_center().text_size(TS.item)
+      .hover((s) => s.bg(t.hover)).cursor_pointer().tooltip(`Background subagent${b.type ? ` (${b.type})` : ""} — open in the Team map`)
+      .on_click(() => openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address, sel: b.id } }))
+      .child(div().self_start().mt(-4).w(9).h(17).mr(4).flex_none().border_l(1.5).border_color(t.input).border_b(1.5).rounded_bl(6).when(!last, (el) => el))
+      .when(Boolean(pic), (el) => el.child(div().mr(8).opacity(0.7).child(pic)))
+      .child(div().flex_1().truncate().text_color(t.muted).child(b.desc))
+      .child(this.status(t, { status: "working" }, true));
+  }
+
   // compact: a ! for blocked where a header already says "Needs you".
   status(t, a, compact = false) {
     const color = t[a.status] ?? t.dim;
@@ -319,15 +348,17 @@ export default class Agents extends View {
 
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
+      const bg = collapsed ? [] : (this.csubs?.[a.address] ?? []);
       const r = row(a, i, subs);
       if (this.folded.has(a.address)) return [r];
-      return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
+      return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority)),
+        ...bg.map((b, k) => this.bgRow(t, a, b, k === bg.length - 1))];
     };
 
     // ranch: a lead's team at a glance — members, and how many need the person (blocked / error).
     const teamChip = (a, subs) => {
       const need = subs.filter((s) => { const st = kidStatus(s.t, this.listed); return st === "blocked"; }).length;
-      return div().id(`tchip-${a.address}`).flex_none().h(16).px(4).gap(2).flex().items_center().rounded(8).text_size(TS.tiny)
+      return div().id(`tchip-${a.address}`).flex_none().h(16).px(4).gap(2).flex().items_center().rounded(8).text_size(TS.meta)
         .when(need > 0, (x) => x.bg(t.blocked).text_color("#fff")).when(!need, (x) => x.text_color(t.dim))
         .tooltip(need ? `${need} of ${subs.length} team members need you — open the Team map` : `${subs.length} team member${subs.length === 1 ? "" : "s"} — open the Team map`)
         .cursor_pointer().hover((x) => x.text_color(t.foreground))

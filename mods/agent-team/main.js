@@ -31,6 +31,7 @@ export default class AgentTeam extends View {
     this.map = Boolean(p.overlay);
     this.overlay = p.overlay;
     this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
+    this.sel = p.sel ?? null; // a member to select on open (e.g. from the sidebar)
     this.w = 980;
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));

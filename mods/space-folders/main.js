@@ -610,7 +610,7 @@ export default class Spaces extends View {
       .when(this.hoveredFolder === f.id, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
         () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }))))
       .child(this.trail().gap(4)
-        .child(div().text_size(TS.body).text_color(t.dim).child(String(inside.length)))
+        .child(div().text_size(TS.meta).text_color(t.dim).child(String(inside.length)))
         .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim)));
   }
 
@@ -760,7 +760,7 @@ export default class Spaces extends View {
       .gap(5)
       .justify_end()
       .items_center()
-      .text_size(TS.body)
+      .text_size(TS.meta)
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
@@ -771,7 +771,7 @@ export default class Spaces extends View {
       .when(Boolean(pr), (el) => {
         const c = prColor(pr, t);
         return el.child(div().id(`pr-${name}-${pr.number}`).flex_none().px(4).rounded(4).border_1().border_color(c + "66").bg(c + "1a")
-          .text_size(TS.small).text_color(c).cursor_pointer().hover((s) => s.bg(c + "33")).tooltip(prTip(pr))
+          .text_size(TS.meta).text_color(c).cursor_pointer().hover((s) => s.bg(c + "33")).tooltip(prTip(pr))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
           .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); }).child(`#${pr.number}`));
       });
