@@ -11,9 +11,9 @@
 // another machine too, with its header and spaces, when a rule matches the
 // machine's name or the folder one of its spaces works in.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
+import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, appHome } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { TS } from "./ui.js";
@@ -163,6 +163,12 @@ const lastPart = (p) => {
 export default class Spaces extends View {
   init(_props, cx) {
     this.prs = new PRCache();
+    this.logos = {};
+    if (!props()?.overlay) {
+      const logos = (cx) => cx.spawn(async (cx) => { await this.findLogos().catch(() => null); cx.notify(); });
+      logos(cx);
+      cx.timer.every(60000, (cx) => logos(cx));
+    }
     // PR data lands outside render: flag it and redraw on the next tick (cheap, only when something changed).
     this.notifyLater = () => { this.prDirty = true; };
     cx.timer.every(3000, (cx) => { if (this.prDirty) { this.prDirty = false; cx.notify(); } });
@@ -597,21 +603,59 @@ export default class Spaces extends View {
       .on_hover((h, cx) => { if (h) this.hoveredFolder = f.id; else if (this.hoveredFolder === f.id) this.hoveredFolder = null; cx.notify(); })
       .on_click(() => this.toggleFolder(machine, f.id))
       .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }));
-    // Built like a space's avatar: a filled 18px tile in the folder's color, its mark in white.
-    const tile = h_flex().size(18).flex_none().rounded(5).items_center().justify_center().bg(f.color ? (MARK[f.color] ?? f.color) : t.dim)
-      .child(svg("mods/workspace-chrome/folder.svg").size(12).mt(1).ml(1).text_color("#ffffff")); // Lucide's folder sits high-left
-    if (collapsed) return head.justify_center().child(tile);
+    // Orca-style: a thin folder outline (open when expanded) in the folder's color, or the project's own logo when
+    // one is found (this.logos); the name in bold; count, ⋯ and chevron only while hovered.
+    const tint = f.color ? (MARK[f.color] ?? f.color) : t.muted;
+    const logo = this.logos?.[f.id];
+    const mark = h_flex().size(18).flex_none().items_center().justify_center()
+      .child(logo ? image(logo).w(15).h(15).rounded(3)
+        : svg(f.folded ? "mods/workspace-chrome/folder.svg" : "mods/space-folders/folder-open.svg").size(15).text_color(tint));
+    if (collapsed) return head.justify_center().child(mark);
+    const hover = this.hoveredFolder === f.id;
     return head
-      .child(tile)
-      .child(div().flex_1().min_w(0).truncate().font_medium().child(f.name))
+      .child(mark)
+      .child(div().flex_1().min_w(0).truncate().font_semibold().child(f.name))
       // Folded, it still says when something in it is running or needs you.
       .when(f.folded && status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(f.folded && Boolean(status) && status !== "working", (el) => el.child(div().flex_none().text_color(tone(t, status)).child(glyph(status))))
-      .when(this.hoveredFolder === f.id, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
+      .when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
         () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }))))
-      .child(this.trail().gap(4)
+      .child(this.trail().gap(4).when(hover, (el) => el
         .child(div().text_size(TS.meta).text_color(t.dim).child(String(inside.length)))
-        .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim)));
+        .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim))));
+  }
+
+  // Each folder's logo, Orca-style: a favicon / app icon found in the folder's path or the repos of its spaces,
+  // copied under the app folder (image() reads only there). Looked up when folders change, at most every minute.
+  async findLogos() {
+    const f = folders(null), ps = panes(), out = {};
+    const NAMES = ["favicon.svg", "favicon.png", "apple-touch-icon.png", "icon.png", "logo.svg", "logo.png"];
+    const DIRS = ["", "public/", "static/", "assets/", "src-tauri/icons/", "app/", "src/app/", "resources/"];
+    await exec("mkdir", ["-p", `${appHome()}/ranch/logos`]).catch(() => null);
+    for (const fo of f.list ?? []) {
+      const roots = [];
+      if (fo.path) roots.push(fo.path.replace(/^~/, home()));
+      for (const s of spaces().filter((x) => !x.machine && folderOf(x, f, ps) === fo.id)) { const d = place(s, ps); if (d) roots.push(d); }
+      let found = null;
+      for (const r of roots) {
+        const subs = (await exec("find", [r, "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-not", "-name", ".*", "-not", "-name", "node_modules"], { timeout: 3000 }).catch(() => null))?.stdout.split("\n").filter(Boolean).slice(0, 12) ?? [];
+        for (const base of [r, ...subs]) {
+          for (const d of DIRS) for (const n of NAMES) {
+            if (found) break;
+            const p = `${base}/${d}${n}`;
+            if ((await exec("test", ["-f", p]).catch(() => null))?.code === 0) found = p;
+          }
+          if (found) break;
+        }
+        if (found) break;
+      }
+      if (found) {
+        const ext = found.split(".").pop();
+        const rel = `ranch/logos/${fo.id}.${ext}`;
+        if ((await exec("cp", ["-f", found, `${appHome()}/${rel}`]).catch(() => null))?.code === 0) out[fo.id] = rel;
+      }
+    }
+    this.logos = out;
   }
 
   folderMenuView(t) {
