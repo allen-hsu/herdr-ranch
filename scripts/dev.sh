@@ -13,5 +13,6 @@ SRC="$HERE/mods/$NAME"
 DRY=0; say() { printf '  %s\n' "$*"; }
 # Reuse the installer's build_mod / install_mod.
 eval "$(sed -n '/^EXCL=/,/^echo "herdr-ranch/p' "$HERE/install.sh" | sed '$d')"
+mkdir -p "$APP/ranch/icons" && rsync -a --delete "$HERE/lib/icons/" "$APP/ranch/icons/"
 install_mod "$SRC" "$NAME"
 herdr-app check "$APP/mods/$NAME/"

@@ -12,7 +12,7 @@ import { icon } from "./menu.js";
 import { loadPRs, prForPart, badgeOf, revealPR, TTL as PR_TTL } from "./prs.js";
 import { available, check, openUpdate, newer } from "./update.js";
 import { depthOf, unsearched, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
-import { TS, field } from "./ui.js";
+import { TS, field, tint, icon as uiIcon } from "./ui.js";
 
 function location(folder) {
   if (folder) return { cwd: folder, on: null };
@@ -435,8 +435,8 @@ export class Graph {
 
   prBadge(pr, t, id) {
     const b = badgeOf(pr, t);
-    return h_flex().id(id).flex_none().h(18).px(5).gap(3).items_center().rounded(4).border_1().border_color(b.color + "66").bg(b.color + "1a")
-      .text_size(TS.small).text_color(b.color).cursor_pointer().hover((s) => s.bg(b.color + "33")).tooltip(b.tip)
+    return h_flex().id(id).flex_none().h(18).px(5).gap(3).items_center().rounded(4).border_1().border_color(tint(b.color, 0.4)).bg(tint(b.color, 0.1))
+      .text_size(TS.small).text_color(b.color).cursor_pointer().hover((s) => s.bg(tint(b.color, 0.2))).tooltip(b.tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); })
       .child(b.text).when(Boolean(b.glyph), (e) => e.child(b.glyph)).when(Boolean(b.review), (e) => e.child(div().text_color(t.dim).child(b.review)));
@@ -786,7 +786,7 @@ export class Graph {
         const fg = current || part.kind === "head" ? t.background : part.kind === "tag" ? t.ansi3 : i > 0 ? t.muted : t.foreground;
         const glyph = part.kind === "branch" ? (part.head ? "check" : "branch") : part.kind === "tag" ? "tag" : "cloud";
         return h_flex().w(part.width).h_full().flex_none().px(LABEL.PAD).gap(3).items_center().overflow_hidden()
-          .when(i > 0, (e) => e.border_l(1).border_color(edge).bg(current ? t.background + "33" : edge + "1f"))
+          .when(i > 0, (e) => e.border_l(1).border_color(edge).bg(current ? tint(t.background, 0.2) : tint(edge, 0.12)))
           .when(Boolean(part.icon), (e) => e.child(svg(icon(glyph)).size(10).flex_none().text_color(fg)))
           .child(div().font_family(mono).text_size(LABEL.FONT).when(current, (e) => e.font_semibold()).text_color(fg).child(part.text));
       }));
@@ -797,7 +797,7 @@ export class Graph {
     // Merge commits are muted, as Git Graph does by default.
     const fg = commit.uncommitted ? t.muted : commit.parents.length > 1 ? t.dim : t.foreground;
     return h_flex().id(`c-${commit.hash}`).w_full().h(this.rowH()).flex_none().pr(10).gap(LABEL.GAP).items_center().overflow_hidden()
-      .when(commit.head, (e) => e.bg(color + "14")).when(this.selected === commit.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
+      .when(commit.head, (e) => e.bg(tint(color, 0.08))).when(this.selected === commit.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
       .child(this.graphCell(row, commit, colors, t, width))
       // Labels and description clip together, so many labels never push the fixed columns out.
       .child(h_flex().flex_1().min_w(0).h_full().gap(LABEL.GAP).items_center().overflow_hidden()
@@ -840,16 +840,16 @@ export class Graph {
           .bg(this.picking ? t.selected : t.raised).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.togglePicker(cx))
           .child(svg(icon("folder")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(TS.body).font_semibold().child(repo.name))))
       .when(ready && Boolean(where || this.view), (e) => e.child(h_flex().id("graph-branch-chip").h(22).pl(7).pr(5).gap(5).min_w(0).items_center().rounded(6)
-        .bg(this.view ? t.working + "2e" : t.accent + "26").text_color(this.view ? t.working : t.accent).cursor_pointer()
+        .bg(this.view ? tint(t.working, 0.18) : tint(t.accent, 0.15)).text_color(this.view ? t.working : t.accent).cursor_pointer()
         .when(this.branchPicking, (el) => el.border_1().border_color(this.view ? t.working : t.accent))
         .hover((s) => s.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.toggleBranches(cx))
         .tooltip(this.view ? `Showing only ${this.view.replace(/^refs\/(heads|remotes)\//, "")} · click to pick another` : "Pick a branch to graph")
         .child(svg(icon(this.view || this.current ? "branch" : "commit")).size(12).flex_none())
         .child(div().min_w(0).truncate().text_size(TS.body).font_semibold().child(this.view ? this.view.replace(/^refs\/(heads|remotes)\//, "") : where))
-        .child(div().flex_none().text_size(TS.tiny).text_color(t.dim).child("\u25be"))
-        .when(Boolean(this.view), (el) => el.child(div().id("graph-branch-clear").flex_none().px(3).rounded(4).text_color(t.dim)
+        .child(uiIcon("chevron-down", 12, t.dim))
+        .when(Boolean(this.view), (el) => el.child(div().id("graph-branch-clear").flex_none().p(1).rounded(4).text_color(t.dim)
           .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip("Back to all branches")
-          .on_click((_e, cx) => { cx.stop_propagation(); this.setView(null, cx); }).child("\u00d7")))))
+          .on_click((_e, cx) => { cx.stop_propagation(); this.setView(null, cx); }).child(uiIcon("x", 12, t.dim))))))
       .when(this.state === "workspace", (e) => e.child(div().flex_none().text_size(TS.body).text_color(t.dim).child(count(ws.repos.length, "repo"))))
       .child(div().flex_1())
       // A newer release: a dot, and the update window on click.
@@ -941,28 +941,28 @@ export class Graph {
 
   toolbar(t) {
     const segment = (id, text, on, action) => div().id(id).h(22).px(9).flex().items_center().rounded(5).text_size(TS.body).cursor_pointer()
-      .bg(on ? t.raised : t.background).text_color(on ? t.foreground : t.muted).when(on, (e) => e.border_1().border_color(t.border))
-      .hover((s) => s.text_color(t.foreground)).on_click(action).child(text);
+      .text_color(on ? t.foreground : t.muted).when(on, (e) => e.bg(t.selected))
+      .hover((s) => s.bg(on ? t.selected : t.hover).text_color(t.foreground)).on_click(action).child(text);
     if (this.compare) {
       const c = this.compare, n = this.compareCount;
       const chip = (id, ref, mode) => h_flex().id(id).h(22).px(7).gap(4).min_w(0).items_center().rounded(6).cursor_pointer()
-        .bg(this.branchPicking && this.pickMode === mode ? t.selected : t.raised).border_1().border_color(t.border).hover((s) => s.bg(t.hover))
+        .when(this.branchPicking && this.pickMode === mode, (e) => e.bg(t.selected)).border_1().border_color(t.border).hover((s) => s.bg(t.hover))
         .tooltip(`${mode === "base" ? "Base (what the PR merges into)" : "Head (what the PR brings in)"}: ${shortRef(ref)}`)
         .on_click((_e, cx) => this.toggleBranches(cx, mode))
         .child(div().min_w(0).max_w(180).truncate().text_size(TS.body).text_color(t.foreground).child(shortRef(ref)))
-        .child(div().flex_none().text_size(TS.tiny).text_color(t.dim).child("\u25be"));
+        .child(uiIcon("chevron-down", 12, t.dim));
       const icon2 = (id, text, tip, action) => div().id(id).px(6).py(1).rounded(5).cursor_pointer().text_color(t.muted).tooltip(tip)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(action).child(text);
-      return h_flex().h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).bg(t.accent + "0f")
+      return h_flex().h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).bg(tint(t.accent, 0.06))
         .child(div().flex_none().text_size(TS.body).font_semibold().text_color(t.accent).child("Compare"))
         .child(chip("cmp-base", c.base, "base")).child(div().flex_none().text_color(t.dim).child("\u2190")).child(chip("cmp-head", c.head, "head"))
         .child(div().flex_none().text_size(TS.meta).text_color(t.dim).child(n ? `${n.ahead} ahead \u00b7 ${n.behind} behind` : "\u2026"))
         .child(div().flex_1())
-        .child(icon2("cmp-swap", "\u21c4", "Swap base and head", (_e, cx) => this.setCompare({ base: c.head, head: c.base }, cx)))
-        .child(icon2("cmp-close", "\u00d7", "Stop comparing", (_e, cx) => this.setScope(true, cx)));
+        .child(icon2("cmp-swap", uiIcon("arrow-left-right", 14, t.muted), "Swap base and head", (_e, cx) => this.setCompare({ base: c.head, head: c.base }, cx)))
+        .child(icon2("cmp-close", uiIcon("x", 14, t.muted), "Stop comparing", (_e, cx) => this.setScope(true, cx)));
     }
     return h_flex().h(34).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
-      .child(h_flex().p(2).gap(2).rounded(7).bg(t.background).border_1().border_color(t.border)
+      .child(h_flex().p(2).gap(2).rounded(7).border_1().border_color(t.border)
         .child(segment("graph-all", "All branches", this.all && !this.view, (_e, cx) => this.setScope(true, cx)))
         .child(segment("graph-current", "Current", !this.all && !this.view, (_e, cx) => this.setScope(false, cx)))
         .when(Boolean(this.view), (e) => e.child(segment("graph-view", `Branch: ${this.view.replace(/^refs\/(heads|remotes)\//, "")}`, true, (_e, cx) => this.toggleBranches(cx)))))
@@ -1026,7 +1026,7 @@ export class Graph {
       .hover((s) => s.bg(t.accent));
     const top = h_flex().h(32).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).text_size(TS.body);
     const close = div().id("graph-details-close").px(6).py(1).rounded(4).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .on_click((_e, cx) => { this.selected = null; this.details = null; this.diff = null; cx.notify(); }).child("×");
+      .on_click((_e, cx) => { this.selected = null; this.details = null; this.diff = null; cx.notify(); }).child(uiIcon("x", 12, t.dim));
     if (this.diff) {
       const rows = this.diff.rows;
       return v_flex().flex_none().h(this.detailHeight())
@@ -1083,14 +1083,14 @@ export class Graph {
 
   // GitHub-like rows — tinted background, stronger gutter, +/− marker, accent hunk headers.
   diffRow({ kind, number, text }, t) {
-    if (kind === "@") return h_flex().w_full().h(DIFF_ROW).flex_none().px(12).items_center().bg(t.accent + "1a").text_color(t.accent)
+    if (kind === "@") return h_flex().w_full().h(DIFF_ROW).flex_none().px(12).items_center().bg(tint(t.accent, 0.1)).text_color(t.accent)
       .child(div().min_w(0).truncate().child(text));
     if (kind === "") return div().w_full().px(12).h(DIFF_ROW).flex_none().truncate().text_color(t.dim).child(text);
-    const tint = kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : null;
-    return h_flex().w_full().h(DIFF_ROW).flex_none().when(Boolean(tint), (e) => e.bg(tint + "26"))
-      .child(div().w(42).flex_none().pr(6).text_right().text_color(tint ?? t.dim).when(Boolean(tint), (e) => e.bg(tint + "40"))
+    const dc = kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : null;
+    return h_flex().w_full().h(DIFF_ROW).flex_none().when(Boolean(dc), (e) => e.bg(tint(dc, 0.15)))
+      .child(div().w(42).flex_none().pr(6).text_right().text_color(dc ?? t.dim).when(Boolean(dc), (e) => e.bg(tint(dc, 0.25)))
         .child(number === undefined ? "" : String(number)))
-      .child(div().w(18).flex_none().text_center().text_color(tint ?? t.dim).child(kind === "+" ? "+" : kind === "-" ? "\u2212" : ""))
+      .child(div().w(18).flex_none().text_center().text_color(dc ?? t.dim).child(kind === "+" ? "+" : kind === "-" ? "\u2212" : ""))
       .child(div().flex_1().min_w(0).pr(12).truncate().text_color(t.foreground).child(text));
   }
 
@@ -1103,7 +1103,7 @@ export class Graph {
       : s === "error" ? ["graph", "Can't read the history", this.error]
       : ["graph", "Loading history…", ""];
     return v_flex().flex_1().min_h(0).items_center().justify_center().gap(10).px(28).pb(40)
-      .child(div().size(46).rounded(12).bg(t.raised).border_1().border_color(t.border).flex().items_center().justify_center()
+      .child(div().size(46).rounded(12).bg(t.surface).flex().items_center().justify_center()
         .child(svg(icon(glyph)).size(22).text_color(s === "error" ? t.ansi1 : t.muted)))
       .child(div().text_size(TS.title).font_semibold().text_color(t.foreground).child(title))
       .when(Boolean(body), (e) => e.child(div().max_w(280).text_center().text_size(TS.body).text_color(t.muted).child(body)));

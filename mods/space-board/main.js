@@ -3,10 +3,10 @@
 // A card goes where you drag it (kept in shared "board.columns"); until then it is placed automatically: an agent
 // working or needing you -> In progress; an open PR -> In review; agents but none working -> In progress; none -> Todo.
 // Pin a card (hover → pin icon) to keep it at the top of its column. Click a card to go to that space.
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Popover } from "gpui-base";
 import { spaces, agents, panes, run, theme, props, shared, setShared, closeOverlay, exec } from "herdr";
-import { TS, dialogTitle, escChip } from "./ui.js";
+import { TS, C, dialogTitle, escChip, icon, statusMark, statusOf } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { PRCache, prColor, prTip, repoSlug } from "./prs.js";
 import { place } from "./folders.js";
@@ -75,19 +75,11 @@ export default class Board extends View {
     setShared("board.pinned", [...p]);
   }
 
-  mark(t, mine) {
-    if (mine.some((a) => a.status === "blocked")) return div().size(12).rounded(6).bg(t.blocked).flex().items_center().justify_center().text_size(TS.tiny).font_bold().text_color("#fff").child("!");
-    if (mine.some((a) => a.status === "working")) return svg("mods/workspace-chrome/spinner.svg").size(12).text_color(t.working).spin(900);
-    if (mine.some((a) => a.status === "done")) return div().size(8).rounded(4).bg(t.done ?? t.accent);
-    return mine.length ? div().size(8).rounded(4).border_1().border_color(t.dim) : div().size(5).rounded(3).bg(t.border);
-  }
+  mark(t, mine) { return statusMark(t, statusOf(mine)); }
 
   // Agent status: only states worth seeing get a mark (idle agents stay plain, so nothing looks "finished" by mistake).
   agentMark(t, a) {
-    if (a.status === "working") return svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900);
-    if (a.status === "blocked") return div().size(6).rounded(3).bg(t.blocked);
-    if (a.status === "done") return svg("mods/workspace-chrome/check.svg").size(10).text_color(t.done ?? t.accent);
-    return div();
+    return a.status === "working" || a.status === "blocked" || a.status === "error" || a.status === "done" ? statusMark(t, a.status, { size: 10 }) : div();
   }
 
   // A card in Herdr's list style: no outline, a background tier, hover lighter, the current space selected,
@@ -101,7 +93,7 @@ export default class Board extends View {
     return v_flex().id(`card-${s.id}`).relative().w_full().px(12).py(10).gap(4).rounded(8).cursor_pointer().flex_none()
       .bg(s.active ? t.selected : t.surface).hover((x) => x.bg(t.hover))
       .on_hover((h, cx) => { const v = h ? s.id : this.hover === s.id ? null : this.hover; if (v !== this.hover) { this.hover = v; cx.notify(); } })
-      .when(c.need, (x) => x.child(div().absolute().left(0).top(10).bottom(10).w(2).rounded(1).bg(t.blocked)))
+      .when(c.need, (x) => x.child(div().absolute().left(0).top(10).bottom(10).w(2).rounded(1).bg(C(t).status.blocked)))
       .when(dragging && this.moved, (x) => x.opacity(0.35))
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.drag = { id: s.id, from: c.col }; this.moved = false; })
       .on_click(() => { if (this.moved) return; run("space.select", { id: s.id }); closeOverlay(this.overlay); })
@@ -109,14 +101,14 @@ export default class Board extends View {
         .child(div().w(16).flex_none().flex().justify_center().child(this.mark(t, c.mine)))
         .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(name))
         .when(Boolean(c.pr), (x) => x.child(div().flex_none().text_size(11).text_color(prColor(c.pr, t)).tooltip(prTip(c.pr)).child(`#${c.pr.number}`)))
-        .when(c.manual, (x) => x.child(div().id(`auto-${s.id}`).flex_none().text_size(11).text_color(t.dim).hover((h) => h.text_color(t.foreground))
+        .when(c.manual, (x) => x.child(div().id(`auto-${s.id}`).flex_none().size(18).flex().items_center().justify_center().rounded(4).hover((h) => h.bg(t.raised))
           .tooltip("You placed this card. Click to let it follow its agents and PR again.")
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setCol(s.id, null); cx.notify(); }).child("↺")))
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setCol(s.id, null); cx.notify(); }).child(icon("rotate-ccw", 12, t.dim))))
         .when(c.pinned || hovered, (x) => x.child(div().id(`pin-${s.id}`).flex_none().size(18).flex().items_center().justify_center().rounded(4)
           .hover((h) => h.bg(t.raised)).tooltip(c.pinned ? "Unpin" : "Pin to the top of its column")
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setPinned(s.id, !c.pinned); cx.notify(); })
-          .child(svg(`mods/workspace-chrome/${c.pinned && hovered ? "pin-off" : "pin"}.svg`).size(11).text_color(c.pinned ? t.foreground : t.dim)))))
-      .when(c.need, (x) => x.child(div().pl(22).text_size(11).text_color(t.blocked).child("needs you")))
+          .child(icon(c.pinned && hovered ? "pin-off" : "pin", 12, c.pinned ? t.foreground : t.dim)))))
+      .when(c.need, (x) => x.child(h_flex().pl(22).child(statusMark(t, "blocked", { label: true }))))
       .when(Boolean(branch || c.worktree), (x) => x.child(div().pl(22).truncate().text_size(11).text_color(t.dim)
         .child([branch, c.worktree ? "worktree" : null].filter(Boolean).join(" · "))))
       .children(shown.map((a) => h_flex().pl(22).gap(6).items_center().min_w(0)
@@ -149,11 +141,11 @@ export default class Board extends View {
       .when(right != null, (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child(right)));
     const trigger = h_flex().id("bd-pick").w(260).h(36).px(10).gap(8).items_center().rounded(9).border_1()
       .border_color(this.pickOpen ? t.accent : t.input).bg(t.background).cursor_pointer()
-      .child(div().w(16).flex_none().flex().justify_center().child(cur ? this.mark(t, cur.mine) : svg("mods/workspace-chrome/layers.svg").size(14).text_color(t.dim)))
+      .child(div().w(16).flex_none().flex().justify_center().child(cur ? this.mark(t, cur.mine) : icon("layers", 14, t.dim)))
       .child(div().flex_1().min_w(0).truncate().text_size(12.8).text_color(cur ? t.foreground : t.muted).child(cur ? label(cur) : "All spaces"))
-      .child(svg("mods/workspace-chrome/chevron-down.svg").size(13).flex_none().text_color(t.dim));
+      .child(icon("chevron-down", 14, t.dim));
     const list = v_flex().id("bd-pick-list").w(260).mt(4).p(4).gap(1).rounded(9).border_1().border_color(t.border).bg(t.popover)
-      .child(row(null, svg("mods/workspace-chrome/layers.svg").size(13).text_color(t.dim), "All spaces", String(all.length), !cur))
+      .child(row(null, icon("layers", 12, t.dim), "All spaces", String(all.length), !cur))
       .child(div().h(1).mx(4).my(3).bg(t.border))
       .children(all.map((c) => row(c.s.id, this.mark(t, c.mine), label(c), c.mine.length ? `${c.mine.length} agent${c.mine.length > 1 ? "s" : ""}` : null, c.s.id === this.only)));
     return Popover.new("bd-space").open(this.pickOpen).on_open_change((o, cx) => { this.pickOpen = o; cx.notify(); })
@@ -173,11 +165,11 @@ export default class Board extends View {
       .child(escChip(t, "bd-esc", () => closeOverlay(this.overlay)));
     const column = (col) => {
       const list = cards.filter((c) => c.col === col.id).sort((a, b) => (b.pinned - a.pinned) || (b.need - a.need) || (b.s.active - a.s.active));
-      const tint = col.id === "progress" ? t.working : col.id === "review" ? (t.done ?? t.accent) : col.id === "done" ? t.accent : t.dim;
+      const st = C(t).status, dotC = col.id === "progress" ? st.working : col.id === "review" ? st.done : col.id === "done" ? t.accent : t.dim;
       const target = dragging && this.drag.from !== col.id;
       return this.zone(t, col.id, v_flex().id(`col-${col.id}`).w(COL_W).flex_none().h_full().gap(6)
         .child(h_flex().h(28).px(4).gap(8).items_center().flex_none()
-          .child(div().size(7).rounded(4).bg(tint))
+          .child(div().size(7).rounded(4).bg(dotC))
           .child(div().text_size(13).font_semibold().text_color(t.foreground).child(col.name))
           .child(div().text_size(11).text_color(t.dim).child(String(list.length))))
         .child(v_flex().id(`colbody-${col.id}`).flex_1().min_h(0).gap(6).rounded(8).overflow_y_scrollbar()

@@ -4,11 +4,11 @@
 //            agent activity, last commit, size; cleanable ones pre-selected; plus folders under
 //            ~/.herdr/worktrees that git no longer knows (never pre-selected).
 // Cleanable: stale (folder gone), or merged + clean + pushed + no agent working there.
-import { div, svg } from "gpui-kit";
+import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, spaces, panes, agents, run, openOverlay, notify, home, shared, setShared } from "herdr";
 import { mainRoot, list, inspect, remove, prune, repoName } from "./wt.js";
-import { TS, SPACE } from "./ui.js";
+import { TS, SPACE, C, icon } from "./ui.js";
 
 const CACHE = "worktrees.scan"; // shared: { at, repos: [...], orphans: [...] } so pill and window agree
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
@@ -97,7 +97,7 @@ export class ResourcesPill {
       .child(h_flex().id("wt-pill-btn").h(20).px(7).gap(6).items_center().rounded(5).cursor_pointer().hover((st) => st.bg(t.hover).text_color(t.foreground))
         .tooltip("Worktrees across your repos: state, size, what can be cleaned")
         .on_click(() => openOverlay({ mod: "worktrees", kind: "window", key: "worktree-resources", width: 560, height: 680, props: { view: "window" } }))
-        .child(svg("mods/workspace-chrome/git-branch.svg").size(12))
+        .child(icon("git-branch", 12))
         .child(div().child(`${s.count} worktree${s.count === 1 ? "" : "s"} · ${size(s.kb)}`))
         .when(s.cleanable > 0, (e) => e.child(div().text_color(t.working).child(`${s.cleanable} cleanable`))));
   }
@@ -246,7 +246,7 @@ export class ResourcesWindow {
   }
   check(t, on, pickable) {
     return div().size(14).flex_none().rounded(3).border_1().border_color(on ? t.accent : t.input).flex().items_center().justify_center()
-      .when(on, (e) => e.bg(t.accent).child(div().text_size(TS.tiny).text_color(t.accent_foreground ?? "#fff").child("✓"))).when(!pickable, (e) => e.opacity(0.25));
+      .when(on, (e) => e.bg(t.accent).child(div().text_size(TS.tiny).child(icon("check", 10, C(t).on.accent)))).when(!pickable, (e) => e.opacity(0.25));
   }
 
   overviewView(t) {
@@ -257,18 +257,18 @@ export class ResourcesWindow {
       const fr = this.folded.has(r.name);
       rows.push(h_flex().id(`rm-r-${i}`).h(30).px(10).gap(6).items_center().cursor_pointer().hover((x) => x.bg(t.hover)).text_size(TS.body).font_semibold()
         .on_click((_e, cx) => { fr ? this.folded.delete(r.name) : this.folded.add(r.name); cx.notify(); })
-        .child(div().w(12).text_color(t.dim).child(fr ? "▸" : "▾")).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(r.name.toUpperCase()))
+        .child(icon(fr ? "chevron-right" : "chevron-down", 12, t.dim)).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(r.name.toUpperCase()))
         .children(this.pctMem(t, r.cpu, r.rss, false)));
       if (fr) return;
       r.worktrees.forEach((w, j) => {
         const key = `${r.name}/${w.label}`, fw = this.folded.has(key);
         rows.push(h_flex().id(`rm-w-${i}-${j}`).h(28).pl(26).pr(10).gap(6).items_center().cursor_pointer().hover((x) => x.bg(t.hover)).text_size(TS.body)
           .on_click((_e, cx) => { fw ? this.folded.delete(key) : this.folded.add(key); cx.notify(); })
-          .child(div().w(12).text_color(t.dim).child(fw ? "▸" : "▾")).child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(w.label))
+          .child(icon(fw ? "chevron-right" : "chevron-down", 12, t.dim)).child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(w.label))
           .child(this.spark(t, key)).children(this.pctMem(t, w.cpu, w.rss, true)));
         if (fw) return;
         w.terms.forEach((x, k) => rows.push(h_flex().id(`rm-t-${i}-${j}-${k}`).h(24).pl(44).pr(10).gap(8).items_center().text_size(TS.body).hover((y) => y.bg(t.hover))
-          .child(div().size(6).rounded(3).bg(x.live ? t.done : t.dim)).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(x.name))
+          .child(div().size(6).rounded(3).bg(x.live ? C(t).status.done : t.dim)).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(x.name))
           .children(this.pctMem(t, x.cpu, x.rss, false))));
       });
     });
@@ -283,15 +283,15 @@ export class ResourcesWindow {
       .child(h_flex().h(26).px(10).gap(6).items_center().text_size(TS.small).text_color(t.dim).border_b(1).border_color(t.border)
         .child(div().flex_1().pl(18).child("Name")).child(div().w(80)).child(div().w(60).text_right().child("CPU")).child(div().w(76).text_right().child("Memory")))
       .child(v_flex().id("rm-tree").flex_1().min_h(0).overflow_y_scrollbar().children(rows))
-      .child(div().px(10).pt(8).child(h_flex().id("rm-clean").h(36).px(SPACE.dialog).items_center().rounded(8).border_1().border_color(t.border).cursor_pointer()
+      .child(div().px(10).pt(8).child(h_flex().id("rm-clean").h(36).px(SPACE.dialog).items_center().rounded(8).bg(t.surface).cursor_pointer()
         .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.view = "cleanup"; cx.notify(); })
         .child(div().flex_1().text_size(TS.item).text_color(t.foreground).child("Clean up worktrees"))
         .when(cleanable > 0, (e) => e.child(div().mr(8).text_size(TS.meta).text_color(t.working).child(`${cleanable} cleanable`)))
-        .child(div().text_color(t.dim).child("›"))))
+        .child(icon("chevron-right", 14, t.dim))))
       .child(h_flex().px(SPACE.dialog).py(10).gap(10).items_center().text_size(TS.body)
         .child(div().text_color(t.foreground).font_medium().child("Disk"))
         .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${size(s.kb)} in ${s.count} linked worktree${s.count === 1 ? "" : "s"} · updated ${this.scannedAt ? ago(this.scannedAt / 1000) + " ago" : "now"}`))
-        .child(this.iconBtn(t, "rm-disk-refresh", this.scanning ? "…" : "↻", "Rescan worktrees and sizes", (_e, cx) => this.refresh(cx)))
+        .child(this.iconBtn(t, "rm-disk-refresh", this.scanning ? "…" : icon("refresh-cw", 14, t.dim), "Rescan worktrees and sizes", (_e, cx) => this.refresh(cx)))
         .child(div().id("rm-review").px(8).py(2).rounded(6).cursor_pointer().text_color(t.foreground).hover((x) => x.bg(t.hover))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.view = "cleanup"; cx.notify(); }).child("Review")));
   }
@@ -311,7 +311,7 @@ export class ResourcesWindow {
       .child(div().w(64).flex_none().text_right().text_color(t.dim).child(size(w.info?.kb)))
       .child(div().w(46).flex_none().flex().justify_end().when(!w.orphan && w.info?.exists !== false, (e) => e.child(
         div().id(`res-open-${k}`).px(6).rounded(4).text_size(TS.small).text_color(t.muted).border_1().border_color(t.border).cursor_pointer()
-          .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { cx.stop_propagation(); sp ? run("space.select", { id: sp.id }) : run("space.new", { name: w.branch ?? "worktree", folder: w.path }); })
+          .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => { cx.stop_propagation(); sp ? run("space.select", { id: sp.id }) : run("space.new", { name: w.branch ?? "worktree", folder: w.path }); })
           .child("Open"))));
   }
 
@@ -336,7 +336,7 @@ export class ResourcesWindow {
         .child(small("res-none", "Clear", (_e, cx) => { this.picked.clear(); cx.notify(); }))
         .child(div().flex_1())
         .child(div().id("res-clean").flex_none().h(30).px(SPACE.dialog).flex().items_center().rounded(7).text_size(TS.body)
-          .bg(n && !this.busy ? t.blocked : t.raised).text_color(n && !this.busy ? (t.solid_foreground ?? "#fff") : t.dim)
+          .bg(n && !this.busy ? t.blocked : t.raised).text_color(n && !this.busy ? C(t).on.status : t.dim)
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .when(n > 0 && !this.busy, (e) => e.cursor_pointer().on_click((_e, cx) => cx.spawn(async (cx) => this.clean(cx))))
           .child(this.busy ? "Deleting…" : `Delete ${n} selected`)));
@@ -346,15 +346,15 @@ export class ResourcesWindow {
     const cleanup = this.view === "cleanup";
     return v_flex().size_full().bg(t.popover ?? t.surface).text_color(t.foreground)
       .child(h_flex().h(42).px(12).gap(6).items_center().border_b(1).border_color(t.border).flex_none()
-        .when(cleanup, (e) => e.child(this.iconBtn(t, "rm-back", "‹", "Back to resources", (_e, cx) => { this.view = "overview"; cx.notify(); })))
+        .when(cleanup, (e) => e.child(this.iconBtn(t, "rm-back", icon("chevron-left", 14, t.dim), "Back to resources", (_e, cx) => { this.view = "overview"; cx.notify(); })))
         .child(div().text_size(TS.title).font_semibold().child(cleanup ? "Clean up worktrees" : "Resource Manager"))
         .child(div().flex_1())
-        .child(this.iconBtn(t, "rm-refresh", this.scanning || this.sampling ? "…" : "↻", "Refresh", (_e, cx) => { this.refresh(cx); this.tick(cx); }))
-        .when(!cleanup, (e) => e.child(this.iconBtn(t, "rm-trash", "🗑", "Clean up everything that's safe to remove…", (_e, cx) => {
+        .child(this.iconBtn(t, "rm-refresh", this.scanning || this.sampling ? "…" : icon("refresh-cw", 14, t.dim), "Refresh", (_e, cx) => { this.refresh(cx); this.tick(cx); }))
+        .when(!cleanup, (e) => e.child(this.iconBtn(t, "rm-trash", icon("trash-2", 14, t.dim), "Clean up everything that's safe to remove…", (_e, cx) => {
           for (const w of this.allCleanable()) this.picked.add(w.path);
           this.view = "cleanup"; cx.notify();
         })))
-        .child(this.iconBtn(t, "rm-close", "×", "Close", () => run("overlay.close", { id: this.overlay }))))
+        .child(this.iconBtn(t, "rm-close", icon("x", 14, t.dim), "Close", () => run("overlay.close", { id: this.overlay }))))
       .child(div().flex_1().min_h(0).child(cleanup ? this.cleanupView(t) : this.overviewView(t)));
   }
 }

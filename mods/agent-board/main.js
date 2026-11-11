@@ -8,7 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, agents, panes, spaces, focused, props, run, theme, shared, setShared, terminals, openOverlay } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
 import { agentName } from "./agentname.js";
-import { TS } from "./ui.js";
+import { TS, C, icon, statusMark } from "./ui.js";
 
 // Workflow order, left to right: waiting on you -> not started / idle -> in progress -> finished.
 const COLUMNS = [
@@ -30,7 +30,7 @@ function statusDots(t, items) {
   const counts = {};
   for (const a of items) counts[norm(a.status)] = (counts[norm(a.status)] ?? 0) + 1;
   return h_flex().gap(8).items_center().children(COLUMNS.map((c) => c.status).filter((s) => counts[s]).map((s) =>
-    h_flex().gap(4).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(counts[s])))));
+    h_flex().gap(4).items_center().child(statusMark(t, s, { size: 10 })).child(div().text_size(TS.small).text_color(t.dim).child(String(counts[s])))));
 }
 
 export default class AgentBoard extends View {
@@ -115,19 +115,21 @@ export default class AgentBoard extends View {
     return prog.tint ? svg(prog.icon).size(14).text_color(prog.color ?? t.foreground) : image(prog.icon).size(14);
   }
 
+  // [color, text, icon name or null]
   doing(t, a, l) {
-    if (!l) return [t.dim, "…"];
-    if (l.program) return [t.dim, l.program];
+    const st = C(t).status;
+    if (!l) return [t.dim, "…", null];
+    if (l.program) return [t.dim, l.program, null];
     if (a.status === "blocked") {
-      if (l.tool?.name === "AskUserQuestion") return [t.blocked, `? ${l.tool.target}`];
-      if (l.tool) return [t.blocked, `Needs approval · ${l.tool.name}${l.tool.target ? `: ${l.tool.target}` : ""}`];
-      return [t.blocked, l.text ?? "Waiting for you"];
+      if (l.tool?.name === "AskUserQuestion") return [st.blocked, `? ${l.tool.target}`, null];
+      if (l.tool) return [st.blocked, `Needs approval · ${l.tool.name}${l.tool.target ? `: ${l.tool.target}` : ""}`, null];
+      return [st.blocked, l.text ?? "Waiting for you", null];
     }
     if (a.status === "working") {
-      if (l.tool) return [t.working, `▶ ${l.tool.name}${l.tool.target ? ` · ${l.tool.target}` : ""}`];
-      return [t.working, l.text ? `✎ ${l.text}` : "Thinking…"];
+      if (l.tool) return [st.working, `${l.tool.name}${l.tool.target ? ` · ${l.tool.target}` : ""}`, "wrench"];
+      return [st.working, l.text ? `✎ ${l.text}` : "Thinking…", null];
     }
-    return [t.muted, l.text ? `✓ ${l.text}` : l.tool ? `✓ last: ${l.tool.name}` : "—"];
+    return [t.muted, l.text ? l.text : l.tool ? `last: ${l.tool.name}` : "—", l.text || l.tool ? "check" : null];
   }
 
   card(t, a, now) {
@@ -135,9 +137,9 @@ export default class AgentBoard extends View {
     const pane = panes().find((p) => p.terminal === a.address);
     const project = (pane?.cwd ?? l?.cwd ?? "").split("/").filter(Boolean).pop() ?? "";
     const where = [spaceLabel(a.space_name), project !== a.space_name ? project : null, pane?.branch].filter(Boolean).join(" · ");
-    const [dc, dt] = this.doing(t, a, l);
+    const [dc, dt, di] = this.doing(t, a, l);
     const ctx = l?.ctx;
-    const ctxColor = ctx >= 80 ? t.blocked : ctx >= 60 ? t.working : t.accent;
+    const ctxColor = ctx >= 80 ? C(t).status.blocked : ctx >= 60 ? C(t).status.working : t.accent;
     const openLayout = props()?.open_layout;
     // Team role (members started with an hc template) or team size (leads with live members).
     const VENDOR = { claude: "Claude", codex: "Codex", grok: "Grok", cursor: "Cursor", gemini: "Gemini" };
@@ -146,9 +148,10 @@ export default class AgentBoard extends View {
     let kids = 0;
     try { kids = (terminals() ?? []).filter((x) => x.parent === a.address && x.state !== "finished").length; } catch {}
     const roleChip = tm ? `${tm[1]} · ${VENDOR[tm[2]]}${lead ? ` · for ${agentName(lead)}` : ""}` : kids ? `lead · team of ${kids}` : null;
-    return v_flex().id(`card-${a.address}`).mx(6).mb(6).px(10).py(8).gap(4).rounded(8)
-      .bg(a.focused ? t.selected : t.surface).border(1).border_color(norm(a.status) === "blocked" ? t.blocked : t.border)
-      .cursor_pointer().hover((s) => s.border_color(t.input))
+    return v_flex().id(`card-${a.address}`).relative().mx(6).mb(6).px(10).py(8).gap(4).rounded(8)
+      .bg(a.focused ? t.selected : t.surface).when(!a.focused, (e) => e.hover((s) => s.bg(t.hover)))
+      .when(norm(a.status) === "blocked", (e) => e.child(div().absolute().left(0).top(8).bottom(8).w(2).rounded(1).bg(C(t).status.blocked)))
+      .cursor_pointer()
       .on_click(() => { run("pane.focus", { pane: a.pane }); if (openLayout) run("layout.switch", { name: openLayout }); })
       .tooltip(openLayout ? "Open this agent" : "Focus this agent")
       .child(h_flex().gap(6).items_center()
@@ -156,12 +159,13 @@ export default class AgentBoard extends View {
         .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_semibold().text_color(t.foreground).child(agentName(a) || a.program?.name || a.address))
         .child(div().flex_none().text_size(TS.small).text_color(t.dim).child(since(now - (this.changed[a.address]?.at ?? now)))))
       .when(Boolean(where), (el) => el.child(div().truncate().text_size(TS.small).text_color(t.dim).child(where)))
-      .when(Boolean(roleChip), (el) => el.child(h_flex().child(div().id(`role-${a.address}`).max_w_full().truncate().px(6).rounded(8).border_1().border_color(t.accent)
+      .when(Boolean(roleChip), (el) => el.child(h_flex().child(div().id(`role-${a.address}`).max_w_full().truncate().px(6).rounded(8).border_1().border_color(t.border)
         .text_size(TS.tiny).text_color(t.accent).tooltip(kids && !tm ? "Open the Team map" : "Team role")
         .when(kids > 0 && !tm, (x) => x.cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); }))
         .child(roleChip))))
       .when(Boolean(l?.task), (el) => el.child(div().truncate().text_size(TS.meta).text_color(t.muted).child(`${l?.parent ? "Lead" : "You"}: ${l.task}`)))
-      .child(div().text_size(TS.meta).text_color(dc).child(dt))
+      .child(h_flex().gap(6).items_start().when(Boolean(di), (e) => e.child(div().mt(2).child(icon(di, 12, dc))))
+        .child(div().flex_1().min_w(0).text_size(TS.meta).text_color(dc).child(dt)))
       .when(ctx != null || l?.cost != null, (el) => el.child(h_flex().gap(6).items_center().pt(2)
         .when(ctx != null, (el) => el
           .child(div().w(54).h(4).rounded(2).bg(t.border).child(div().h(4).rounded(2).bg(ctxColor).w(Math.max(1, Math.round(54 * Math.min(ctx, 100) / 100)))))
@@ -178,25 +182,26 @@ export default class AgentBoard extends View {
     const list = this.filtered(everyone).filter((a) => !(this.hideIdle && a.status === "idle"));
     const recent = (a, b) => (b.pinned - a.pinned) || (this.changed[b.address]?.at ?? 0) - (this.changed[a.address]?.at ?? 0);
     const f = getFilter();
-    const pill = (id, label, on, onClick, tip) => div().id(id).px(9).py(2).rounded(6).cursor_pointer().text_size(TS.meta)
-      .border(1).border_color(on ? t.accent : t.border).text_color(on ? t.foreground : t.muted).when(on, (el) => el.bg(t.selected))
-      .hover((s) => s.text_color(t.foreground)).tooltip(tip).on_click(onClick).child(label);
+    const pill = (id, label, on, onClick, tip, ic = null) => h_flex().id(id).px(9).py(2).gap(4).items_center().rounded(6).cursor_pointer().text_size(TS.meta)
+      .border(1).border_color(t.border).text_color(on ? t.foreground : t.muted).when(on, (el) => el.bg(t.selected))
+      .when(!on, (el) => el.hover((s) => s.bg(t.hover).text_color(t.foreground))).tooltip(tip).on_click(onClick)
+      .when(label != null, (el) => el.child(label)).when(Boolean(ic), (el) => el.child(icon(ic, 12, t.dim)));
     const bar = h_flex().px(6).h(32).flex_none().gap(8).items_center()
       .child(div().text_size(TS.body).font_semibold().text_color(t.foreground).child("Agents"))
       .child(div().text_size(TS.meta).text_color(t.dim).child(f === "all" ? String(everyone.length) : `${list.length} / ${everyone.length}`))
       .child(statusDots(t, list))
       .child(div().flex_1())
-      .child(pill("flt-spaces", `${this.filterLabel(everyone)}  ▾`, f !== "all",
+      .child(pill("flt-spaces", this.filterLabel(everyone), f !== "all",
         () => run("mod.open", { name: props()?.picker_mod ?? "agent-board-picker" }),
-        "Choose which spaces the board shows"))
-      .when(f !== "all", (el) => el.child(pill("flt-clear", "×", false, () => setFilter("all"), "Show all spaces")))
+        "Choose which spaces the board shows", "chevron-down"))
+      .when(f !== "all", (el) => el.child(pill("flt-clear", null, false, () => setFilter("all"), "Show all spaces", "x")))
       .child(pill("flt-idle", "Hide idle", this.hideIdle, (_e, cx) => { this.hideIdle = !this.hideIdle; localStorage.setItem("hideIdle", this.hideIdle ? "1" : "0"); cx.notify(); }, "Hide agents that are idle"));
     const board = h_flex().id("board-cols").flex_1().min_h(0).gap(6).items_start()
       .children(COLUMNS.map((col) => {
         const items = list.filter((a) => norm(a.status) === col.status).sort(recent);
         return v_flex().id(`col-${col.status}`).flex_1().min_w(0).h_full().rounded(10).bg(t.chrome).border(1).border_color(t.border)
           .child(h_flex().px(12).h(34).flex_none().gap(6).items_center()
-            .child(div().w(7).h(7).rounded(4).bg(t[col.status] ?? t.dim))
+            .child(statusMark(t, col.status))
             .child(div().text_size(TS.body).font_semibold().text_color(t.foreground).child(col.label))
             .child(div().text_size(TS.meta).text_color(t.dim).child(String(items.length))))
           .child(v_flex().id(`colbody-${col.status}`).flex_1().min_h(0).pt(2).overflow_y_scrollbar()

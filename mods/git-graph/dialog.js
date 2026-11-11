@@ -73,8 +73,8 @@ export class Dialog {
         .child(Input.new(state).h(36).px(10).rounded(9).border_1().border_color(this.focusedInput === i ? t.accent : t.input).bg(t.background).text_size(TS.item).text_color(t.foreground))))
       .when(Boolean(s.choice), (el) => el.child(label(s.choice.label)).children(s.choice.options.map((o) => {
         const on = this.values[s.choice.id] === o.value;
-        return h_flex().id(`gd-choice-${o.value}`).h(38).mb(4).px(10).gap(10).items_center().rounded(8).border_1().cursor_pointer()
-          .border_color(on ? (o.danger ? t.ansi1 : t.accent) : t.border).when(on, (e) => e.bg(t.selected)).hover((st) => st.bg(t.hover))
+        return h_flex().id(`gd-choice-${o.value}`).h(38).mb(4).px(10).gap(10).items_center().rounded(8).cursor_pointer()
+          .bg(on ? t.selected : t.surface).hover((st) => st.bg(on ? t.selected : t.hover))
           .on_click((_e, cx) => { this.values[s.choice.id] = o.value; this.error = null; cx.notify(); })
           .child(div().size(14).flex_none().rounded(7).border_1().border_color(on ? (o.danger ? t.ansi1 : t.accent) : t.input).flex().items_center().justify_center()
             .when(on, (e) => e.child(div().size(6).rounded(3).bg(o.danger ? t.ansi1 : t.accent))))

@@ -70,7 +70,7 @@ export class Update {
       .child(h_flex().items_center().child(div().flex_1().text_size(TS.title).font_semibold().child(`Git Graph ${latest?.tag ?? ""} is out`))
         .child(div().text_size(TS.meta).text_color(t.dim).child("Esc")))
       .child(div().pt(6).text_color(t.muted).child(`You have v${VERSION}. To update, ask your Herdr agent:`))
-      .child(div().mt(8).px(10).py(8).rounded(8).bg(t.background).border_1().border_color(t.border).font_family(settings().font_family ?? "JetBrains Mono").text_size(TS.body).child(PROMPT))
+      .child(div().mt(8).px(10).py(8).rounded(8).bg(t.surface).font_family(settings().font_family ?? "JetBrains Mono").text_size(TS.body).child(PROMPT))
       .child(div().pt(14).pb(6).text_size(TS.body).text_color(t.dim).child("What changed"))
       // Release notes are markdown; links open in the browser.
       .child(div().flex_1().min_h(0).text_size(TS.body).text_color(t.muted)

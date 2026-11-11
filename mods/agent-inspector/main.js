@@ -9,7 +9,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run } from "herdr";
-import { TS, SPACE } from "./ui.js";
+import { TS, SPACE, C, icon } from "./ui.js";
 import { agentName } from "./agentname.js";
 
 const k = (n) => (n == null ? "–" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
@@ -74,7 +74,7 @@ export default class AgentInspector extends View {
   }
   note(t, s) { return div().px(SPACE.panel).py(4).text_size(TS.small).text_color(t.dim).child(s); }
   stat(t, label, value, color, tip) {
-    const el = v_flex().id(`st-${label}`).flex_1().min_w(0).px(10).py(8).rounded(8).bg(t.surface).border(1).border_color(t.border).gap(1)
+    const el = v_flex().id(`st-${label}`).flex_1().min_w(0).px(10).py(8).rounded(8).bg(t.surface).gap(1)
       .child(div().text_size(TS.tiny).text_color(t.dim).child(label))
       .child(div().text_size(TS.title).font_semibold().text_color(color ?? t.foreground).child(value));
     return tip ? el.tooltip(tip) : el;
@@ -82,12 +82,12 @@ export default class AgentInspector extends View {
   // Wider panel for the waterfall: toggles the layout's "panel" column between its default and a wide size.
   widthToggle(t) {
     const wide = (this.width ?? 440) >= 600;
-    return div().id("ai-wide").flex_none().px(6).py(1).rounded(5).text_size(TS.small).text_color(t.dim).cursor_pointer()
+    return h_flex().id("ai-wide").flex_none().gap(4).items_center().px(6).py(1).rounded(5).text_size(TS.small).text_color(t.dim).cursor_pointer()
       .hover((e) => e.bg(t.hover).text_color(t.foreground)).tooltip(wide ? "Narrow the panel" : "Widen the panel (easier to read the trace)")
       .on_click((_e, _cx) => run("layout.resize", { id: "panel", px: wide ? 440 : 760 }))
-      .child(wide ? "⇥ Narrow" : "⇤ Wide");
+      .child(icon("chevrons-left-right", 14, t.dim)).child(wide ? "Narrow" : "Wide");
   }
-  lvlColor(t, l) { return l === "error" ? t.blocked : l === "warn" ? t.working : t.dim; }
+  lvlColor(t, l) { const c = C(t).status; return l === "error" ? c.blocked : l === "warn" ? c.working : t.dim; }
 
   // ---------- derived alerts (live state) ----------
   liveIssues(t, d) {
@@ -148,7 +148,7 @@ export default class AgentInspector extends View {
     for (const [i, x] of hooks.entries()) {
       const bad = x.errors || x.timeouts;
       out.push(h_flex().id(`c-h-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta)
-        .child(div().w(6).h(6).rounded(3).flex_none().bg(bad ? t.blocked : t.done))
+        .child(div().w(6).h(6).rounded(3).flex_none().bg(bad ? C(t).status.blocked : C(t).status.done))
         .child(div().flex_none().w(96).truncate().text_color(t.muted).child(x.event))
         .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.cmd))
         .child(div().flex_none().text_color(bad ? t.blocked : t.dim).child(`${x.runs}× · avg ${ms(x.avg_ms)}${x.errors ? ` · ${x.errors} err` : ""}${x.timeouts ? ` · ${x.timeouts} timeout` : ""}${x.injected ? ` · injected ${x.injected}` : ""}`)));
@@ -157,15 +157,14 @@ export default class AgentInspector extends View {
     return out;
   }
 
-  chip(t, id, text, color, tip) {
-    const el = div().id(id).px(5).rounded(4).flex_none().text_size(TS.tiny).text_color(color).border_1().border_color(color).child(text);
+  chip(t, id, text, color, tip, ic = null) {
+    const el = h_flex().id(id).gap(2).items_center().px(5).rounded(4).flex_none().text_size(TS.tiny).text_color(color).border_1().border_color(t.border)
+      .when(ic != null, (e) => e.child(icon(ic, 12, color))).child(text);
     return tip ? el.tooltip(tip) : el;
   }
 
   // Colors per span kind, shared by the waterfall, the split bar and the legend.
-  kindColor(t, kd) {
-    return { llm: t.ansi4 ?? t.accent, tool: t.ansi2 ?? t.done, agent: t.ansi5 ?? t.done, skill: t.ansi5 ?? t.accent, hook: t.muted, wait: t.working, other: t.border }[kd] ?? t.muted;
-  }
+  kindColor(t, kd) { return C(t).kind[kd] ?? t.muted; }
 
   // One stacked bar from [{key, v, color}] plus a legend underneath.
   stack(t, id, parts, fmt) {
@@ -200,19 +199,22 @@ export default class AgentInspector extends View {
     if (c.comp) {
       const cp = c.comp;
       out.push(div().pl(pad).pr(SPACE.panel).pt(4).pb(2).child(this.stack(t, `comp-${c.at}`, [
-        { key: "system", v: cp.system, color: t.ansi6 ?? t.accent },
-        { key: `tools (${cp.n_tools})`, v: cp.tools, color: t.ansi5 ?? t.done },
-        { key: "memory", v: cp.memory, color: t.ansi3 ?? t.muted },
-        { key: "history", v: cp.history, color: t.muted },
-        { key: "new", v: cp.new, color: t.working },
+        { key: "system", v: cp.system, color: C(t).kind.system },
+        { key: `tools (${cp.n_tools})`, v: cp.tools, color: C(t).kind.tool },
+        { key: "memory", v: cp.memory, color: C(t).kind.memory },
+        { key: "history", v: cp.history, color: C(t).kind.history },
+        { key: "new", v: cp.new, color: C(t).kind.new },
       ], (p) => `~${k(p.v)}`)));
     }
+    // An indented sub-line with a leading icon (or a blank slot of the same width).
+    const sub = (ic, txt, color) => h_flex().pl(pad + 8).pr(SPACE.panel).gap(4).items_center().text_size(TS.small).text_color(color ?? t.muted)
+      .child(ic ? icon(ic, 12, t.dim) : div().w(12).flex_none()).child(div().flex_1().min_w(0).truncate().child(txt));
     out.push(line("Sent (new since the last call):", t.dim));
-    for (const x of c.sent) out.push(line(x.k === "tool_result" ? `  ↳ ${x.name} result · ~${k(x.tok)}${x.err ? " · error" : ""}` : x.k === "you" ? `  ↳ message · ~${k(x.tok)} · ${x.snip}` : x.k === "reminder" ? `  ↳ system reminder · ~${k(x.tok)}` : `  ↳ ${x.k} · ~${k(x.tok)}${x.snip ? ` · ${x.snip}` : ""}`, x.err ? t.blocked : t.muted));
-    if (!c.sent.length) out.push(line("  (nothing new — same prefix, continued)", t.dim));
-    if (c.unrecorded) out.push(line(`  ↳ ${c.unrecorded} more not recorded in the transcript`, t.dim));
+    for (const x of c.sent) out.push(sub("corner-down-right", x.k === "tool_result" ? `${x.name} result · ~${k(x.tok)}${x.err ? " · error" : ""}` : x.k === "you" ? `message · ~${k(x.tok)} · ${x.snip}` : x.k === "reminder" ? `system reminder · ~${k(x.tok)}` : `${x.k} · ~${k(x.tok)}${x.snip ? ` · ${x.snip}` : ""}`, x.err ? t.blocked : t.muted));
+    if (!c.sent.length) out.push(sub(null, "(nothing new — same prefix, continued)", t.dim));
+    if (c.unrecorded) out.push(sub("corner-down-right", `${c.unrecorded} more not recorded in the transcript`, t.dim));
     out.push(line("Got:", t.dim));
-    for (const g of c.got) out.push(line(g.k === "tool" ? `  ▸ ${g.name}${g.label ? ` · ${g.label}` : ""}` : `  ${g.k === "text" ? "reply" : g.k}${g.chars ? ` · ${k(g.chars / 4)} tok` : ""}`, g.k === "tool" ? t.foreground : t.muted));
+    for (const g of c.got) out.push(g.k === "tool" ? sub("wrench", `${g.name}${g.label ? ` · ${g.label}` : ""}`, t.foreground) : sub(null, `${g.k === "text" ? "reply" : g.k}${g.chars ? ` · ${k(g.chars / 4)} tok` : ""}`, t.muted));
     return out;
   }
 
@@ -236,7 +238,7 @@ export default class AgentInspector extends View {
       .child(div().w(labelW).flex_none())
       .child(h_flex().w(trackW).flex_none().justify_between().child("0").child(dur(total / 2)).child(dur(total)))
       .child(div().w(durW).flex_none()));
-    const icon = { llm: "◇", tool: "▸", agent: "◆", skill: "⚡", hook: "⚑", wait: "⏸" };
+    const ICON = { llm: "sparkles", tool: "wrench", agent: "bot", skill: "zap", hook: "flag", wait: "hourglass" };
     for (const [j, s] of (tu.spans ?? []).entries()) {
       const key = `${i}:${s.k}:${j}`, open = this.openSpan.has(key);
       const color = s.err ? t.blocked : this.kindColor(t, s.k);
@@ -247,7 +249,7 @@ export default class AgentInspector extends View {
       out.push(h_flex().id(`wf-${key}`).px(SPACE.panel).h(20).gap(8).items_center().cursor_pointer().rounded(4).hover((e) => e.bg(t.hover)).tooltip(tip)
         .on_click((_e, cx) => { open ? this.openSpan.delete(key) : this.openSpan.add(key); cx.notify(); })
         .child(h_flex().w(labelW).flex_none().gap(4).items_center().text_size(TS.small)
-          .child(div().flex_none().w(10).text_color(color).child(icon[s.k] ?? "·"))
+          .child(ICON[s.k] ? icon(ICON[s.k], 12, color) : div().flex_none().w(12).text_color(color).child("·"))
           .child(div().flex_1().min_w(0).truncate().text_color(s.k === "llm" ? t.foreground : t.muted).child(name)))
         .child(div().relative().w(trackW).h(20).flex_none()
           .child(div().absolute().left(0).right(0).top(10).h(1).bg(t.border).opacity(0.5))
@@ -266,15 +268,16 @@ export default class AgentInspector extends View {
     }
     // Events with no duration: compactions, failed hooks without timing.
     const misc = tu.steps.filter((s) => s.k === "compact");
-    for (const [j, s] of misc.entries()) out.push(div().id(`ev-${i}-${j}`).px(SPACE.panel).pl(SPACE.panel + labelW + 8).text_size(TS.small).text_color(t.working).child(`⇣ context compacted${s.label ? ` from ${k(Number(s.label))}` : ""}`));
+    for (const [j, s] of misc.entries()) out.push(h_flex().id(`ev-${i}-${j}`).px(SPACE.panel).pl(SPACE.panel + labelW + 8).gap(4).items_center().text_size(TS.small).text_color(t.working)
+      .child(icon("fold-vertical", 12, t.working)).child(`context compacted${s.label ? ` from ${k(Number(s.label))}` : ""}`));
     return out;
   }
 
   trace(t, d) {
     const turns = d.turns ?? [];
     const withSkills = turns.filter((tu) => tu.skills?.length || tu.missed?.length).length;
-    const pill = (id, label, on, action) => div().id(id).px(8).py(2).rounded(10).text_size(TS.small).cursor_pointer()
-      .text_color(on ? t.foreground : t.muted).when(on, (e) => e.bg(t.raised)).hover((x) => x.text_color(t.foreground)).on_click(action).child(label);
+    const pill = (id, label, on, action) => div().id(id).px(8).py(2).rounded(10).border_1().border_color(t.border).text_size(TS.small).cursor_pointer()
+      .text_color(on ? t.foreground : t.muted).when(on, (e) => e.bg(t.selected)).hover((x) => x.bg(on ? t.selected : t.hover).text_color(t.foreground)).on_click(action).child(label);
     const cost = turns.reduce((n, tu) => n + (tu.sum?.cost ?? 0), 0);
     const out = [this.h(t, "Turns", `${d.prompt_count} total · last ${turns.length}${cost ? ` · ~$${cost.toFixed(2)}` : ""}`),
       h_flex().px(SPACE.panel - 8).pb(4).gap(4)
@@ -286,20 +289,21 @@ export default class AgentInspector extends View {
       out.push(v_flex().id(`tu-${i}`).mx(SPACE.panel - 8).px(8).py(6).rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).gap(2)
         .when(open, (e) => e.bg(t.surface))
         .on_click((_e, cx) => { open ? this.open.delete(i) : this.open.add(i); cx.notify(); })
-        .child(h_flex().gap(6).text_size(TS.body)
-          .child(div().flex_none().text_color(t.dim).child(`${open ? "▾" : "▸"} ${clock(tu.at)}`))
+        .child(h_flex().gap(6).items_center().text_size(TS.body)
+          .child(h_flex().flex_none().gap(2).items_center().text_color(t.dim).child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim)).child(clock(tu.at)))
           .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(tu.prompt || "(empty)")))
         .child(div().pl(SPACE.panel + 2).child(this.turnSummary(t, tu)))
         .when(Boolean(tu.skills?.length || tu.missed?.length), (el) => el.child(h_flex().pl(SPACE.panel + 2).pt(2).gap(4).flex_wrap()
-          .children((tu.skills ?? []).map((s, j) => this.chip(t, `tsk-${i}-${j}`, `⚡ ${s.how === "you" ? "/" : ""}${s.name}${s.tok ? ` ~${k(s.tok)}` : ""}`,
-            s.ok === false ? t.blocked : t.accent, `Skill ${s.name} loaded ${HOW[s.how] ?? s.how}${s.tok ? `, ~${k(s.tok)} tokens of instructions` : ""}${s.ok === false ? " — failed" : ""}`)))
+          .children((tu.skills ?? []).map((s, j) => this.chip(t, `tsk-${i}-${j}`, `${s.how === "you" ? "/" : ""}${s.name}${s.tok ? ` ~${k(s.tok)}` : ""}`,
+            s.ok === false ? t.blocked : t.accent, `Skill ${s.name} loaded ${HOW[s.how] ?? s.how}${s.tok ? `, ~${k(s.tok)} tokens of instructions` : ""}${s.ok === false ? " — failed" : ""}`, "zap")))
           .children((tu.missed ?? []).map((n, j) => this.chip(t, `tms-${i}-${j}`, `? ${n}`, t.working, `This prompt asks to use ${n}, but the agent didn't load it this turn.`))))));
       if (!open) continue;
       if ((tu.spans ?? []).length) out.push(...this.waterfall(t, tu, i), div().h(8));
       else {
         // Codex (or no request records): the plain step list.
-        for (const [j, s] of tu.steps.entries()) out.push(h_flex().id(`st-${i}-${j}`).px(SPACE.panel).pl(SPACE.panel + 14).py(1).gap(6).text_size(TS.small)
-          .child(div().flex_none().text_color(s.error ? t.blocked : t.muted).child(`${s.k === "think" ? "◌" : "▸"} ${s.name}`))
+        for (const [j, s] of tu.steps.entries()) out.push(h_flex().id(`st-${i}-${j}`).px(SPACE.panel).pl(SPACE.panel + 14).py(1).gap(6).items_center().text_size(TS.small)
+          .child(icon(s.k === "think" ? "brain" : "wrench", 12, s.error ? t.blocked : t.dim))
+          .child(div().flex_none().text_color(s.error ? t.blocked : t.muted).child(s.name))
           .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(s.label ?? ""))
           .child(div().flex_none().text_color(t.dim).child(ms(s.ms))));
         out.push(div().h(8));
@@ -318,7 +322,7 @@ export default class AgentInspector extends View {
     out.push(this.h(t, "Loaded", used.length || "none"));
     if (!used.length) out.push(this.note(t, "No skill was loaded. The agent only saw the list of names and descriptions."));
     for (const [i, u] of used.entries()) out.push(h_flex().id(`sk-u-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta)
-      .child(div().flex_none().text_color(u.failed ? t.blocked : t.accent).child("⚡"))
+      .child(icon("zap", 12, u.failed ? t.blocked : t.accent))
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(div().truncate().text_color(t.foreground).child(u.name))
         .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child([u.count ? `${u.count}× ${u.how.map((h) => HOW[h] ?? h).join(", ")}` : "", u.restored ? `restored ${u.restored}× after compaction` : "", u.failed ? `${u.failed} failed` : "", u.last ? `last ${clock(u.last)}` : ""].filter(Boolean).join(" · "))))
@@ -339,7 +343,7 @@ export default class AgentInspector extends View {
     const subs = (d.subagents ?? []).filter((s) => s.skills?.length);
     if (subs.length) {
       out.push(this.h(t, "In subagents", subs.length));
-      for (const [i, s] of subs.entries()) out.push(this.row(t, `sk-s-${i}`, "◆", s.desc || s.type || "agent", s.skills.join(", "), t.accent));
+      for (const [i, s] of subs.entries()) out.push(this.row(t, `sk-s-${i}`, icon("bot", 12, t.accent), s.desc || s.type || "agent", s.skills.join(", "), t.accent));
     }
     return out;
   }
@@ -351,7 +355,8 @@ export default class AgentInspector extends View {
     const out = [v_flex().px(SPACE.panel).pt(12).gap(2)
       .child(div().text_size(TS.body).text_color(t.foreground).child(`${tot.servers ?? 0} MCP servers · ${tot.connected ?? 0} connected · ${tot.tools ?? 0} tools`))
       .child(div().text_size(TS.small).text_color(t.dim).child(`${tot.loaded ?? 0} tools loaded with full schemas, ${tot.called ?? 0} used (${tot.calls ?? 0} calls). ~${k(tot.context_tok)} tokens of context: instructions + tool names + loaded schemas.`))];
-    const color = (s) => s.status === "failed" ? t.blocked : s.status === "needs auth" || s.status === "pending" ? t.working : s.calls ? t.done : t.dim;
+    const st = C(t).status;
+    const color = (s) => s.status === "failed" ? st.blocked : s.status === "needs auth" || s.status === "pending" ? st.working : s.calls ? st.done : t.dim;
     out.push(this.h(t, "Servers", "tools · loaded · calls"));
     for (const [i, s] of (m.servers ?? []).entries()) {
       const open = this.openSrv.has(s.key);
@@ -368,8 +373,8 @@ export default class AgentInspector extends View {
         const sub = (txt) => div().pl(SPACE.panel + 27).pr(SPACE.panel).py(1).text_size(TS.small).text_color(t.muted).child(txt);
         out.push(sub(`Context: ~${k(s.instr_tok)} instructions · ~${k(s.list_tok)} tool names · ~${k(s.def_tok)} schemas`));
         out.push(sub(`Tools: ${s.tools} available, ${s.upfront} loaded up front, ${s.loaded - s.upfront} loaded on demand, ${s.called} called${s.errors ? `, ${s.errors} errors` : ""}`));
-        for (const x of s.top ?? []) out.push(h_flex().px(SPACE.panel).pl(SPACE.panel + 27).py(1).gap(8).text_size(TS.small)
-          .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(`▸ ${x.tool}`))
+        for (const x of s.top ?? []) out.push(h_flex().px(SPACE.panel).pl(SPACE.panel + 27).py(1).gap(8).items_center().text_size(TS.small)
+          .child(h_flex().flex_1().min_w(0).gap(4).items_center().child(icon("wrench", 12, t.dim)).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(x.tool)))
           .child(div().flex_none().text_color(t.dim).child(`${x.n}×`))
           .child(div().flex_none().w(52).text_right().text_color(x.avg_ms > 5000 ? t.working : t.dim).tooltip("Average time from call to result").child(x.avg_ms != null ? ms(x.avg_ms) : "–"))
           .child(div().flex_none().w(52).text_right().text_color(x.errors ? t.blocked : t.dim).tooltip("Calls that returned an error").child(x.errors ? `${Math.round((x.errors / x.n) * 100)}% err` : "0 err")));
@@ -433,7 +438,7 @@ export default class AgentInspector extends View {
         const on = id === this.tab;
         return div().id(`tab-${id}`).px(6).py(5).text_size(TS.meta).cursor_pointer()
           .text_color(on ? t.foreground : t.dim).when(on, (el) => el.border_b(2).border_color(t.accent))
-          .hover((s) => s.text_color(t.foreground))
+          .rounded_t(5).hover((s) => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx) => { this.tab = id; localStorage.setItem("tab", id); cx.notify(); })
           .child(id === "health" && problems ? `${TAB_LABEL[id]} · ${problems}` : TAB_LABEL[id]);
       })),

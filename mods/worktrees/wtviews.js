@@ -6,7 +6,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { run, closeOverlay, spaces, panes, agents, notify, exec, knownAgents } from "herdr";
 import { create, remove, inspect, list, prune, defaultBase, branches, repoName, validBranch } from "./wt.js";
-import { TS, field as inputField } from "./ui.js";
+import { TS, C, field as inputField } from "./ui.js";
 
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.round(d / 60)}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
 const size = (kb) => (kb == null ? "–" : kb > 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb > 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
@@ -46,7 +46,7 @@ export class WorktreeDialog {
 
   btn(t, id, label, action, { primary = false, danger = false, disabled = false } = {}) {
     return div().id(id).h(30).px(12).flex().items_center().rounded(7).text_size(TS.body)
-      .bg(disabled ? t.raised : danger ? t.blocked : primary ? t.solid : t.raised).text_color(disabled ? t.dim : danger || primary ? t.solid_foreground ?? "#fff" : t.foreground)
+      .bg(disabled ? t.raised : danger ? t.blocked : primary ? t.solid : t.raised).text_color(disabled ? t.dim : danger ? C(t).on.status : primary ? C(t).on.solid : t.foreground)
       .when(!disabled, (e) => e.cursor_pointer().on_click(action)).child(label);
   }
 
@@ -80,7 +80,7 @@ export class WorktreeDialog {
   viewNew(t) {
     const tab = (id, label) => div().id(`wtm-${id}`).px(10).py(4).rounded(6).cursor_pointer().text_size(TS.body)
       .bg(this.mode === id ? t.selected : t.background).text_color(this.mode === id ? t.foreground : t.muted)
-      .on_click((_e, cx) => { this.mode = id; cx.notify(); }).child(label);
+      .hover((s) => s.bg(this.mode === id ? t.selected : t.hover)).on_click((_e, cx) => { this.mode = id; cx.notify(); }).child(label);
     const field = (label, input, hint) => v_flex().gap(4).child(div().text_size(TS.meta).text_color(t.dim).child(label)).child(inputField(t, input, { size: "panel" }))
       .when(Boolean(hint), (e) => e.child(div().text_size(TS.small).text_color(t.dim).child(hint)));
     const suggestions = this.mode === "existing" && this.branchList?.length

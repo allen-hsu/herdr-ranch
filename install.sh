@@ -103,6 +103,9 @@ say "$(/bin/ls "$HERE"/templates/*.md | wc -l | tr -d ' ') templates, $(/bin/ls 
 
 echo "Integration scripts -> $APP/ranch"
 run mkdir -p "$APP/ranch"
+# Shared icon set (Lucide, ISC: licenses/lucide-ISC.txt). Mods draw them with icon() from lib/ui.js.
+run rsync -a --delete "$HERE/lib/icons/" "$APP/ranch/icons/"
+say "$(/bin/ls "$HERE"/lib/icons/*.svg | wc -l | tr -d ' ') icons -> $APP/ranch/icons"
 run rsync -a "$HERE/integrations/requesters/" "$APP/ranch/requesters/"
 run mkdir -p "$HOME/.claude"
 run cp "$HERE/integrations/claude-statusline/herdr-status-snapshot.py" "$HOME/.claude/herdr-status-snapshot.py"

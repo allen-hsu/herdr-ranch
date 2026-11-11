@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { exec, appHome, theme } from "herdr";
-import { TS } from "./ui.js";
+import { TS, C, icon } from "./ui.js";
 
 const left = (resetsAt, now) => {
   if (!resetsAt) return "";
@@ -39,7 +39,7 @@ export default class UsageBar extends View {
   }
 
   color(t, pct) {
-    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.accent;
+    return pct >= 90 ? C(t).status.blocked : pct >= 70 ? C(t).status.working : t.accent;
   }
 
   provider(t, id, icon, tint, info, now, staleHint, named = false) {
@@ -55,7 +55,7 @@ export default class UsageBar extends View {
       .child(div().text_color(stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))
       .when(!named || stale, (e) => e.child(div().text_color(t.dim).child(stale ? staleHint : left(main.resets_at, now))));
     if (!named) for (const w of rest) el = el.child(div().text_color(t.dim).child(`· ${Math.round(w.percent)}% ${w.name}`));
-    if (info.error) el = el.child(div().text_color(t.blocked).child("!")).tooltip(`Last refresh failed (${info.error}); showing the last good numbers.`);
+    if (info.error) el = el.child(icon("triangle-alert", 12, C(t).status.blocked)).tooltip(`Last refresh failed (${info.error}); showing the last good numbers.`);
     else if (!stale) el = el.tooltip(ws.map((w) => `${w.name}: ${Math.round(w.percent)}% used${w.resets_at ? `, resets in ${left(w.resets_at, now)}` : ""}`).join("\n"));
     return el;
   }
@@ -70,10 +70,10 @@ export default class UsageBar extends View {
       .child(this.provider(t, "u-codex", "icons/codex.svg", null, this.data?.codex, now, "stale · run Codex to refresh"))
       .child(this.provider(t, "u-grok", "icons/grok.svg", t.foreground, this.data?.grok, now, "run Grok to refresh"))
       .child(this.provider(t, "u-cursor", "icons/cursor.svg", t.foreground, this.data?.cursor, now, "unavailable", true))
-      .child(div().id("u-refresh").px(4).rounded(4).cursor_pointer().text_color(t.dim)
+      .child(div().id("u-refresh").px(4).py(2).flex().items_center().rounded(4).cursor_pointer().text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
         .tooltip("Refresh now")
         .on_click((_e, cx) => this.load(cx, true))
-        .child(this.busy ? "…" : "↻"));
+        .child(this.busy ? "…" : icon("refresh-cw", 12)));
   }
 }

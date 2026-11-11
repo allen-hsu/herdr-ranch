@@ -18,22 +18,21 @@ import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOver
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
 import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
-import { TS } from "./ui.js";
+import { TS, C, tint, icon, statusMark, statusOf } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
-// A logo's tile: light on a dark theme (dark marks stay visible), the raised tier on a light one.
-const lightTile = (t) => { const h = String(t.background ?? "#000").replace("#", ""); const v = parseInt(h.length >= 6 ? h.slice(0, 6) : "000000", 16);
-  const lum = (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000; return lum < 128 ? "#f4f4f5" : t.raised; };
+// A logo's tile: light on a dark theme (dark marks stay visible; the theme's text color is its light tone), the raised tier on a light one.
+const lightTile = (t) => { const h = String(t.background ?? "").replace("#", ""); const v = /^[0-9a-fA-F]{6}/.test(h) ? parseInt(h.slice(0, 6), 16) : 0;
+  const lum = (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000; return lum < 128 ? t.foreground : t.raised; };
 // The sidebar's two views, a stack in the layout ("sidebar-view"): agents by space (here) or by status (agents-ctx).
 function viewSwitch(t, on) {
   const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
-    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.raised)).hover((x) => x.text_color(t.foreground))
+    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.selected)).hover((x) => x.bg(t.hover).text_color(t.foreground))
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .on_click(() => { if (on !== id) { if (id === "agents") setShared("agents.sort", "priority"); run("layout.select", { stack: "sidebar-view", child: id }); } })
     .child(label);
   return h_flex().gap(2).items_center().ml(-7).child(pill("spaces", "Spaces")).child(pill("agents", "Agents"));
 } // the right-hand column every row shares // The mod that owns worktree dialogs
-const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:
@@ -153,18 +152,10 @@ const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // for this often, in repos the list shows, while the window is in front.
 const FALLBACK = 60000;
 
-// What a stored color name looks like on an avatar (the same in every mod
-// that draws space avatars): one strong color per hue, light and dark alike.
-const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
-
-// A space speaks up only when something in it needs you.
-export function glyph(status) {
-  return status === "blocked" || status === "done" ? "●" : "·";
-}
-
-export function tone(t, status) {
-  return t[status] ?? t.unknown;
-}
+// The stored color names a folder or space can pick, in the order of ui.js's C(t).tile.
+const MARKS = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
+// What a stored color name looks like on a folder tile: the shared tile color (null when it isn't one).
+const markColor = (t, name) => { const i = MARKS.indexOf(name); return i < 0 ? null : C(t).tile[i]; };
 
 const NEW_FOLDER = "New folder";
 
@@ -572,7 +563,7 @@ export default class Spaces extends View {
       if (collapsed) return [this.compact(r, t)];
       const below = [...this.agentsOf(r, t), ...this.hiddenTrees(r, t)];
       // Orca-style: the current space and its agents sit on one faint card.
-      if (r.w.active) return [v_flex().id(`card-${r.w.id}`).my(2).rounded(10).border_1().border_color(t.border).bg(t.raised + "66").pb(below.length ? 4 : 0)
+      if (r.w.active) return [v_flex().id(`card-${r.w.id}`).my(2).rounded(10).bg(t.surface).pt(1).pb(below.length ? 5 : 1)
         .child(this.row(r, t)).children(below)];
       return [this.row(r, t), ...below];
     };
@@ -677,8 +668,8 @@ export default class Spaces extends View {
         cx.notify();
       })
       .child(div().flex_1().child(`${mine.length} agent${mine.length === 1 ? "" : "s"}`))
-      .when(folded && need > 0, (el) => el.child(div().text_color(t.blocked).child(`${need} needs you`)))
-      .when(folded && !need && working > 0, (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).text_color(t.working).spin(900)))
+      .when(folded && need > 0, (el) => el.child(div().text_color(C(t).status.blocked).child(`${need} needs you`)))
+      .when(folded && !need && working > 0, (el) => el.child(statusMark(t, "working")))
       .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).text_color(t.dim)));
     if (folded) return [fold];
     return [fold, ...mine.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })])];
@@ -724,19 +715,18 @@ export default class Spaces extends View {
       .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }));
     // Orca-style: a thin folder outline (open when expanded) in the folder's color, or the project's own logo when
     // one is found (this.logos); the name in bold; count, ⋯ and chevron only while hovered.
-    const tint = f.color ? (MARK[f.color] ?? f.color) : t.muted;
+    const hue = f.color ? (markColor(t, f.color) ?? f.color) : t.muted;
     const logo = this.logos?.[f.id];
     const mark = h_flex().size(18).flex_none().items_center().justify_center()
       .child(logo ? h_flex().size(16).rounded(4).bg(lightTile(t)).items_center().justify_center().child(image(logo).w(12).h(12))
-        : svg(f.folded ? "mods/workspace-chrome/folder.svg" : "mods/space-folders/folder-open.svg").size(15).text_color(tint));
+        : svg(f.folded ? "mods/workspace-chrome/folder.svg" : "mods/space-folders/folder-open.svg").size(15).text_color(hue));
     if (collapsed) return head.justify_center().child(mark);
     const hover = this.hoveredFolder === f.id;
     return head
       .child(mark)
       .child(div().flex_1().min_w(0).truncate().font_semibold().child(f.name))
       // Folded, it still says when something in it is running or needs you.
-      .when(f.folded && status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
-      .when(f.folded && Boolean(status) && status !== "working", (el) => el.child(div().flex_none().text_color(tone(t, status)).child(glyph(status))))
+      .when(f.folded && Boolean(status), (el) => el.child(statusMark(t, status)))
       .when(hover, (el) => el.child(div().flex_none().text_size(TS.meta).text_color(t.dim).tooltip(`${inside.length} space${inside.length === 1 ? "" : "s"}`).child(String(inside.length))))
       // ⋯ in the right-hand column, the same place as on space rows; clicking the row folds it (Orca-style).
       .child(this.trail().when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
@@ -782,10 +772,10 @@ export default class Spaces extends View {
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); }).child(label);
     const current = folders(machine).list.find((x) => x.id === id)?.color ?? null;
     const swatch = (color) => div().id(`folder-color-${color ?? "grey"}`).size(20).flex_none().rounded(10).cursor_pointer()
-      .bg(color ? MARK[color] : t.dim).border_2().border_color(color === current ? t.foreground : t.popover)
+      .bg(color ? markColor(t, color) : t.dim).border_2().border_color(color === current ? t.foreground : t.popover)
       .hover((s) => s.border_color(t.muted)).on_click(() => { this.paint(machine, id, color); closeOverlay(overlay); });
     return v_flex().id("folder-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(TS.item)
-      .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([null, ...Object.keys(MARK)].map(swatch)))
+      .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([null, ...MARKS].map(swatch)))
       .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
       .when(!machine, (el) => el.child(item("folder-team", "Start an agent team…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: id } }))))
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
@@ -798,7 +788,7 @@ export default class Spaces extends View {
   editView(t) {
     const { machine, overlay } = this.editing;
     const button = (key, label, primary, action) => h_flex().id(key).h(32).px(14).flex_none().items_center().rounded(8).border_1()
-      .border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised).text_color(primary ? t.solid_foreground : t.foreground)
+      .border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised).text_color(primary ? C(t).on.solid : t.foreground)
       .text_size(TS.item).font_medium().cursor_pointer().hover((s) => s.opacity(0.88)).on_click(action).child(label);
     const field = (label, input, hint, extra = null) => v_flex().gap(6)
       .child(div().text_size(TS.body).font_medium().text_color(t.muted).child(label))
@@ -871,9 +861,9 @@ export default class Spaces extends View {
         .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
         .when(connected, el => el.child(div().id(`machine-folder-${m ?? "local"}`).flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx) => { cx.stop_propagation(); this.newFolder(m); }).child(svg("mods/workspace-chrome/folder-plus.svg").size(12))))
-        .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(m, null); }).child("+")))
-        .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
+        .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(3).py(1).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(m, null); }).child(icon("plus", 12))))
+        .child(div().size(6).rounded(3).flex_none().bg(connected ? C(t).ok : t.dim))
         .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
     const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().pl(indent(null, nested)).pr(8).gap(7).items_center().rounded(7)
       .text_size(TS.body).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
@@ -925,17 +915,17 @@ export default class Spaces extends View {
       .text_size(TS.meta)
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
-      .when(g.ahead > 0, (el) => el.child(div().id(`ahead-${name}`).flex_none().text_color(t.ansi2)
+      .when(g.ahead > 0, (el) => el.child(div().id(`ahead-${name}`).flex_none().text_color(C(t).diff.add)
         .tooltip(`${g.ahead} commit${g.ahead === 1 ? "" : "s"} here not pushed yet`).child(`\u2191${g.ahead}`)))
       // Behind the remote isn't shown: nearly every repo is a little behind, and it needs no action here.
       // Uncommitted changes and the branch's open PR (colored by CI; click reveals it).
-      .when(g.dirty > 0, (el) => el.child(h_flex().id(`dirty-${name}`).flex_none().gap(3).items_center().text_color(t.blocked)
+      .when(g.dirty > 0, (el) => el.child(h_flex().id(`dirty-${name}`).flex_none().gap(3).items_center().text_color(C(t).status.blocked)
         .tooltip(`${g.dirty} changed file${g.dirty === 1 ? "" : "s"} not committed`)
-        .child(div().size(5).rounded(3).bg(t.blocked)).child(String(g.dirty))))
+        .child(div().size(5).rounded(3).bg(C(t).status.blocked)).child(String(g.dirty))))
       .when(Boolean(pr), (el) => {
         const c = prColor(pr, t);
-        return el.child(div().id(`pr-${name}-${pr.number}`).flex_none().px(4).rounded(4).border_1().border_color(c + "66").bg(c + "1a")
-          .text_size(TS.meta).text_color(c).cursor_pointer().hover((s) => s.bg(c + "33")).tooltip(prTip(pr))
+        return el.child(div().id(`pr-${name}-${pr.number}`).flex_none().px(4).rounded(4).border_1().border_color(tint(c, 0.4)).bg(tint(c, 0.1))
+          .text_size(TS.meta).text_color(c).cursor_pointer().hover((s) => s.bg(tint(c, 0.2))).tooltip(prTip(pr))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
           .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); }).child(`#${pr.number}`));
       });
@@ -945,13 +935,7 @@ export default class Spaces extends View {
     const on = w.active;
     // The most urgent agent here sets a dot; one that finished unseen makes the name bold.
     const mine = agents().filter((a) => a.space === w.id);
-    const top = mine.reduce((m, a) => ((STATUS_RANK[a.status] ?? 0) > (STATUS_RANK[m] ?? 0) ? a.status : m), null);
     const unread = mine.some((a) => a.status === "done");
-    const dot = top === "blocked" || top === "error" ? t.blocked : top === "working" ? t.working : top === "done" ? t.done : null;
-    const colors = shared("space.colors") ?? {};
-    // Neutral unless the person picked a color for this space (Orca-like: status is the only default color).
-    const color = colors[w.id] ?? null;
-    const fill = !color ? t.raised : color.startsWith("#") ? color : (MARK[color] ?? t[color]);
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -1002,11 +986,7 @@ export default class Spaces extends View {
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           // Orca-style: a status mark where the avatar was (spinner working, red needs you, blue finished unseen,
           // ring idle, faint dot no agent) — the same 18px column as folder icons and logos.
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().items_center().justify_center().child(
-            top === "working" ? svg("mods/workspace-chrome/spinner.svg").size(11).text_color(t.working).spin(900)
-            : dot ? div().size(7).rounded(4).bg(dot)
-            : mine.length ? div().size(7).rounded(4).border_1().border_color(t.dim)
-            : div().size(5).rounded(3).bg(t.border))))
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().items_center().justify_center().child(statusMark(t, statusOf(mine)))))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(w.name))
           // Orca's tag: the repository's main checkout (worktrees show a branch icon instead).
           .when(Boolean(g) && !g.linked && !tree, (el) => el.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border)
@@ -1033,8 +1013,8 @@ export default class Spaces extends View {
     const { spaceMenu: id, root, on, linked, top, overlay } = this.spaceMenu;
     const wt = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
     const item = (key, icon, label, action, danger) => h_flex().id(key).h(32).px(8).gap(8).items_center().rounded(6).cursor_pointer()
-      .text_color(danger ? t.blocked : t.foreground).hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
-      .child(div().w(14).flex_none().flex().justify_center().child(svg(icon.includes("/") ? icon : `mods/workspace-chrome/${icon}.svg`).size(13).text_color(danger ? t.blocked : t.muted)))
+      .text_color(danger ? C(t).status.blocked : t.foreground).hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
+      .child(div().w(14).flex_none().flex().justify_center().child(svg(icon.includes("/") ? icon : `mods/workspace-chrome/${icon}.svg`).size(13).text_color(danger ? C(t).status.blocked : t.muted)))
       .child(div().flex_1().child(label));
     const team = () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { repo: linked && top ? top : root } });
     const rows = !root ? [] : linked
@@ -1058,11 +1038,12 @@ export default class Spaces extends View {
       .flex_none()
       .justify_center()
       .gap(4)
-      .when(w.active, (el) => el.bg(t.raised))
+      .items_center()
+      .when(w.active, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .on_click(() => run("space.select", { id: w.id }))
       .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
-      .child(div().text_color(tone(t, w.status)).child(glyph(w.status)));
+      .child(statusMark(t, w.status));
   }
 
   render() {
@@ -1071,7 +1052,7 @@ export default class Spaces extends View {
     if (this.spaceMenu) return this.spaceMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
-    const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
+    const palette = MARKS;
     const sp = spaces();
     const ids = new Set(sp.map(p => p.id));
     const kept = Object.fromEntries(Object.entries(shared("space.colors") ?? {}).filter(([id]) => ids.has(id)));

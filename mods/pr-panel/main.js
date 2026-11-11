@@ -1,12 +1,12 @@
 // PR & issue panel: tabs Mine / Review / This repo / Issues, PRs grouped by whose move it is,
 // one click to an agent in a worktree (Review, Address comments, Fix CI). Data: the user's `gh`.
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, theme, focused, panes, spaces, notify, pickFolder, props, run, shared, setShared } from "herdr";
 import { loadRequesters, runRequester } from "./requesters.js";
 import { TABS, GROUPS, load, loadOne, groupOf, checksOf, unresolvedOf, repoAt, mainCheckout } from "./github.js";
 import { startPR, startIssue, openDiffBeside } from "./launch.js";
-import { TS, SPACE } from "./ui.js";
+import { TS, SPACE, C, tint, icon } from "./ui.js";
 
 const ago = (iso) => {
   const s = (Date.now() - Date.parse(iso)) / 1000;
@@ -149,7 +149,7 @@ export default class PRPanel extends View {
       if (this.busy[key]) return div().text_size(TS.small).text_color(t.working).child(`${req.label}…`);
       if (this.armed === key) return this.pill(t, `rq-${key}`, `${req.label}?`, (_e, cx) => this.request(cx, req, pr), { tone: "accent", tip: "Click again to confirm" });
       const done = this.sent[key];
-      return this.pill(t, `rq-${key}`, done ? `${req.label} ✓ ${ago(new Date(done).toISOString())}` : req.label, (_e, cx) => this.request(cx, req, pr),
+      return this.pill(t, `rq-${key}`, done ? h_flex().gap(4).items_center().child(req.label).child(icon("check", 12, C(t).status.done)).child(ago(new Date(done).toISOString())) : req.label, (_e, cx) => this.request(cx, req, pr),
         { tip: (done ? "Already done. " : "") + (req.tip ?? (req.confirm ? "Click, then confirm" : "")) });
     });
   }
@@ -168,19 +168,20 @@ export default class PRPanel extends View {
   checkBadge(t, pr) {
     const c = checksOf(pr);
     if (!c) return null;
-    const [glyph, color, tip] = c === "SUCCESS" ? ["✓", t.done, "Checks passed"] : c === "FAILURE" || c === "ERROR" ? ["✗", t.blocked, "Checks failing"] : ["●", t.working, "Checks running"];
-    return div().id(`ck-${pr.url}`).text_color(color).tooltip(tip).child(glyph);
+    const st = C(t).status;
+    const [name, color, tip] = c === "SUCCESS" ? ["check", st.done, "Checks passed"] : c === "FAILURE" || c === "ERROR" ? ["x", st.blocked, "Checks failing"] : ["circle-dot", st.working, "Checks running"];
+    return div().id(`ck-${pr.url}`).flex_none().tooltip(tip).child(icon(name, 12, color));
   }
 
   prCard(t, pr, cx) {
     const key = pr.url;
     const g = groupOf(pr);
     const unresolved = unresolvedOf(pr);
-    const review = pr.reviewDecision === "APPROVED" ? ["approved", t.done] : pr.reviewDecision === "CHANGES_REQUESTED" ? ["changes requested", t.blocked] : null;
+    const review = pr.reviewDecision === "APPROVED" ? ["approved", C(t).status.done] : pr.reviewDecision === "CHANGES_REQUESTED" ? ["changes requested", C(t).status.blocked] : null;
     const repoShort = pr.repository.nameWithOwner.split("/")[1];
     const busy = this.busy[key];
-    return v_flex().id(`pr-${key}`).mx(8).px(10).py(8).gap(6).rounded(8).bg(t.surface).border(1).border_color(t.border)
-      .hover((s) => s.border_color(t.input))
+    return v_flex().id(`pr-${key}`).mx(8).px(10).py(8).gap(6).rounded(8).bg(t.surface)
+      .hover((s) => s.bg(t.hover))
       .child(div().text_size(TS.item).text_color(t.foreground).child(pr.title))
       .child(h_flex().gap(6).items_center().text_size(TS.small).text_color(t.dim)
         .child(div().flex_none().child(`${repoShort} #${pr.number}`))
@@ -188,7 +189,7 @@ export default class PRPanel extends View {
         .child(div().flex_1())
         .when(Boolean(this.checkBadge(t, pr)), (el) => el.child(this.checkBadge(t, pr)))
         .when(Boolean(review), (el) => el.child(div().text_color(review[1]).child(review[0])))
-        .when(unresolved > 0, (el) => el.child(div().id(`un-${key}`).text_color(t.working).tooltip(`${unresolved} unresolved review thread(s)`).child(`💬 ${unresolved}`)))
+        .when(unresolved > 0, (el) => el.child(h_flex().id(`un-${key}`).gap(2).items_center().text_color(t.working).tooltip(`${unresolved} unresolved review thread(s)`).child(icon("message-square", 12, t.working)).child(String(unresolved))))
         .child(div().flex_none().child(ago(pr.updatedAt))))
       .child(h_flex().flex_wrap().gap(6).items_center()
         .when(busy, (el) => el.child(div().text_size(TS.small).text_color(t.working).child("starting agent…")))
@@ -203,19 +204,19 @@ export default class PRPanel extends View {
             .child(this.pill(t, `df-${key}`, "Diff", () => openDiffBeside(pr), { tip: "Open the diff next to the focused pane" }))
             .children(this.requestPills(t, pr))
             .child(div().flex_1())
-            .child(this.pill(t, `op-${key}`, "↗", () => exec("open", [pr.url]), { tip: "Open on GitHub" }));
+            .child(this.pill(t, `op-${key}`, icon("external-link", 12, t.muted), () => exec("open", [pr.url]), { tip: "Open on GitHub" }));
         }));
   }
 
   issueCard(t, is) {
     const key = is.url;
     const busy = this.busy[key];
-    return v_flex().id(`is-${key}`).mx(8).px(10).py(8).gap(6).rounded(8).bg(t.surface).border(1).border_color(t.border)
-      .hover((s) => s.border_color(t.input))
+    return v_flex().id(`is-${key}`).mx(8).px(10).py(8).gap(6).rounded(8).bg(t.surface)
+      .hover((s) => s.bg(t.hover))
       .child(div().text_size(TS.item).text_color(t.foreground).child(is.title))
       .child(h_flex().gap(6).items_center().text_size(TS.small).text_color(t.dim)
         .child(div().flex_none().child(`${is.repository.nameWithOwner.split("/")[1]} #${is.number}`))
-        .children((is.labels?.nodes ?? []).map((l) => div().px(5).rounded(4).bg(`#${l.color}33`).text_color(t.muted).child(l.name)))
+        .children((is.labels?.nodes ?? []).map((l) => div().px(5).rounded(4).bg(tint(`#${l.color}`, 0.2)).text_color(t.muted).child(l.name)))
         .child(div().flex_1())
         .child(div().child(ago(is.updatedAt))))
       .child(h_flex().gap(6)
@@ -223,16 +224,16 @@ export default class PRPanel extends View {
         .when(!busy, (el) => el
           .child(this.pill(t, `st-${key}`, "Start", (_e, cx) => this.launch(cx, key, is, "issue"), { tone: "accent", tip: "New worktree + agent: plan first, then implement" }))
           .child(div().flex_1())
-          .child(this.pill(t, `op-${key}`, "↗", () => exec("open", [is.url]), { tip: "Open on GitHub" }))));
+          .child(this.pill(t, `op-${key}`, icon("external-link", 12, t.muted), () => exec("open", [is.url]), { tip: "Open on GitHub" }))));
   }
 
   groupHeader(t, g, count, cx) {
     const open = !this.folded.has(g.id);
-    return h_flex().id(`grp-${g.id}`).px(12).pt(10).pb(4).gap(6).items_center().cursor_pointer()
+    return h_flex().id(`grp-${g.id}`).px(12).pt(10).pb(4).gap(6).items_center().cursor_pointer().hover((s) => s.bg(t.hover))
       .text_size(TS.meta).font_medium()
       .on_click((_e, cx) => { open ? this.folded.add(g.id) : this.folded.delete(g.id); this.save(); cx.notify(); })
-      .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).text_color(t.dim))
-      .child(div().w(6).h(6).rounded(3).bg(t[g.status] ?? t.dim))
+      .child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim))
+      .child(div().w(6).h(6).rounded(3).bg(C(t).status[g.status] ?? t.dim))
       .child(div().text_color(t.muted).child(g.label))
       .child(div().text_color(t.dim).child(String(count)));
   }
@@ -300,7 +301,7 @@ export default class PRPanel extends View {
     const isPR = (TABS.find((x) => x.id === this.tab) ?? TABS[0]).kind === "pr";
     const seg = (id, label) => div().id(`gb-${id}`).px(6).py(1).rounded(4).cursor_pointer().text_size(TS.small)
       .text_color(this.groupBy === id ? t.foreground : t.dim).when(this.groupBy === id, (el) => el.bg(t.selected))
-      .hover((s) => s.text_color(t.foreground))
+      .hover((s) => s.bg(this.groupBy === id ? t.selected : t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { this.groupBy = id; this.save(); cx.notify(); }).child(label);
     return v_flex().id("pr-panel").size_full().bg(t.chrome).text_color(t.foreground)
       .child(h_flex().px(12).h(40).flex_none().gap(4).items_center().border_b(1).border_color(t.border)
@@ -315,20 +316,20 @@ export default class PRPanel extends View {
             .child(n != null ? `${tab.label} ${n}` : tab.label);
         }))
         .child(div().flex_1())
-        .child(div().id("pr-refresh").px(6).rounded(5).cursor_pointer().text_color(t.dim)
+        .child(div().id("pr-refresh").px(6).py(4).rounded(5).cursor_pointer().text_color(t.dim)
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Refresh")
           .on_click((_e, cx) => this.refresh(cx))
-          .child(d.loading ? "…" : "↻")))
+          .child(d.loading ? "…" : icon("refresh-cw", 14, t.dim))))
       .when(isPR, (el) => el.child(h_flex().px(12).h(28).flex_none().gap(4).items_center().border_b(1).border_color(t.border)
         .child(div().text_size(TS.small).text_color(t.dim).child("Group by"))
         .child(seg("status", "Status")).child(seg("repo", "Repo"))
         .when(this.tab === "space" && this.spaceRepos.length > 0, (el) => el.child(div().flex_1()).child(div().min_w(0).truncate().text_size(TS.small).text_color(t.dim).child(this.spaceRepos.map((r) => r.split("/")[1]).join(" · "))))))
-      .when(Boolean(this.revealed), (el) => el.child(v_flex().flex_none().pt(8).pb(4).bg(t.accent + "12").border_b(1).border_color(t.border)
+      .when(Boolean(this.revealed), (el) => el.child(v_flex().flex_none().pt(8).pb(4).bg(tint(t.accent, 0.07)).border_b(1).border_color(t.border)
         .child(h_flex().px(12).pb(6).gap(6).items_center().text_size(TS.meta)
           .child(div().text_color(t.accent).child(`From Git graph · #${this.revealed.number}`))
           .child(div().flex_1())
-          .child(div().id("rv-close").px(5).rounded(4).cursor_pointer().text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { this.revealed = null; cx.notify(); }).child("\u00d7")))
+          .child(div().id("rv-close").p(3).rounded(4).cursor_pointer().text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+            .on_click((_e, cx) => { this.revealed = null; cx.notify(); }).child(icon("x", 12, t.dim))))
         .child(this.revealed.pr ? this.prCard(t, this.revealed.pr, cx)
           : div().px(SPACE.panel).pb(6).text_size(TS.body).text_color(t.dim).child(this.revealed.missing ? "Couldn't load this PR." : "Loading…"))))
       .child(v_flex().id("pr-list").flex_1().min_h(0).pb(10).overflow_y_scrollbar().children(this.body(t, cx)));

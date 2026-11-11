@@ -2,7 +2,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings } from "herdr";
-import { TS, SPACE } from "./ui.js";
+import { TS, SPACE, C, tint } from "./ui.js";
 
 function location() {
   const space = spaces().find((s) => s.active), f = focused();
@@ -170,20 +170,20 @@ export default class Changes extends View {
   // herdr-ranch: GitHub-like diff rows (same style as the git-graph fork). Everything else is Herdr's
   // shipped `changes` mod 0.1.14 unchanged; re-clone and re-apply this method when Herdr updates it.
   diffRow({ kind, number, text }, t) {
-    if (kind === "@") return h_flex().w_full().h(20).flex_none().px(12).items_center().bg(t.accent + "1a").text_color(t.accent)
+    if (kind === "@") return h_flex().w_full().h(20).flex_none().px(12).items_center().bg(tint(t.accent, 0.1)).text_color(t.accent)
       .child(div().min_w(0).truncate().child(text));
     if (kind !== "+" && kind !== "-" && kind !== " ") return div().w_full().px(12).h(20).flex_none().truncate().text_color(t.dim).child(text);
-    const tint = kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : null;
-    return h_flex().w_full().h(20).flex_none().when(Boolean(tint), (e) => e.bg(tint + "26"))
-      .child(div().w(40).flex_none().pr(6).text_right().text_color(tint ?? t.dim).when(Boolean(tint), (e) => e.bg(tint + "40"))
+    const dc = kind === "+" ? C(t).diff.add : kind === "-" ? C(t).diff.del : null;
+    return h_flex().w_full().h(20).flex_none().when(Boolean(dc), (e) => e.bg(tint(dc, 0.15)))
+      .child(div().w(40).flex_none().pr(6).text_right().text_color(dc ?? t.dim).when(Boolean(dc), (e) => e.bg(tint(dc, 0.25)))
         .child(number === undefined ? "" : String(number)))
-      .child(div().w(18).flex_none().text_center().text_color(tint ?? t.dim).child(kind === "+" ? "+" : kind === "-" ? "\u2212" : ""))
+      .child(div().w(18).flex_none().text_center().text_color(dc ?? t.dim).child(kind === "+" ? "+" : kind === "-" ? "\u2212" : ""))
       .child(div().flex_1().min_w(0).pr(12).truncate().text_color(t.foreground).child(text));
   }
 
   render(cx) {
     if (key() !== this.context) this.refresh(cx);
-    const t = theme(), add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
+    const t = theme(), c = C(t), add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const enabled = Boolean(this.message.trim() && this.root && !this.busy && !this.loading);
     return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(TS.item).track_focus(this.handle)
       .on_key_down((e, cx) => {
@@ -192,15 +192,15 @@ export default class Changes extends View {
       .child(h_flex().h(42).flex_none().px(SPACE.panel).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Changes"))
         .child(div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(TS.tiny).text_color(t.muted).child(`${this.files.length} files`))
-        .child(div().flex_1()).child(div().text_size(TS.meta).text_color(t.ansi2).child(`+${add}`)).child(div().text_size(TS.meta).text_color(t.ansi1).child(`−${del}`)))
+        .child(div().flex_1()).child(div().text_size(TS.meta).text_color(c.diff.add).child(`+${add}`)).child(div().text_size(TS.meta).text_color(c.diff.del).child(`−${del}`)))
       // overflow_y_scrollbar() wraps the list, so its flex sizing never reached the panel's layout.
       .child(div().flex_1().min_h(44).max_h(this.files.length * 28 + 12).relative().border_b(1).border_color(t.border)
         .child(v_flex().id("changes-list").absolute().inset_0().overflow_y_scroll().p(6).children(this.files.map((f) => {
         const parts = f.path.split("/"), name = parts.pop();
         return h_flex().id(`change-${f.path}`).h(28).flex_none().px(8).gap(8).items_center().rounded(7).cursor_pointer().when(this.open === f.path, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.pick(f.path, cx))
-          .child(div().w(14).text_size(TS.meta).text_color(f.status === "A" ? t.ansi2 : f.status === "D" ? t.ansi1 : f.status === "U" ? t.ansi1 : t.blocked).child(f.status))
+          .child(div().w(14).text_size(TS.meta).text_color(f.status === "A" ? c.diff.add : f.status === "D" || f.status === "U" ? c.diff.del : c.diff.mod).child(f.status))
           .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().max_w(260).min_w(0).truncate().child(name)))
-          .when(f.add > 0, (e) => e.child(div().text_size(TS.meta).text_color(t.ansi2).child(`+${f.add}`))).when(f.del > 0, (e) => e.child(div().text_size(TS.meta).text_color(t.ansi1).child(`−${f.del}`)));
+          .when(f.add > 0, (e) => e.child(div().text_size(TS.meta).text_color(c.diff.add).child(`+${f.add}`))).when(f.del > 0, (e) => e.child(div().text_size(TS.meta).text_color(c.diff.del).child(`−${f.del}`)));
       })).when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Loading changes…" : this.root ? "No uncommitted changes" : "No folder")))))
         .child(Scrollbar.vertical("changes-list").absolute().inset_0()))
       .when(this.limited, el => el.child(div().px(12).py(4).text_size(TS.meta).text_color(t.dim).child("Showing the first 1,000 changed files")))
@@ -210,9 +210,9 @@ export default class Changes extends View {
             (range) => this.rows.slice(range.start, range.end).map((row) => this.diffRow(row, t))).size_full())))
         .child(Scrollbar.vertical("changes-diff").viewport_from_layout().absolute().inset_0())
         .when(!this.open && this.files.length > 0, (e) => e.child(div().absolute().top(6).px(12).text_color(t.dim).child("Select a file to view its changes"))))
-      .when(Boolean(this.note), (e) => e.child(div().px(10).pb(8).text_size(TS.meta).text_color(t.ansi1).child(this.note)))
+      .when(Boolean(this.note), (e) => e.child(div().px(10).pb(8).text_size(TS.meta).text_color(c.status.blocked).child(this.note)))
       .child(h_flex().flex_none().p(10).gap(8).border_t(1).border_color(t.border)
-        .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(TS.body).text_color(t.foreground)))
-        .child(div().id("commit").h(32).px(SPACE.panel).flex().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(TS.body).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit")));
+        .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.input).bg(t.background).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(TS.body).text_color(t.foreground)))
+        .child(div().id("commit").h(32).px(SPACE.panel).flex().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? c.on.solid : t.dim).text_size(TS.body).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit")));
   }
 }

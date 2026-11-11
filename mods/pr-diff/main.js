@@ -3,7 +3,7 @@
 import { View, div, uniform_list } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, props, theme } from "herdr";
-import { TS } from "./ui.js";
+import { TS, C, tint, icon } from "./ui.js";
 
 const MAX_LINES = 20000;
 
@@ -37,15 +37,18 @@ export default class PRDiff extends View {
 
   row(t, i) {
     const l = this.lines[i] ?? "";
+    const dc = C(t).diff;
     let fg = t.foreground, bg = null, weight = false;
-    if (l.startsWith("diff --git ")) { fg = t.foreground; bg = t.raised; weight = true; }
+    const file = l.startsWith("diff --git ");
+    if (file) { fg = t.foreground; bg = t.raised; weight = true; }
     else if (l.startsWith("+++") || l.startsWith("---") || l.startsWith("index ") || l.startsWith("new file") || l.startsWith("deleted file")) fg = t.dim;
     else if (l.startsWith("@@")) fg = t.accent;
-    else if (l.startsWith("+")) { fg = t.ansi2 ?? t.done; bg = `${(t.ansi2 ?? "#3fb950").slice(0, 7)}1f`; }
-    else if (l.startsWith("-")) { fg = t.ansi1 ?? t.blocked; bg = `${(t.ansi1 ?? "#f85149").slice(0, 7)}1f`; }
-    const text = l.startsWith("diff --git ") ? `▸ ${l.replace(/^diff --git a\/(.*) b\/.*$/, "$1")}` : l || " ";
-    return div().id(`dl-${i}`).h(18).px(10).whitespace_nowrap().text_color(fg)
+    else if (l.startsWith("+")) { fg = dc.add; bg = tint(dc.add, 0.12); }
+    else if (l.startsWith("-")) { fg = dc.del; bg = tint(dc.del, 0.12); }
+    const text = file ? l.replace(/^diff --git a\/(.*) b\/.*$/, "$1") : l || " ";
+    return h_flex().id(`dl-${i}`).h(18).px(10).gap(4).items_center().whitespace_nowrap().text_color(fg)
       .when(Boolean(bg), (el) => el.bg(bg)).when(weight, (el) => el.font_semibold())
+      .when(file, (el) => el.child(icon("file", 12, t.dim)))
       .child(text.replace(/\t/g, "    "));
   }
 
@@ -56,12 +59,12 @@ export default class PRDiff extends View {
       .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(String(this.p.title ?? "")))
       .when(this.lines != null, (el) => el
         .child(div().flex_none().text_color(t.dim).child(`${this.files.length} files`))
-        .child(div().flex_none().text_color(t.ansi2 ?? t.done).child(`+${this.add}`))
-        .child(div().flex_none().text_color(t.ansi1 ?? t.blocked).child(`-${this.del}`)))
-      .child(div().id("diff-open").flex_none().px(6).rounded(5).cursor_pointer().text_color(t.dim)
+        .child(div().flex_none().text_color(C(t).diff.add).child(`+${this.add}`))
+        .child(div().flex_none().text_color(C(t).diff.del).child(`-${this.del}`)))
+      .child(div().id("diff-open").flex_none().p(3).rounded(5).cursor_pointer().text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Open on GitHub")
         .on_click(() => exec("open", [String(this.p.url)]))
-        .child("↗"));
+        .child(icon("external-link", 14, t.dim)));
     let body;
     if (this.error) body = div().p(14).text_size(TS.body).text_color(t.blocked).child(`${this.error}`);
     else if (!this.lines) body = div().p(14).text_size(TS.body).text_color(t.dim).child("Loading diff…");

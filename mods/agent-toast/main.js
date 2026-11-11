@@ -8,7 +8,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agentName } from "./agentname.js";
 import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals, appHome } from "herdr";
-import { TS } from "./ui.js";
+import { TS, C, statusMark } from "./ui.js";
 
 // "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
 // path. name: what a macOS notification can play (a file in a Sounds folder); path: what afplay plays.
@@ -21,7 +21,8 @@ async function soundFile(v) {
   return { path: have ? mine : `/System/Library/Sounds/${file}`, name: file };
 }
 
-const DOT = { error: "blocked", warning: "working", success: "done", info: "accent" };
+// A plain notification's level dot, in the shared status colors.
+const DOT = (t, level) => ({ error: C(t).status.blocked, warning: C(t).status.working, success: C(t).status.done })[level] ?? t.accent;
 
 export default class AgentToast extends View {
   init(_props, cx) {
@@ -96,13 +97,13 @@ export default class AgentToast extends View {
 
   icon(t, prog, level) {
     if (prog?.icon) return prog.tint ? svg(prog.icon).size(20).text_color(prog.color ?? t.foreground) : image(prog.icon).w(20).h(20);
-    return div().size(8).rounded(4).bg(t[DOT[level] ?? "accent"]);
+    return div().size(8).rounded(4).bg(DOT(t, level));
   }
 
   // Two lines, sized for Herdr's corner toast: who (session name), then status · space · tab.
   agentView(t, p, a) {
     const blocked = a.status === "blocked" || /needs you|waiting/i.test(`${p.title} ${p.body ?? ""}`);
-    const color = blocked ? t.blocked : t.done;
+    const color = blocked ? C(t).status.blocked : C(t).status.done;
     const sp = spaces().find((s) => s.id === a.space);
     const name = agentName(a) || a.program?.name || "Agent";
     const tab = a.tab_name && a.tab_name !== String(a.tab_index) && a.tab_name !== a.program?.name ? a.tab_name : null;
@@ -111,7 +112,7 @@ export default class AgentToast extends View {
     return [
       div().relative().size(28).flex_none().flex().items_center().justify_center().rounded(7).bg(t.raised)
         .child(this.icon(t, a.program, p.level))
-        .child(div().absolute().right(-2).bottom(-2).size(10).rounded(5).border_2().border_color(t.popover).bg(color)),
+        .child(div().absolute().right(-3).bottom(-3).p(1).rounded(5).bg(t.popover).child(statusMark(t, blocked ? "blocked" : "done", { size: 10 }))),
       v_flex().flex_1().min_w(0).gap(1)
         .child(div().truncate().font_semibold().text_size(TS.item).text_color(t.foreground).child(name))
         .child(h_flex().gap(6).min_w(0).text_size(TS.body)
@@ -130,7 +131,7 @@ export default class AgentToast extends View {
     return h_flex().id("toast").size_full().px(14).gap(12).items_center().bg(t.popover).cursor_pointer().hover((s) => s.bg(t.hover))
       .on_click(() => { if (p.action?.name) run(p.action.name, p.action.args ?? {}); closeOverlay(p.overlay); })
       .when(Boolean(a), (el) => el.children(a ? this.agentView(t, p, a) : []))
-      .when(!a, (el) => el.child(p.icon ? image(p.icon).w(18).h(18).flex_none() : div().size(8).rounded(4).flex_none().bg(t[DOT[p.level] ?? "accent"])))
+      .when(!a, (el) => el.child(p.icon ? image(p.icon).w(18).h(18).flex_none() : div().size(8).rounded(4).flex_none().bg(DOT(t, p.level))))
       .when(!a, (el) => el.child(v_flex().flex_1().overflow_hidden()
         .child(div().truncate().font_semibold().text_size(TS.item).text_color(t.foreground).child(login ? `${login[1]} needs a login: run` : p.title ?? ""))
         .when(!login && Boolean(p.body), (el) => el.child(div().truncate().text_size(TS.body).text_color(t.muted).child(p.body ?? "")))

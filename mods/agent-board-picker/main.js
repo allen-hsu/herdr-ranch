@@ -1,11 +1,11 @@
 // Space picker for the agent board (opened with mod.open as a popup). Writes the board's filter to
 // shared state "agent-board.filter": "all" | "current" | { spaces: [ids] }.
 // Spaces with agents, grouped by space-folders folders (folder checkbox = all its spaces).
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, panes, focused, theme, shared, setShared } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
-import { TS, field } from "./ui.js";
+import { TS, C, field, icon, statusMark } from "./ui.js";
 
 const FILTER = "agent-board.filter";
 const ORDER = ["blocked", "idle", "working", "done"];
@@ -28,7 +28,7 @@ export default class BoardPicker extends View {
     const c = {};
     for (const a of items) c[norm(a.status)] = (c[norm(a.status)] ?? 0) + 1;
     return h_flex().flex_none().gap(6).items_center().children(ORDER.filter((s) => c[s]).map((s) =>
-      h_flex().gap(4).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(c[s])))));
+      h_flex().gap(4).items_center().child(statusMark(t, s, { size: 10 })).child(div().text_size(TS.small).text_color(t.dim).child(String(c[s])))));
   }
 
   render() {
@@ -54,7 +54,7 @@ export default class BoardPicker extends View {
       set(next.size ? { spaces: [...next] } : "all");
     };
     const check = (on, partial) => div().w(14).h(14).flex_none().rounded(3).border(1).border_color(on || partial ? t.accent : t.input)
-      .flex().items_center().justify_center().when(on, (el) => el.bg(t.accent).child(div().text_size(TS.tiny).text_color(t.accent_foreground ?? t.background).child("✓")))
+      .flex().items_center().justify_center().when(on, (el) => el.bg(t.accent).child(icon("check", 12, C(t).on.accent)))
       .when(partial && !on, (el) => el.child(div().w(6).h(2).bg(t.accent)));
     const radio = (on) => div().w(14).h(14).flex_none().rounded(7).border(1).border_color(on ? t.accent : t.input)
       .flex().items_center().justify_center().when(on, (el) => el.child(div().w(6).h(6).rounded(3).bg(t.accent)));
@@ -77,7 +77,7 @@ export default class BoardPicker extends View {
         .child(check(all, some))
         .child(div().id(`p-fo-${g.folder.id}`).p(2).rounded(4).hover((s) => s.bg(t.raised))
           .on_click((_e, cx) => { cx.stop_propagation(); open ? this.open.delete(g.folder.id) : this.open.add(g.folder.id); cx.notify(); })
-          .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).text_color(t.muted)))
+          .child(icon(open ? "chevron-down" : "chevron-right", 12, t.muted)))
         .child(name(`${g.folder.name}  (${ids.length})`, true))
         .child(this.dots(t, everyone.filter((a) => ids.includes(a.space)))));
       if (open) for (const s of members) {
@@ -93,7 +93,7 @@ export default class BoardPicker extends View {
 
     return v_flex().id("board-picker").w(300).p(6).gap(4)
       .child(div().px(8).pt(2).pb(2).text_size(11).font_semibold().text_color(t.dim).child("Show agents from"))
-      .when(showSearch, (el) => el.child(div().px(2).child(field(t, this.search, { size: "panel", icon: "mods/workspace-chrome/search.svg" }))))
+      .when(showSearch, (el) => el.child(div().px(2).child(field(t, this.search, { size: "panel", icon: "ranch/icons/search.svg" }))))
       .child(v_flex().id("p-list").max_h(320).overflow_y_scrollbar().children(rows));
   }
 }

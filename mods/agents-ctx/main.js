@@ -4,7 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile, appHome } from "herdr";
-import { TS } from "./ui.js";
+import { TS, C, icon, statusMark } from "./ui.js";
 
 // ---- context usage (added): Claude Code session -> % of context used ----
 // ~/.claude/herdr-status-snapshot.py (called from the status line) writes the percentages;
@@ -14,7 +14,7 @@ const SNAPSHOT = "/.cache/herdr-claude-status/claude-statusline.json";
 // status (here). Same switch in both headers.
 function viewSwitch(t, on) {
   const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
-    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.raised)).hover((x) => x.text_color(t.foreground))
+    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.selected)).hover((x) => x.bg(t.hover).text_color(t.foreground))
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .on_click(() => { if (on !== id) run("layout.select", { stack: "sidebar-view", child: id }); })
     .child(label);
@@ -86,7 +86,7 @@ function duration(ms) {
 }
 
 // The agent's icon from the app's program table: a one-color glyph or a picture.
-function icon(p, size, color) {
+function progIcon(p, size, color) {
   if (!p?.icon) return null;
   return p.tint ? svg(p.icon).size(size).flex_none().text_color(color) : image(p.icon).w(size).h(size).flex_none();
 }
@@ -169,12 +169,12 @@ export default class Agents extends View {
     return h_flex().id(`sum-${g.id}`).gap(8).items_center().flex_none()
       .tooltip(parts.map(([s, label]) => `${counts[s]} ${label}`).join(" · "))
       .children(parts.map(([s]) => h_flex().gap(3).items_center()
-        .child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim))
+        .child(div().w(6).h(6).rounded(3).bg(C(t).status[s] ?? t.dim))
         .child(div().text_size(TS.meta).text_color(s === "idle" ? t.dim : t.muted).child(String(counts[s])))));
   }
 
   ctxBadge(t, pct) {
-    const color = pct >= 80 ? t.blocked : pct >= 60 ? t.working : t.dim;
+    const color = pct >= 80 ? C(t).status.blocked : pct >= 60 ? C(t).status.working : t.dim;
     const w = 22;
     return h_flex().flex_none().gap(4).items_center().tooltip(`Context used: ${Math.round(pct)}%`)
       .child(div().w(w).h(4).rounded(2).bg(t.border)
@@ -282,7 +282,7 @@ export default class Agents extends View {
   subRow(t, s, shown, compact) {
     const k = s.t;
     const st = kidStatus(k, this.listed);
-    const pic = icon(k.program, 14, t.foreground);
+    const pic = progIcon(k.program, 14, t.foreground);
     const on = k.address === shown;
     return h_flex()
       .id(`sub-${k.address}`)
@@ -294,7 +294,7 @@ export default class Agents extends View {
       .gap(0)
       .items_center()
       .text_size(TS.body)
-      .when(on, (el) => el.bg(t.raised))
+      .when(on, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .on_click(() => (this.listed.has(k.address) ? run("pane.focus", { terminal: k.address }) : this.peek(k.address)))
       .children(s.lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
@@ -307,7 +307,7 @@ export default class Agents extends View {
 
   // ranch: a running Claude Code background subagent under its agent; opens the Team map with it selected.
   bgRow(t, a, b, last) {
-    const pic = icon(a.program, 14, t.dim);
+    const pic = progIcon(a.program, 14, t.dim);
     return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(24).flex_none().items_center().text_size(TS.body)
       .hover((s) => s.bg(t.hover)).cursor_pointer().tooltip(`Background subagent${b.type ? ` (${b.type})` : ""} — open in the Team map`)
       .on_click(() => openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address, sel: b.id } }))
@@ -319,13 +319,7 @@ export default class Agents extends View {
 
   // compact: a ! for blocked where a header already says "Needs you".
   status(t, a, compact = false) {
-    const color = t[a.status] ?? t.dim;
-    if (a.status === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
-    if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(TS.small).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
-    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(TS.small).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
-    // Idle: a ring; done: a dot.
-    if (a.status === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle ?? t.dim);
-    return div().size(7).mx(3).flex_none().rounded(4).bg(a.status === "done" ? color : t.dim + "00");
+    return statusMark(t, a.status, { label: a.status === "blocked" && !compact });
   }
 
   render(cx) {
@@ -369,9 +363,9 @@ export default class Agents extends View {
     const teamChip = (a, subs) => {
       const need = subs.filter((s) => { const st = kidStatus(s.t, this.listed); return st === "blocked"; }).length;
       return div().id(`tchip-${a.address}`).flex_none().h(16).px(4).gap(2).flex().items_center().rounded(8).text_size(TS.meta)
-        .when(need > 0, (x) => x.bg(t.blocked).text_color("#fff")).when(!need, (x) => x.text_color(t.dim))
+        .when(need > 0, (x) => x.bg(C(t).status.blocked).text_color(C(t).on.status)).when(!need, (x) => x.text_color(t.dim))
         .tooltip(need ? `${need} of ${subs.length} team members need you — open the Team map` : `${subs.length} team member${subs.length === 1 ? "" : "s"} — open the Team map`)
-        .cursor_pointer().hover((x) => x.text_color(t.foreground))
+        .cursor_pointer().when(!need, (x) => x.hover((h) => h.bg(t.hover).text_color(t.foreground)))
         .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); })
         .child(svg("mods/agents-ctx/team.svg").size(10).flex_none())
         .child(need ? `${need}!` : String(subs.length));
@@ -391,7 +385,7 @@ export default class Agents extends View {
         .items_center()
         .rounded(4)
         .text_size(TS.meta)
-        .text_color(open ? t.dim : (t[top] ?? t.dim))
+        .text_color(open ? t.dim : (C(t).status[top] ?? t.dim))
         .cursor_pointer()
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
         .on_click((_e, cx) => {
@@ -423,7 +417,7 @@ export default class Agents extends View {
     }
 
     const row = (a, i, subs = []) => {
-      const pic = icon(a.program, 16, t.foreground);
+      const pic = progIcon(a.program, 16, t.foreground);
       const more = detail.get(a.address);
       // An agent on another machine (`vps/t7`) says which.
       const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
@@ -538,14 +532,15 @@ export default class Agents extends View {
         .items_center()
         .text_size(TS.small)
         .font_medium()
+        .rounded(6)
         .cursor_pointer()
-        .hover((s) => s.text_color(t.foreground))
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
         .on_click((_e, cx) => {
           open ? this.folded.add(g.id) : this.folded.delete(g.id);
           cx.notify();
         })
         .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none().text_color(t.dim))
-        .child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label === "~" ? "~ Home" : g.label))
+        .child(div().truncate().text_color(C(t).status[g.status] ?? t.dim).child(g.label === "~" ? "~ Home" : g.label))
         .child(div().flex_1())
         // Status summary instead of a bare count: one colored dot + number per state.
         .when(!byPriority || !open, (el) => el.child(this.summary(t, g)))
@@ -576,9 +571,12 @@ export default class Agents extends View {
             .child(
               div()
                 .id("ag-sort")
+                .p(2)
+                .mr(-2)
+                .rounded(4)
                 .text_size(TS.meta)
                 .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
+                .hover((s) => s.bg(t.hover).text_color(t.foreground))
                 .on_click(() => openOverlay({ mod: "agents-ctx", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
                 .tooltip(`Sort agents: ${sort.label}`)
                 .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)),
@@ -598,11 +596,12 @@ export default class Agents extends View {
             .child(
               div()
                 .id("collapse")
-                .text_size(TS.item)
+                .p(2)
+                .rounded(4)
                 .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
+                .hover((s) => s.bg(t.hover).text_color(t.foreground))
                 .on_click(toggleSidebar)
-                .child("»"),
+                .child(icon("chevrons-right", 14)),
             ),
         ),
       );
