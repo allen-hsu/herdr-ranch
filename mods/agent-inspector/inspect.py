@@ -18,7 +18,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 10
+VERSION = 11
 SECRET = re.compile(r"(xox[abpr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w+|sk-[\w-]{16,}|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[\w.~+/=-]{12,}|(?i:(?:token|secret|password|api[_-]?key)=)\S+)")
 
 
@@ -73,8 +73,8 @@ def short_cmd(c):
 
 
 def mentions(text, names):
-    """Skills a prompt asks for by name: "/name" anywhere, a distinctive name (has - or :), or a plain name
-    next to the word "skill". Plain words like "simplify" alone don't count."""
+    """Skills a prompt asks to use: "/name", or the name right after a verb like 用 / 使用 / 跑 / use / run.
+    Just talking about a skill ("where is web-design-guidelines from?", "delete ui-ux-pro-max") doesn't count."""
     if len(text) > 1500 or text.startswith("This session is being continued"):
         return []  # pasted documents and compaction summaries name skills without asking for them
     low = text.lower()
@@ -83,11 +83,13 @@ def mentions(text, names):
         nl = n.lower()
         if len(nl) < 3 or nl not in low:
             continue
-        if re.search(r"(?<![\w/-])/" + re.escape(nl) + r"(?![\w-])", low):
-            found.append(n)
-        elif re.search(r"(?<![\w-])" + re.escape(nl) + r"(?![\w-])", low) and ("-" in nl or ":" in nl or ("skill" in low and len(nl) >= 5)):
+        name = re.escape(nl) + r"(?![\w-])"
+        if re.search(r"(?<![\w/-])/" + name, low) or re.search(INTENT + r"\s*(?:the\s+|a\s+|這個\s*|那個\s*)?[`'\"「]?" + name, low):
             found.append(n)
     return sorted(found)[:5]
+
+
+INTENT = r"(?:用|使用|跑|執行|呼叫|調用|啟用|透過|\buse|\busing|\brun|\binvoke|\bapply|\bload|\bwith)"
 
 
 def mcp_key(display):

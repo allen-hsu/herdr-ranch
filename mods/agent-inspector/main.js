@@ -84,7 +84,7 @@ export default class AgentInspector extends View {
     const c = d.config ?? {};
     const used = (c.skills?.used ?? []).filter((u) => u.count > 0).length;
     if (c.skills?.available > 50) out.push({ level: "info", kind: "skills", text: `${c.skills.available} skills listed (~${k(c.skills.available_tok)} tokens every turn), ${used} loaded in this session.` });
-    for (const m of c.skills?.missed ?? []) out.push({ level: "info", kind: "skills", text: `You named the skill ${m.name} in ${m.turns} prompt${m.turns > 1 ? "s" : ""}, but it was never loaded.` });
+    for (const m of c.skills?.missed ?? []) out.push({ level: "info", kind: "skills", text: `You asked for the skill ${m.name} in ${m.turns} prompt${m.turns > 1 ? "s" : ""}, but it wasn't loaded.` });
     const big = (c.skills?.used ?? []).filter((u) => u.tok > 20000);
     for (const u of big) out.push({ level: "warn", kind: "skills", text: `Skill ${u.name} put ~${k(u.tok)} tokens into context when it loaded.` });
     const mt = c.mcp?.totals;
@@ -175,7 +175,7 @@ export default class AgentInspector extends View {
         .when(Boolean(tu.skills?.length || tu.missed?.length), (el) => el.child(h_flex().pl(14).pt(2).gap(4).flex_wrap()
           .children((tu.skills ?? []).map((s, j) => this.chip(t, `tsk-${i}-${j}`, `⚡ ${s.how === "you" ? "/" : ""}${s.name}${s.tok ? ` ~${k(s.tok)}` : ""}`,
             s.ok === false ? t.blocked : t.accent, `Skill ${s.name} loaded ${HOW[s.how] ?? s.how}${s.tok ? `, ~${k(s.tok)} tokens of instructions` : ""}${s.ok === false ? " — failed" : ""}`)))
-          .children((tu.missed ?? []).map((n, j) => this.chip(t, `tms-${i}-${j}`, `? ${n}`, t.working, `This prompt names ${n}, but the agent didn't load it this turn.`))))));
+          .children((tu.missed ?? []).map((n, j) => this.chip(t, `tms-${i}-${j}`, `? ${n}`, t.working, `This prompt asks to use ${n}, but the agent didn't load it this turn.`))))));
       if (open) for (const [j, s] of tu.steps.entries()) {
         const skill = s.k === "skill";
         const color = s.error ? t.blocked : skill ? t.accent : s.k === "think" ? t.dim : s.k === "agent" ? t.accent : s.k === "hook" ? t.working : s.k === "compact" ? t.working : t.muted;
@@ -216,8 +216,8 @@ export default class AgentInspector extends View {
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(e.prompt ? `“${e.prompt}”` : ""))
       .child(div().flex_none().text_color(t.dim).child(e.ok === false ? "failed" : e.tok ? `~${k(e.tok)}` : "")));
     if ((sk.missed ?? []).length) {
-      out.push(this.h(t, "Named but never loaded", sk.missed.length));
-      out.push(this.note(t, "These skills appear in your prompts (as /name, or by name next to “skill”), but the agent didn't load them in that turn."));
+      out.push(this.h(t, "Asked for but not loaded", sk.missed.length));
+      out.push(this.note(t, "You asked to use these (as /name, or “use / 用 / run <name>”), but the agent didn't load them in that turn. Just mentioning a skill doesn't count."));
       for (const [i, m] of sk.missed.entries()) out.push(this.row(t, `sk-m-${i}`, "?", m.name, `${m.turns} prompt${m.turns > 1 ? "s" : ""}`, t.working));
     }
     const subs = (d.subagents ?? []).filter((s) => s.skills?.length);
