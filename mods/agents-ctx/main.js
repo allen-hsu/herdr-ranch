@@ -323,6 +323,18 @@ export default class Agents extends View {
       return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
     };
 
+    // ranch: a lead's team at a glance — members, and how many need the person (blocked / error).
+    const teamChip = (a, subs) => {
+      const need = subs.filter((s) => { const st = kidStatus(s.t, this.listed); return st === "blocked"; }).length;
+      return div().id(`tchip-${a.address}`).flex_none().h(16).px(4).gap(2).flex().items_center().rounded(8).text_size(10)
+        .when(need > 0, (x) => x.bg(t.blocked).text_color("#fff")).when(!need, (x) => x.text_color(t.dim))
+        .tooltip(need ? `${need} of ${subs.length} team members need you — open the Team map` : `${subs.length} team member${subs.length === 1 ? "" : "s"} — open the Team map`)
+        .cursor_pointer().hover((x) => x.text_color(t.foreground))
+        .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); })
+        .child(svg("mods/workspace-chrome/git-compare.svg").size(10).flex_none())
+        .child(need ? `${need}!` : String(subs.length));
+    };
+
     // The fold chevron; folded, the count too, colored by the most urgent one.
     const fold = (a, subs) => {
       const sts = subs.map((s) => kidStatus(s.t, this.listed));
@@ -452,7 +464,7 @@ export default class Agents extends View {
           .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
           .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
-        .when(subs.length > 0, el => el.child(fold(a, subs)))
+        .when(subs.length > 0, el => el.child(teamChip(a, subs)).child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(team).child(pin))
         .when(typeof this.ctx?.[a.address] === "number", el => el.child(this.ctxBadge(t, this.ctx[a.address])))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))

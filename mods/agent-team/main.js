@@ -242,10 +242,11 @@ export default class AgentTeam extends View {
       const x1 = Math.min(cx(a), cx(b)) + 3, x2 = Math.max(cx(a), cx(b)) - 3, right = cx(b) > cx(a);
       const spawn = e.k === "spawn" || e.k === "hc-run";
       const color = spawn ? t.working : fromLead ? t.muted : t.accent;
-      const label = spawn ? `✦ start${e.agent ? ` ${e.agent}` : ""}: ${e.text}` : e.text;
+      const label = spawn ? `✦ start${e.agent ? ` ${e.agent}` : ""}: ${e.text}` : e.verdict ? `${e.verdict === "APPROVE" ? "✓ APPROVED" : "✗ CHANGES"} · ${e.text}` : e.text;
+      const vColor = e.verdict === "APPROVE" ? t.done : e.verdict === "CHANGES" ? t.blocked : null;
       const fade = (el) => (faded ? el.opacity(0.2) : el);
       body.child(fade(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(10.5)
-        .text_color(spawn ? t.working : t.foreground).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`)));
+        .text_color(spawn ? t.working : vColor ?? t.foreground).when(Boolean(vColor), (x) => x.font_semibold()).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`)));
       if (spawn) for (let x = x1; x < x2 - 4; x += 9) body.child(fade(div().absolute().left(x).top(y + 22).w(Math.min(5, x2 - x)).h(2).rounded(1).bg(color)));
       else body.child(fade(div().absolute().left(x1).top(y + 22).w(x2 - x1).h(2).rounded(1).bg(color)));
       body.child(fade(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(11).text_color(color).child(right ? "▶" : "◀")));
@@ -255,7 +256,15 @@ export default class AgentTeam extends View {
       .child(cards)
       .child(evs.length ? v_flex().id("mp-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body) : note("No messages yet. Arrows appear as the lead starts agents and they report back."));
     const selCol = cols.find((c) => c.key === this.sel);
+    const waiting = cols.filter((c) => !c.others && c.state !== "finished" && (c.status === "blocked" || c.status === "error"));
+    const banner = waiting.length ? h_flex().px(14).py(8).gap(10).items_center().flex_none().bg(t.blocked).opacity(0.92)
+      .child(div().text_size(12).font_semibold().text_color("#fff").child(`⚠ ${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`))
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color("#fff").child(waiting[0].doing || "a permission prompt or a question is waiting"))
+      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(3).rounded(6).bg("#ffffff33").text_size(11).text_color("#fff").cursor_pointer()
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: waiting[0].addr })).child("Go to agent")))
+      : null;
     return root
+      .when(Boolean(banner), (e) => e.child(banner))
       .child(h_flex().flex_1().min_h(0).child(diagram).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
       .child(h_flex().h(28).px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim).flex_none()
         .child(div().child("── lead → member")).child(div().text_color(t.accent).child("── reply")).child(div().text_color(t.working).child("╌╌ started"))

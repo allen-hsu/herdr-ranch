@@ -5,7 +5,7 @@
 // shared state "agent-board.filter": "all" | "current" | { spaces: [ids] }.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, appHome, agents, panes, spaces, focused, props, run, theme, shared, setShared } from "herdr";
+import { exec, appHome, agents, panes, spaces, focused, props, run, theme, shared, setShared, terminals, openOverlay } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
 
 // Workflow order, left to right: waiting on you -> not started / idle -> in progress -> finished.
@@ -137,6 +137,13 @@ export default class AgentBoard extends View {
     const ctx = l?.ctx;
     const ctxColor = ctx >= 80 ? t.blocked : ctx >= 60 ? t.working : t.accent;
     const openLayout = props()?.open_layout;
+    // Team role (members started with an hc template) or team size (leads with live members).
+    const VENDOR = { claude: "Claude", codex: "Codex", grok: "Grok", cursor: "Cursor", gemini: "Gemini" };
+    const tm = /^(.+)-(claude|codex|grok|cursor|gemini)$/.exec(l?.template ?? "");
+    const lead = l?.parent ? agents().find((x) => x.address === l.parent) : null;
+    let kids = 0;
+    try { kids = (terminals() ?? []).filter((x) => x.parent === a.address && x.state !== "finished").length; } catch {}
+    const roleChip = tm ? `${tm[1]} · ${VENDOR[tm[2]]}${lead ? ` · for ${lead.title && lead.title !== lead.program?.name ? lead.title : lead.space_name}` : ""}` : kids ? `lead · team of ${kids}` : null;
     return v_flex().id(`card-${a.address}`).mx(6).mb(6).px(10).py(8).gap(4).rounded(8)
       .bg(a.focused ? t.selected : t.surface).border(1).border_color(norm(a.status) === "blocked" ? t.blocked : t.border)
       .cursor_pointer().hover((s) => s.border_color(t.input))
@@ -147,7 +154,11 @@ export default class AgentBoard extends View {
         .child(div().flex_1().min_w(0).truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(a.title || a.tab_name || a.program?.name || a.address))
         .child(div().flex_none().text_size(10.5).text_color(t.dim).child(since(now - (this.changed[a.address]?.at ?? now)))))
       .when(Boolean(where), (el) => el.child(div().truncate().text_size(10.5).text_color(t.dim).child(where)))
-      .when(Boolean(l?.task), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(`You: ${l.task}`)))
+      .when(Boolean(roleChip), (el) => el.child(h_flex().child(div().id(`role-${a.address}`).max_w_full().truncate().px(6).rounded(8).border_1().border_color(t.accent)
+        .text_size(10).text_color(t.accent).tooltip(kids && !tm ? "Open the Team map" : "Team role")
+        .when(kids > 0 && !tm, (x) => x.cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); }))
+        .child(roleChip))))
+      .when(Boolean(l?.task), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(`${l?.parent ? "Lead" : "You"}: ${l.task}`)))
       .child(div().text_size(11).text_color(dc).child(dt))
       .when(ctx != null || l?.cost != null, (el) => el.child(h_flex().gap(6).items_center().pt(2)
         .when(ctx != null, (el) => el

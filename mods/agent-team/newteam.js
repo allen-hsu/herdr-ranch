@@ -20,6 +20,9 @@ const ROLE_LABEL = { implementer: "Implementer", implementers: "Workers", contes
 const SAFE_REF = /^[\w./-]+$/;
 // Single-quote for a POSIX shell when the text isn't plainly safe (paths with spaces, $, quotes...).
 const sq = (v) => (/^[\w./~-]+$/.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`);
+const HISTORY = "team-history";
+const loadHistory = () => { try { const h = JSON.parse(localStorage.getItem(HISTORY) ?? "[]"); return Array.isArray(h) ? h : []; } catch { return []; } };
+const ago = (ms) => { const s = (Date.now() - ms) / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`; };
 const slugify = (s) => (s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 28) || "task");
 
 export class NewTeam {
@@ -36,6 +39,7 @@ export class NewTeam {
     this.pick = {}; // role -> agent key, or Set for multi roles
     this.useReviewer = true;
     this.error = null; this.busy = false;
+    this.history = loadHistory();
     cx.spawn(async (cx) => {
       for (const [k, bin] of Object.entries(CLI)) this.installed[k] = (await exec("/bin/sh", ["-lc", `command -v ${bin}`], { timeout: 4000 }).catch(() => null))?.code === 0;
       try { const c = JSON.parse((await readTextFile(`${home()}/.config/herdr-app/agent-team.json`)) ?? "null"); if (c?.roles) this.prefs = { ...DEFAULTS, ...c.roles }; } catch {}
@@ -126,8 +130,36 @@ export class NewTeam {
       try { addr = g?.code === 0 ? JSON.parse(g.stdout).address : null; } catch {}
       if (!addr) await exec("/bin/sleep", ["0.25"]).catch(() => null);
     }
+    const entry = { at: Date.now(), pattern: this.pattern, task, repo: root, base, lead: addr,
+      pick: { implementer: this.pick.implementer, reviewer: this.pick.reviewer, researcher: this.pick.researcher,
+        implementers: [...this.pick.implementers], contestants: [...this.pick.contestants] }, useReviewer: this.useReviewer };
+    try { localStorage.setItem(HISTORY, JSON.stringify([entry, ...this.history.filter((h) => h.task !== task || h.repo !== root)].slice(0, 12))); } catch {}
     closeOverlay(this.overlay);
     if (addr) openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${addr}`, width: 1000, height: 660, props: { lead: addr } });
+  }
+
+  reuse(h, cx) {
+    this.pattern = h.pattern;
+    if (typeof this.task.set_value === "function") this.task.set_value(h.task ?? "");
+    this.repo.set_value(h.repo ?? "");
+    this.base.set_value(h.base ?? "");
+    const p = h.pick ?? {};
+    for (const k of ["implementer", "reviewer", "researcher"]) if (p[k] && this.installed[p[k]]) this.pick[k] = p[k];
+    for (const k of ["implementers", "contestants"]) if (Array.isArray(p[k])) this.pick[k] = new Set(p[k].filter((a) => this.installed[a]));
+    this.useReviewer = h.useReviewer !== false;
+    cx.notify();
+  }
+
+  recent(t) {
+    if (!this.history.length) return null;
+    return v_flex().gap(4)
+      .child(div().text_size(11).text_color(t.muted).child("Recent teams"))
+      .children(this.history.slice(0, 6).map((h, i) => h_flex().id(`nt-h-${i}`).h(28).px(8).gap(8).items_center().rounded(6).border_1().border_color(t.border)
+        .cursor_pointer().hover((x) => x.bg(t.hover)).tooltip("Fill the form with this team (edit it, then Start)")
+        .on_click((_e, cx) => this.reuse(h, cx))
+        .child(div().flex_none().text_size(10.5).text_color(t.accent).child(PATTERNS.find((p) => p.key === h.pattern)?.name ?? h.pattern))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.foreground).child(h.task))
+        .child(div().flex_none().text_size(10.5).text_color(t.dim).child(`${(h.repo ?? "").split("/").pop()} · ${ago(h.at)}`))));
   }
 
   render(t) {
@@ -147,6 +179,7 @@ export class NewTeam {
         .child(div().id("nt-x").size(24).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover))
           .on_click(() => closeOverlay(this.overlay)).child("×")))
       .child(v_flex().id("nt-body").flex_1().min_h(0).px(16).py(12).gap(14).overflow_y_scrollbar()
+        .when(Boolean(this.history.length), (e) => e.child(this.recent(t)))
         .child(field("Pattern", v_flex().gap(8).child(h_flex().gap(8).child(card(PATTERNS[0])).child(card(PATTERNS[1]))).child(h_flex().gap(8).child(card(PATTERNS[2])).child(card(PATTERNS[3])))))
         .child(field("Task", box(Textarea.new(this.task)).min_h(96)))
         .child(h_flex().gap(10)

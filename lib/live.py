@@ -124,6 +124,10 @@ def info_for(addr, snap=None):
     except Exception:
         return {"error": "unavailable"}
     info = {"cwd": (fg.get("cwd") or d.get("cwd") or "").replace(HOME, "~")}
+    if d.get("template"):
+        info["template"] = d["template"]  # a team role, e.g. reviewer-codex
+    if d.get("parent"):
+        info["parent"] = d["parent"]
     pid = fg.get("pid")
     try:
         sess = json.load(open(os.path.join(HOME, ".claude", "sessions", "%d.json" % pid)))

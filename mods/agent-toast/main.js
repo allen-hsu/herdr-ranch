@@ -6,7 +6,7 @@
 // Herdr's icon, click focuses the agent), else osascript.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile } from "herdr";
+import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals } from "herdr";
 
 // "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
 // path. name: what a macOS notification can play (a file in a Sounds folder); path: what afplay plays.
@@ -56,6 +56,19 @@ export default class AgentToast extends View {
     });
   }
 
+  // Team context: a lead's live members, or a member's role and its lead (from hc's parent links / template).
+  team(a) {
+    let all = [];
+    try { all = terminals() ?? []; } catch {}
+    const kids = all.filter((x) => x.parent === a.address && x.state !== "finished");
+    const me = all.find((x) => x.address === a.address);
+    const lead = me?.parent ? agents().find((x) => x.address === me.parent) : null;
+    const role = me?.template ? me.template.replace(/-(claude|codex|grok|cursor|gemini)$/, "") : null;
+    if (kids.length) return `team of ${kids.length}`;
+    if (lead) return `${role ?? "member"} for ${lead.title && lead.title !== lead.program?.name ? lead.title : lead.space_name}`;
+    return null;
+  }
+
   // Plain-text version for the system notification.
   lines(p) {
     const a = this.agent;
@@ -64,7 +77,8 @@ export default class AgentToast extends View {
     const sp = spaces().find((s) => s.id === a.space);
     const name = a.title && a.title !== a.program?.name ? a.title : a.program?.name ?? "Agent";
     const tab = a.tab_name && a.tab_name !== String(a.tab_index) ? a.tab_name : null;
-    return { title: name, subtitle: [blocked ? "Needs you" : "Finished", a.space_name, sp?.branch, tab].filter(Boolean).join(" · ") };
+    const team = this.team(a);
+    return { title: name, subtitle: [blocked ? "Needs you" : team?.startsWith("team of") ? "Team finished" : "Finished", team, a.space_name, sp?.branch, tab].filter(Boolean).join(" · ") };
   }
 
   icon(t, prog, level) {
@@ -79,7 +93,8 @@ export default class AgentToast extends View {
     const sp = spaces().find((s) => s.id === a.space);
     const name = a.title && a.title !== a.program?.name ? a.title : a.program?.name ?? "Agent";
     const tab = a.tab_name && a.tab_name !== String(a.tab_index) ? a.tab_name : null;
-    const where = [a.space_name, sp?.branch, tab].filter(Boolean).join(" · ");
+    const team = this.team(a);
+    const where = [team, a.space_name, sp?.branch, tab].filter(Boolean).join(" · ");
     return [
       div().relative().size(28).flex_none().flex().items_center().justify_center().rounded(7).bg(t.raised)
         .child(this.icon(t, a.program, p.level))
@@ -87,7 +102,7 @@ export default class AgentToast extends View {
       v_flex().flex_1().min_w(0).gap(2)
         .child(div().truncate().font_semibold().text_size(13).text_color(t.foreground).child(name))
         .child(h_flex().gap(6).min_w(0).text_size(11.5)
-          .child(div().flex_none().font_medium().text_color(color).child(blocked ? "Needs you" : "Finished"))
+          .child(div().flex_none().font_medium().text_color(color).child(blocked ? "Needs you" : team?.startsWith("team of") ? "Team finished" : "Finished"))
           .when(Boolean(where), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(where)))),
     ];
   }

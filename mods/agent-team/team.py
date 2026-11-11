@@ -17,11 +17,12 @@ import live  # noqa: E402  (shared lib, copied in by install.sh)
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
-VERSION = 7
+VERSION = 8
 red = live.clean
 TAG = re.compile(r"<(agent-message|hc|cross-session-message)\b([^>]*)>(.*?)</\1>", re.S)
 NOTE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
 ATTR = re.compile(r'([\w-]+)="([^"]*)"')
+VERDICT = re.compile(r"VERDICT:\s*(APPROVE|CHANGES)", re.I)
 HC_CMD = re.compile(r"(?:^|[;&|]\s*)hc\s+(run|send)\s+(?!-h\b|--help)([^\n;&|]*)", re.M)
 
 
@@ -292,6 +293,10 @@ def timeline(path, names):
         else:
             e.pop("tool", None)
         e["name"] = names.get(e.get("who"), e.get("who"))
+    for e in ev:
+        v = VERDICT.search(e.get("full") or e.get("text") or "")
+        if v:
+            e["verdict"] = v.group(1).upper()
     merged = []
     for e in ev:
         p = merged[-1] if merged else None
