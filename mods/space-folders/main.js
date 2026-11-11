@@ -581,6 +581,7 @@ export default class Spaces extends View {
         this.pressed = null; this.over = null; this.overFolder = null; this.moving = null; this.overMove = null;
         cx.notify();
       })
+      .on_hover((h, cx) => { if (h) this.hoveredFolder = f.id; else if (this.hoveredFolder === f.id) this.hoveredFolder = null; cx.notify(); })
       .on_click(() => this.toggleFolder(machine, f.id))
       .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 160, props: { folderMenu: f.id, machine } }));
     // Built like a space's avatar: a filled 18px tile in the folder's color, its mark in white.
@@ -593,6 +594,11 @@ export default class Spaces extends View {
       // Folded, it still says when something in it is running or needs you.
       .when(f.folded && status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(f.folded && Boolean(status) && status !== "working", (el) => el.child(div().flex_none().text_color(tone(t, status)).child(glyph(status))))
+      .when(!machine && this.hoveredFolder === f.id, (el) => el.child(div().id(`folder-team-${f.id}`).flex_none().p(2).rounded(4).text_color(t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Start an agent team in a repo of this folder…")
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: f.id } }); })
+        .child(svg("mods/space-folders/team.svg").size(12))))
       .child(div().id(`folder-add-${f.id}`).flex_none().px(4).rounded(4).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
         .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(machine, f.id); }).child("+"))
       .child(div().flex_none().text_size(11.5).text_color(t.dim).child(String(inside.length)))
@@ -842,7 +848,7 @@ export default class Spaces extends View {
     return [
       icon(`wt-new-${w.id}`, "plus", "New worktree…", () => dialog({ wt: "new" }, 400)),
       icon(`wt-clean-${w.id}`, "archive", "Clean up worktrees…", () => dialog({ wt: "clean" }, 420)),
-      icon(`team-${w.id}`, "mods/space-folders/team.svg", "Start an agent team here…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 196, props: { repo: root } })),
+      icon(`team-${w.id}`, "mods/space-folders/team.svg", "Start an agent team here…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { repo: root } })),
     ];
   }
 
