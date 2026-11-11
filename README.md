@@ -9,7 +9,7 @@ Two layouts, switched from the top-right or with ⌃⌘1 / ⌃⌘2:
 | Layout | Left | Center | Right panel (one panel, ⌃⌘G / ▣ toggles) |
 |---|---|---|---|
 | **Overview** | spaces in folders | **agent board**: Needs you → Idle → Working → Done | Files · Changes · Git graph · Pull requests · Agent inspector |
-| **Focus** | spaces + agent list (context %) | the active tab | same panel, Agent inspector first |
+| **Focus** | one list, two views (switch in its header): **Spaces** — folders → spaces → their agents (same rows as the agent list, with sub-agents and background subagents); **Agents** — by status, needs-you first | the active tab | same panel, Agent inspector first |
 
 Bottom bar: worktree resource manager pill, then Claude / Codex / Grok / Cursor plan usage with reset times.
 
@@ -81,7 +81,7 @@ snippets, owner-only (0700/0600).
 
 ```
 mods/              our mods (one folder per mod, copied into ~/.config/herdr-app/mods)
-lib/               code shared by several mods: prs.js (GitHub PR badges), folders.js (space-folders
+lib/               code shared by several mods: agentrows.js (agent rows + their data), prs.js (GitHub PR badges), folders.js (space-folders
                    state), codexlog.py (Codex sessions), live.py (what each agent is doing now). A mod lists what it needs in lib.json; the
                    installer copies those files into the installed mod (Herdr mods can't import across mods)
 layouts/           overview.json, focus.json

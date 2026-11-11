@@ -19,32 +19,25 @@
           "window_drag": true
         },
         {
-          "id": "sidebar-lists",
-          "type": "column",
+          "id": "sidebar-view",
+          "type": "stack",
           "children": [
             {
               "id": "spaces",
               "type": "block",
               "content": {
                 "mod": "space-folders"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90
+              }
             },
             {
               "id": "agents",
               "type": "block",
               "content": {
                 "mod": "agents-ctx"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90
+              }
             }
-          ]
+          ],
+          "active": "spaces"
         },
         {
           "id": "sidebar-footer",

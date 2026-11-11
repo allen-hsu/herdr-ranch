@@ -13,12 +13,23 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, appHome } from "herdr";
+import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand, appHome } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
+import { agentName } from "./agentname.js";
+import { AgentData, agentRow, childrenOf } from "./agentrows.js";
 import { TS } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
-const TRAIL_W = 30; // the right-hand column every row shares // The mod that owns worktree dialogs
+const TRAIL_W = 30;
+// The sidebar's two views, a stack in the layout ("sidebar-view"): agents by space (here) or by status (agents-ctx).
+function viewSwitch(t, on) {
+  const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
+    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.raised)).hover((x) => x.text_color(t.foreground))
+    .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+    .on_click(() => { if (on !== id) { if (id === "agents") setShared("agents.sort", "priority"); run("layout.select", { stack: "sidebar-view", child: id }); } })
+    .child(label);
+  return h_flex().gap(2).items_center().ml(-7).child(pill("spaces", "Spaces")).child(pill("agents", "Agents"));
+} // the right-hand column every row shares // The mod that owns worktree dialogs
 const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
@@ -164,6 +175,10 @@ export default class Spaces extends View {
   init(_props, cx) {
     this.prs = new PRCache();
     this.logos = {};
+    // "By space" view: each space lists its agents (lib/agentrows.js), the same rows the "by status" view shows.
+    this.adata = new AgentData();
+    this.adata.mod = "space-folders";
+    if (!props()?.overlay) this.adata.start(cx);
     if (!props()?.overlay) {
       const logos = (cx) => cx.spawn(async (cx) => { await this.findLogos().catch(() => null); cx.notify(); });
       logos(cx);
@@ -541,7 +556,9 @@ export default class Spaces extends View {
   foldered(rows, machine, t, collapsed, { guests = [], nested = false, hidden = false, seen = [] } = {}) {
     const draw = (r, away) => {
       seen.push({ id: r.w.id, shown: !away, folder: r.folder });
-      return away ? [] : [collapsed ? this.compact(r, t) : this.row(r, t)];
+      if (away) return [];
+      if (collapsed) return [this.compact(r, t)];
+      return [this.row(r, t), ...this.agentsOf(r, t)];
     };
     const f = folders(machine), { list } = f, ps = panes();
     let parent = null;
@@ -563,6 +580,20 @@ export default class Spaces extends View {
       }),
       ...placed.filter((r) => !r.folder).flatMap((r) => draw(r, hidden)),
     ];
+  }
+
+  // The agents working in a space, each followed by its sub-agents; agents another agent started are drawn
+  // under that agent, not again on their own.
+  agentsOf(r, t) {
+    const all = agents().filter((a) => !a.address.includes("/"));
+    let terms = [];
+    try { terms = terminals() ?? []; } catch {}
+    const childOf = new Set(terms.filter((k) => k.parent && all.some((a) => a.address === k.parent)).map((k) => k.address));
+    const mine = all.filter((a) => a.space === r.w.id && !childOf.has(a.address));
+    if (!mine.length) return [];
+    this.adata.track(all);
+    const pad = indent(r.folder, r.nested) + (r.tree ? 22 : 27);
+    return mine.flatMap((a) => [agentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })]);
   }
 
   // Every row ends the same way: a fixed-width column (a folder's count + chevron, a space's status dot), with the
@@ -968,7 +999,7 @@ export default class Spaces extends View {
     this.seen = seen;
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(TS.item)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(TS.body).text_color(t.dim)
-        .when(!collapsed, el => el.child("Spaces"))
+        .when(!collapsed, el => el.child(viewSwitch(t, "spaces")))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null))))
           .child(button("space-new", "plus", () => newSpaceIn(null, null)))))

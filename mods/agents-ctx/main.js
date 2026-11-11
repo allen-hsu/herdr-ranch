@@ -10,6 +10,16 @@ import { TS } from "./ui.js";
 // ~/.claude/herdr-status-snapshot.py (called from the status line) writes the percentages;
 // a terminal's foreground pid maps to its session via ~/.claude/sessions/<pid>.json.
 const SNAPSHOT = "/.cache/herdr-claude-status/claude-statusline.json";
+// ranch: the sidebar's two views, a stack in the layout ("sidebar-view"): agents by space (space-folders) or by
+// status (here). Same switch in both headers.
+function viewSwitch(t, on) {
+  const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
+    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.raised)).hover((x) => x.text_color(t.foreground))
+    .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+    .on_click(() => { if (on !== id) run("layout.select", { stack: "sidebar-view", child: id }); })
+    .child(label);
+  return h_flex().gap(2).items_center().ml(-7).child(pill("spaces", "Spaces")).child(pill("agents", "Agents"));
+}
 const isClaude = (a) => a.app === "claude-code" || a.program?.key === "claude";
 
 function find(node, id) {
@@ -562,7 +572,7 @@ export default class Agents extends View {
             .flex_none()
             .items_center()
             .justify_between()
-            .child(div().text_size(TS.body).font_medium().text_color(t.dim).child("Agents"))
+            .child(viewSwitch(t, "agents"))
             .child(
               div()
                 .id("ag-sort")
