@@ -32,17 +32,6 @@
                 "weight": 1
               },
               "min": 90
-            },
-            {
-              "id": "agents",
-              "type": "block",
-              "content": {
-                "mod": "agents-ctx"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90
             }
           ]
         },
@@ -84,7 +73,7 @@
               "id": "tabs",
               "type": "block",
               "content": {
-                "mod": "tabs"
+                "mod": "tabs-plus"
               },
               "window_drag": true,
               "size": {
