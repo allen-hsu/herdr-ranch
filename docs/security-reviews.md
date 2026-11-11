@@ -14,3 +14,6 @@ Automated review flagged `--allowedTools Bash(hc:*),Bash(git:*)` on the team lea
 `git -c core.sshCommand=…` / aliases run arbitrary programs without auto mode's classifier. Fixed: the lead
 pre-approves only `hc run --bg|send|wait|read|get|ls|templates|kill|interrupt`; git and `hc keys` go through the
 classifier. Members run in auto mode (Claude, Grok) or Codex's workspace-write sandbox.
+Follow-up (same day): the detected base branch (origin/HEAD, chosen by the remote) now passes the same
+`^[\w./-]+$` check as a typed one (else `main`), and the repo path / name are single-quoted where the playbooks
+put them into commands.

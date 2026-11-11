@@ -17,6 +17,9 @@ const NAME = { claude: "Claude", codex: "Codex", grok: "Grok", cursor: "Cursor",
 const TEMPLATES = { implementer: ["claude", "codex", "grok", "cursor"], reviewer: ["codex", "claude", "grok"], researcher: ["gemini", "grok", "claude"] };
 const DEFAULTS = { implementer: ["claude", "codex", "grok", "cursor"], reviewer: ["codex", "claude", "grok"], researcher: ["gemini", "grok", "claude"] };
 const ROLE_LABEL = { implementer: "Implementer", implementers: "Workers", contestants: "Contestants", reviewer: "Reviewer", researcher: "Researcher" };
+const SAFE_REF = /^[\w./-]+$/;
+// Single-quote for a POSIX shell when the text isn't plainly safe (paths with spaces, $, quotes...).
+const sq = (v) => (/^[\w./~-]+$/.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`);
 const slugify = (s) => (s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 28) || "task");
 
 export class NewTeam {
@@ -82,7 +85,7 @@ export class NewTeam {
     const task = this.task.value().trim(), repo = this.repo.value().trim().replace(/^~/, home()), base = this.base.value().trim();
     const P = PATTERNS.find((p) => p.key === this.pattern);
     if (!task) { this.error = "Write the task first."; cx.notify(); return; }
-    if (base && !/^[\w./-]+$/.test(base)) { this.error = "That base branch name looks wrong."; cx.notify(); return; }
+    if (base && (!SAFE_REF.test(base) || base.startsWith("-"))) { this.error = "That base branch name looks wrong."; cx.notify(); return; }
     this.busy = true; this.error = null; cx.notify();
     const isRepo = (await exec("git", ["-C", repo, "rev-parse", "--show-toplevel"], { timeout: 5000 }).catch(() => null));
     if (isRepo?.code !== 0) { this.busy = false; this.error = "That folder isn't a git repository."; cx.notify(); return; }
@@ -92,6 +95,8 @@ export class NewTeam {
       const s = await exec("git", ["-C", root, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"], { timeout: 5000 }).catch(() => null);
       baseRef = s?.code === 0 && s.stdout.trim() ? s.stdout.trim().replace(/^origin\//, "") : "main";
     }
+    // The remote chooses origin/HEAD's name, and branch names may hold $ ; ` | &: these go into shell commands.
+    if (!SAFE_REF.test(baseRef) || baseRef.startsWith("-")) baseRef = "main";
     const tpl = (role, a) => `${role}-${a}`;
     const multi = (role) => [...this.pick[role]].map((a) => tpl("implementer", a));
     const reviewer = this.useReviewer && this.pick.reviewer ? tpl("reviewer", this.pick.reviewer) : null;
@@ -102,7 +107,7 @@ export class NewTeam {
     const slug = slugify(task);
     let play = (await readTextFile(`${appHome()}/ranch/teams/${this.pattern}.md`).catch(() => null)) ?? "";
     if (!play) { this.busy = false; this.error = "Playbook missing: run herdr-ranch's install.sh."; cx.notify(); return; }
-    const vars = { task, repo: root, repo_name: root.split("/").pop(), base: baseRef, slug, rounds: String(rounds), workers: String(Math.max(2, this.pick.implementers.size)),
+    const vars = { task, repo: sq(root), repo_name: sq(root.split("/").pop()), base: baseRef, slug, rounds: String(rounds), workers: String(Math.max(2, this.pick.implementers.size)),
       implementer: tpl("implementer", this.pick.implementer), implementers: multi("implementers").join(", "), contestants: multi("contestants").join(", "),
       reviewer: reviewer ?? "(none)", researcher: tpl("researcher", this.pick.researcher), review_step: reviewStep };
     play = play.replace(/\{\{review_step\}\}/g, vars.review_step).replace(/\{\{(\w+)\}\}/g, (m, k) => vars[k] ?? m);
