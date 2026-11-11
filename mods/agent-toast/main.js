@@ -41,6 +41,7 @@ export default class AgentToast extends View {
         try {
           const l = JSON.parse(r?.stdout || "{}")[addr] ?? {};
           this.last = kind === "blocked" && l.tool ? (l.tool.name === "AskUserQuestion" ? `asks: ${l.tool.target}` : `wants to run ${l.tool.name}: ${l.tool.target}`) : l.text || null;
+          if (this.last) this.last = this.last.replace(/\*\*|__|`/g, "").replace(/^#+\s*/, "").trim();
         } catch {}
         cx.notify();
       }

@@ -1,0 +1,5 @@
+{
+  "place": "none",
+  "title": "New team",
+  "overlay": { "kind": "dialog", "width": 560, "height": 196 }
+}

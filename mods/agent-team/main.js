@@ -194,7 +194,7 @@ export default class AgentTeam extends View {
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d?.lead ? `· ${agentName(agents().find((x) => x.address === d.lead.id)) || d.lead.name}` : ""))
       .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click(() => openOverlay({ mod: "agent-team", kind: "dialog", width: 620, height: 640, props: { view: "new" } })).child("New team…"))
+        .on_click(() => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 196, props: {} })).child("New team…"))
       .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.raised))
         .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.pinned = this.pinned ? null : this.addr; this.load(cx); cx.notify(); }).child(this.pinned ? "Follow focused agent" : "Following focused agent"))

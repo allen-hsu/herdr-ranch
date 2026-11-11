@@ -842,6 +842,7 @@ export default class Spaces extends View {
     return [
       icon(`wt-new-${w.id}`, "plus", "New worktree…", () => dialog({ wt: "new" }, 400)),
       icon(`wt-clean-${w.id}`, "archive", "Clean up worktrees…", () => dialog({ wt: "clean" }, 420)),
+      icon(`team-${w.id}`, "git-compare", "Start an agent team here…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 196, props: { repo: root } })),
     ];
   }
 
