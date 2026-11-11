@@ -105,45 +105,52 @@ def main():
         snap = {}
     result = {}
     for addr in sys.argv[1:17]:
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", addr):
-            continue
-        info = {}
+        if re.fullmatch(r"[A-Za-z0-9_-]+", addr):
+            result[addr] = info_for(addr, snap)
+    print(json.dumps(result, ensure_ascii=False))
+
+
+def info_for(addr, snap=None):
+    """What one terminal's agent is doing: {cwd, task, tool, text, ctx, cost, model, session}, or {program}."""
+    if snap is None:
         try:
-            r = subprocess.run(["hc", "get", addr, "--json"], capture_output=True, text=True, timeout=4)
-            d = json.loads(r.stdout)
-            fg = d.get("foreground") or {}
+            snap = json.load(open(SNAPSHOT)).get("session_contexts") or {}
         except Exception:
-            result[addr] = {"error": "unavailable"}
-            continue
-        info["cwd"] = (fg.get("cwd") or d.get("cwd") or "").replace(HOME, "~")
-        pid = fg.get("pid")
+            snap = {}
+    try:
+        r = subprocess.run(["hc", "get", addr, "--json"], capture_output=True, text=True, timeout=4)
+        d = json.loads(r.stdout)
+        fg = d.get("foreground") or {}
+    except Exception:
+        return {"error": "unavailable"}
+    info = {"cwd": (fg.get("cwd") or d.get("cwd") or "").replace(HOME, "~")}
+    pid = fg.get("pid")
+    try:
+        sess = json.load(open(os.path.join(HOME, ".claude", "sessions", "%d.json" % pid)))
+    except Exception:
+        sess = None
+    if sess is None:
+        import codexlog
+        if codexlog.is_codex(fg):
+            path = codexlog.find_rollout(pid, fg.get("cwd") or d.get("cwd"), d.get("created_ms"))
+            if path:
+                try:
+                    info.update(codexlog.live(path))
+                except OSError:
+                    pass
+                return info
+        info["program"] = " ".join(fg.get("argv") or [])[:40]
+        return info
+    sid = sess.get("sessionId")
+    s = snap.get(sid) or {}
+    info.update({"session": sid, "ctx": s.get("used_percent"), "cost": s.get("cost_usd"), "model": s.get("model")})
+    paths = glob.glob(os.path.join(HOME, ".claude", "projects", "*", "%s.jsonl" % sid))
+    if paths:
         try:
-            sess = json.load(open(os.path.join(HOME, ".claude", "sessions", "%d.json" % pid)))
-        except Exception:
-            import codexlog
-            if codexlog.is_codex(fg):
-                path = codexlog.find_rollout(pid, fg.get("cwd") or d.get("cwd"), d.get("created_ms"))
-                if path:
-                    try:
-                        info.update(codexlog.live(path))
-                    except OSError:
-                        pass
-                    result[addr] = info
-                    continue
-            info["program"] = " ".join(fg.get("argv") or [])[:40]
-            result[addr] = info
-            continue
-        sid = sess.get("sessionId")
-        s = snap.get(sid) or {}
-        info.update({"session": sid, "ctx": s.get("used_percent"), "cost": s.get("cost_usd"), "model": s.get("model")})
-        paths = glob.glob(os.path.join(HOME, ".claude", "projects", "*", "%s.jsonl" % sid))
-        if paths:
-            try:
-                info.update(claude_live(paths[0]))
-            except OSError:
-                pass
-        result[addr] = info
-    print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+            info.update(claude_live(paths[0]))
+        except OSError:
+            pass
+    return info
 
 
 if __name__ == "__main__":

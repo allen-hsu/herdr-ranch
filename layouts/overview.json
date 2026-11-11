@@ -140,9 +140,10 @@
                         "labels": {
                           "files": "Files",
                           "changes": "Changes",
-                          "git": "Git graph",
-                          "prs": "Pull requests",
-                          "inspector": "Agent inspector"
+                          "git": "Git",
+                          "prs": "PRs",
+                          "inspector": "Inspector",
+                          "team": "Team"
                         },
                         "sync_panels": true,
                         "hide": [
@@ -193,6 +194,13 @@
                       "type": "block",
                       "content": {
                         "mod": "agent-inspector"
+                      }
+                    },
+                    {
+                      "id": "team",
+                      "type": "block",
+                      "content": {
+                        "mod": "agent-team"
                       }
                     }
                   ]
