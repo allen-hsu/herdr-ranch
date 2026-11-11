@@ -26,10 +26,12 @@ export default class Board extends View {
     this.search = InputState.new({ placeholder: "Search spaces" });
     this.search.on("change", (_e, cx) => cx.notify());
     this.drag = null; this.over = null; this.moved = false;
-    this.prs = new PRCache(); this.slugs = {};
+    this.prs = new PRCache(); this.slugs = {}; this.prDirty = false;
     this.refreshSlugs(cx);
+    // Data only (Herdr redraws on its own when spaces / agents change): new PR info redraws once.
     cx.timer.every(30000, (cx) => this.refreshSlugs(cx));
-    cx.timer.every(3000, (cx) => cx.notify());
+    cx.timer.every(5000, (cx) => { if (this.prDirty) { this.prDirty = false; cx.notify(); } });
+    this.inputFocused = false;
   }
 
   // GitHub owner/name per space folder, for its PR (one git call per folder, cached).
@@ -54,7 +56,7 @@ export default class Board extends View {
       const dir = place(s, ps) ?? s.folder ?? "";
       const mine = all.filter((a) => a.space === s.id);
       const slug = this.slugs[dir];
-      const pr = slug && s.branch ? this.prs.get(slug, s.branch, null, () => {}) : null;
+      const pr = slug && s.branch ? this.prs.get(slug, s.branch, null, () => { this.prDirty = true; }) : null;
       const busy = mine.some((a) => a.status === "working" || a.status === "blocked");
       const auto = busy ? "progress" : pr ? "review" : mine.length ? "progress" : "todo";
       const col = COLS.some((c) => c.id === manual[s.id]) ? manual[s.id] : auto;
@@ -81,31 +83,31 @@ export default class Board extends View {
     return mine.length ? div().size(8).rounded(4).border_1().border_color(t.dim) : div().size(5).rounded(3).bg(t.border);
   }
 
+  // A card in Herdr's list style: no outline; a background tier, hover lighter, the current space selected,
+  // a red edge when something in it needs you.
   card(t, c) {
     const s = c.s, dragging = this.drag?.id === s.id;
     const shown = c.mine.slice(0, 4);
-    return v_flex().id(`card-${s.id}`).p(10).gap(4).rounded(10).border_1().bg(t.surface).cursor_pointer().flex_none()
-      .border_color(c.need ? t.blocked + "aa" : s.active ? t.accent + "88" : t.border)
-      .when(dragging && this.moved, (x) => x.opacity(0.4))
-      .hover((x) => x.border_color(t.input ?? t.muted))
+    return v_flex().id(`card-${s.id}`).relative().px(10).py(8).gap(3).rounded(7).cursor_pointer().flex_none()
+      .bg(s.active ? t.selected : t.surface).hover((x) => x.bg(t.hover))
+      .when(c.need, (x) => x.child(div().absolute().left(0).top(8).bottom(8).w(2).rounded(1).bg(t.blocked)))
+      .when(dragging && this.moved, (x) => x.opacity(0.35))
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.drag = { id: s.id, from: c.pinned ? "pinned" : c.col }; this.moved = false; })
       .on_click(() => { if (this.moved) return; run("space.select", { id: s.id }); closeOverlay(this.overlay); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(14).flex_none().flex().justify_center().child(this.mark(t, c.mine)))
-        .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_semibold().text_color(t.foreground).child(s.name))
-        .when(Boolean(s.branch), (x) => x.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border).text_size(TS.tiny).text_color(t.dim).child(c.worktree ? "worktree" : "primary")))
-        .when(Boolean(c.pr), (x) => x.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(prColor(c.pr, t) + "88").text_size(TS.tiny).text_color(prColor(c.pr, t)).tooltip(prTip(c.pr)).child(`#${c.pr.number}`))))
-      .when(Boolean(s.branch), (x) => x.child(div().pl(20).truncate().text_size(TS.small).font_family("Menlo").text_color(t.dim).child(s.branch)))
-      .when(shown.length > 0, (x) => x.child(div().pl(20).pt(2).text_size(TS.small).text_color(t.dim).child(`${c.mine.length} agent${c.mine.length === 1 ? "" : "s"}`)))
+        .child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(s.name))
+        .when(Boolean(c.pr), (x) => x.child(div().flex_none().text_size(TS.meta).text_color(prColor(c.pr, t)).tooltip(prTip(c.pr)).child(`#${c.pr.number}`)))
+        .when(c.manual, (x) => x.child(div().id(`auto-${s.id}`).flex_none().text_size(TS.meta).text_color(t.dim).hover((h) => h.text_color(t.foreground))
+          .tooltip("You placed this card. Click to let it follow its agents and PR again.")
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setCol(s.id, null); cx.notify(); }).child("↺"))))
+      .when(Boolean(s.branch), (x) => x.child(div().pl(20).truncate().text_size(TS.meta).text_color(t.dim)
+        .child(`${s.branch}${c.worktree ? " · worktree" : ""}`)))
       .children(shown.map((a) => h_flex().pl(20).gap(6).items_center().min_w(0)
         .child(div().w(12).flex_none().flex().justify_center().child(a.status === "working" ? svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900)
-          : a.status === "blocked" ? div().size(7).rounded(4).bg(t.blocked) : svg("mods/workspace-chrome/circle-check.svg").size(10).text_color(a.status === "done" ? t.done : t.dim)))
-        .child(div().flex_none().child(programIcon(a.program, 11, t.muted) ?? div()))
+          : a.status === "blocked" ? div().size(6).rounded(3).bg(t.blocked) : svg("mods/workspace-chrome/circle-check.svg").size(10).text_color(a.status === "done" ? t.done : t.dim)))
         .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color(a.status === "idle" ? t.muted : t.foreground).child(agentName(a) || a.program?.name || a.address))))
-      .when(c.mine.length > shown.length, (x) => x.child(div().pl(20).text_size(TS.small).text_color(t.dim).child(`+${c.mine.length - shown.length} more`)))
-      .when(c.manual, (x) => x.child(h_flex().pl(20).pt(2).child(div().id(`auto-${s.id}`).text_size(TS.tiny).text_color(t.dim).cursor_pointer().hover((h) => h.text_color(t.foreground))
-        .tooltip("You placed this card. Click to let it follow its agents and PR again.")
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setCol(s.id, null); cx.notify(); }).child("↺ auto"))));
+      .when(c.mine.length > shown.length, (x) => x.child(div().pl(20).text_size(TS.meta).text_color(t.dim).child(`+${c.mine.length - shown.length} more`)));
   }
 
   drop(target, cx) {
@@ -119,7 +121,7 @@ export default class Board extends View {
 
   zone(t, id, child) {
     const hot = this.drag && this.moved && this.over === id;
-    return child.when(Boolean(hot), (x) => x.border_color(t.accent).bg(t.accent + "14"))
+    return child.when(Boolean(hot), (x) => x.bg(t.hover))
       .on_mouse_move((_e, cx) => { if (this.drag) { if (this.over !== id) { this.over = id; if (id !== this.drag.from) this.moved = true; cx.notify(); } } })
       .on_mouse_up("left", (_e, cx) => this.drop(id, cx));
   }
@@ -128,36 +130,38 @@ export default class Board extends View {
     const t = theme();
     const cards = this.cards();
     const pinned = cards.filter((c) => c.pinned);
-    const head = h_flex().h(46).px(SPACE.dialog).gap(10).items_center().border_b(1).border_color(t.border).flex_none()
-      .child(div().text_size(TS.title).font_semibold().text_color(t.foreground).child("Board"))
-      .child(div().w(260).px(8).py(4).rounded(7).border_1().border_color(t.border).bg(t.surface).child(Input.new(this.search)))
+    const dragging = Boolean(this.drag && this.moved);
+    const head = h_flex().gap(12).items_center().flex_none()
+      .child(div().font_semibold().text_color(t.foreground).child("Board"))
+      .child(Input.new(this.search).w(260).h(32).px(10).items_center().rounded(6).border(1).border_color(t.input).bg(t.background).text_color(t.foreground))
       .child(div().flex_1())
-      .child(div().text_size(TS.small).text_color(t.dim).child("Drag cards between columns · click to open"))
       .child(div().id("bd-close").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => closeOverlay(this.overlay)).child("×"));
-    const pinRow = this.zone(t, "pinned", h_flex().mx(SPACE.dialog).mt(10).min_h(40).px(10).py(6).gap(8).items_center().flex_wrap().rounded(8).border_1().border_color(t.border).flex_none()
-      .child(div().text_size(TS.small).text_color(t.dim).child(pinned.length ? "Pinned" : "Pinned · drop here to keep a card at the top"))
-      .children(pinned.map((c) => h_flex().id(`pin-${c.s.id}`).px(8).py(3).gap(6).items_center().rounded(6).bg(t.surface).border_1().border_color(t.border).cursor_pointer()
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => closeOverlay(this.overlay)).child(svg("mods/pane/close.svg").size(13)));
+    const pinRow = this.zone(t, "pinned", h_flex().min_h(32).px(8).gap(6).items_center().flex_wrap().rounded(7).flex_none()
+      .child(div().text_size(TS.meta).text_color(t.dim).child(pinned.length ? "Pinned" : dragging ? "Drop to pin" : "Pinned — drag a card here to keep it on top"))
+      .children(pinned.map((c) => h_flex().id(`pin-${c.s.id}`).h(26).px(8).gap(6).items_center().rounded(6).bg(t.surface).cursor_pointer().hover((x) => x.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.drag = { id: c.s.id, from: "pinned" }; this.moved = false; })
         .on_click(() => { if (this.moved) return; run("space.select", { id: c.s.id }); closeOverlay(this.overlay); })
-        .child(this.mark(t, c.mine)).child(div().text_size(TS.body).text_color(t.foreground).child(c.s.name))
-        .child(div().id(`unpin-${c.s.id}`).text_size(TS.small).text_color(t.dim).hover((x) => x.text_color(t.foreground)).tooltip("Unpin")
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setPinned(c.s.id, false); cx.notify(); }).child("×")))));
+        .child(this.mark(t, c.mine)).child(div().text_color(t.foreground).child(c.s.name))
+        .child(div().id(`unpin-${c.s.id}`).text_color(t.dim).hover((x) => x.text_color(t.foreground)).tooltip("Unpin")
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setPinned(c.s.id, false); cx.notify(); })
+          .child(svg("mods/pane/close.svg").size(10))))));
     const column = (col) => {
       const list = cards.filter((c) => c.col === col.id && !c.pinned).sort((a, b) => (b.need - a.need) || (b.s.active - a.s.active));
-      const tint = col.id === "progress" ? t.working : col.id === "review" ? t.done ?? t.accent : col.id === "done" ? t.accent : t.dim;
-      return this.zone(t, col.id, v_flex().id(`col-${col.id}`).flex_1().min_w(0).h_full().rounded(10).border_1().border_color(t.border).bg(t.chrome)
-        .child(h_flex().h(36).px(12).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
-          .child(col.icon === "spinner" ? div().size(10).rounded(5).border_2().border_color(tint) : svg(`mods/workspace-chrome/${col.icon === "circle" ? "square" : col.icon}.svg`).size(12).text_color(tint))
-          .child(div().text_size(TS.body).font_semibold().text_color(t.foreground).child(col.name))
-          .child(div().px(5).rounded(4).bg(t.raised).text_size(TS.tiny).text_color(t.muted).child(String(list.length))))
-        .child(v_flex().id(`colbody-${col.id}`).flex_1().min_h(0).p(8).gap(8).overflow_y_scrollbar()
-          .when(!list.length, (x) => x.child(div().h(56).flex().items_center().justify_center().rounded(8).border_1().border_color(t.border).text_size(TS.small).text_color(t.dim).child(this.drag && this.moved ? "Drop here" : "Empty")))
+      const tint = col.id === "progress" ? t.working : col.id === "review" ? (t.done ?? t.accent) : col.id === "done" ? t.accent : t.dim;
+      return this.zone(t, col.id, v_flex().id(`col-${col.id}`).flex_1().min_w(0).h_full().rounded(8).p(4)
+        .child(h_flex().h(28).px(6).gap(8).items_center().flex_none()
+          .child(div().size(7).rounded(4).bg(tint))
+          .child(div().font_semibold().text_color(t.foreground).child(col.name))
+          .child(div().text_size(TS.meta).text_color(t.dim).child(String(list.length))))
+        .child(v_flex().id(`colbody-${col.id}`).flex_1().min_h(0).pt(4).gap(6).overflow_y_scrollbar()
+          .when(!list.length, (x) => x.child(div().px(6).py(6).text_size(TS.meta).text_color(t.dim).child(dragging ? "Drop here" : "Nothing here")))
           .children(list.map((c) => this.card(t, c)))));
     };
-    return v_flex().id("board").size_full().bg(t.popover ?? t.chrome).text_color(t.foreground)
+    return v_flex().id("board").size_full().p(16).gap(10).bg(t.popover).text_size(13).text_color(t.foreground)
       .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drag = null; this.over = null; cx.notify(); } })
       .child(head).child(pinRow)
-      .child(h_flex().flex_1().min_h(0).p(SPACE.dialog).gap(10).children(COLS.map(column)));
+      .child(h_flex().flex_1().min_h(0).gap(12).children(COLS.map(column)))
+      .child(h_flex().justify_end().text_size(TS.meta).text_color(t.dim).flex_none().child("drag to move · click to open · ↺ back to automatic · esc close"));
   }
 }

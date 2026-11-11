@@ -20,7 +20,8 @@ export default class Tabs extends View {
     // seconds, needs-you until you open it.
     this.prev = {};
     this.flash = {};
-    cx?.timer?.every(500, (cx) => { if (Object.keys(this.flash).length) cx.notify(); });
+    // The pulse itself is native (.loop); this only redraws once when a finished-flash should end.
+    cx?.timer?.every(1000, (cx) => { const now = Date.now(); if (Object.values(this.flash).some((f) => f.until < now)) cx.notify(); });
     this.pressed = null;
     this.scroll = ScrollHandle.new();
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");

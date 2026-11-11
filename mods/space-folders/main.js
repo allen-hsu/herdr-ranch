@@ -21,6 +21,9 @@ import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
 import { TS } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
+// A logo's tile: light on a dark theme (dark marks stay visible), the raised tier on a light one.
+const lightTile = (t) => { const h = String(t.background ?? "#000").replace("#", ""); const v = parseInt(h.length >= 6 ? h.slice(0, 6) : "000000", 16);
+  const lum = (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000; return lum < 128 ? "#f4f4f5" : t.raised; };
 // The sidebar's two views, a stack in the layout ("sidebar-view"): agents by space (here) or by status (agents-ctx).
 function viewSwitch(t, on) {
   const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
@@ -724,7 +727,7 @@ export default class Spaces extends View {
     const tint = f.color ? (MARK[f.color] ?? f.color) : t.muted;
     const logo = this.logos?.[f.id];
     const mark = h_flex().size(18).flex_none().items_center().justify_center()
-      .child(logo ? h_flex().size(16).rounded(4).bg("#f4f4f5").items_center().justify_center().child(image(logo).w(12).h(12))
+      .child(logo ? h_flex().size(16).rounded(4).bg(lightTile(t)).items_center().justify_center().child(image(logo).w(12).h(12))
         : svg(f.folded ? "mods/workspace-chrome/folder.svg" : "mods/space-folders/folder-open.svg").size(15).text_color(tint));
     if (collapsed) return head.justify_center().child(mark);
     const hover = this.hoveredFolder === f.id;

@@ -46,6 +46,10 @@ export default class AgentInspector extends View {
     cx.spawn(async (cx) => {
       try {
         const r = await exec("python3", [appHome() + "/mods/agent-inspector/inspect.py", addr], { timeout: 30000 });
+        // Nothing new (ignoring the clock): skip the redraw, except every 30 s for the cache countdown.
+        const key = (r.stdout || "").replace(/"now":[\d.]+/, "");
+        if (addr === this.addr && key === this.lastOut && Date.now() - (this.drawnAt ?? 0) < 30000) { this.busy = false; return; }
+        this.lastOut = key; this.drawnAt = Date.now();
         const d = JSON.parse(r.stdout || "{}");
         if (addr === this.addr) this.data = d;
       } catch (e) {
