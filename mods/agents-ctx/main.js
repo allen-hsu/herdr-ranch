@@ -169,7 +169,7 @@ export default class Agents extends View {
     return h_flex().flex_none().gap(4).items_center().tooltip(`Context used: ${Math.round(pct)}%`)
       .child(div().w(w).h(4).rounded(2).bg(t.border)
         .child(div().h(4).rounded(2).bg(color).w(Math.max(1, Math.round(w * Math.min(pct, 100) / 100)))))
-      .child(div().text_size(TS.meta).text_color(color).child(`${Math.round(pct)}%`));
+      .child(div().w(26).text_right().text_size(TS.meta).text_color(color).child(`${Math.round(pct)}%`));
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -283,7 +283,7 @@ export default class Agents extends View {
       .flex_none()
       .gap(0)
       .items_center()
-      .text_size(TS.item)
+      .text_size(TS.body)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
       .on_click(() => (this.listed.has(k.address) ? run("pane.focus", { terminal: k.address }) : this.peek(k.address)))
@@ -298,7 +298,7 @@ export default class Agents extends View {
   // ranch: a running Claude Code background subagent under its agent; opens the Team map with it selected.
   bgRow(t, a, b, last) {
     const pic = icon(a.program, 14, t.dim);
-    return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(26).flex_none().items_center().text_size(TS.item)
+    return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(26).flex_none().items_center().text_size(TS.body)
       .hover((s) => s.bg(t.hover)).cursor_pointer().tooltip(`Background subagent${b.type ? ` (${b.type})` : ""} — open in the Team map`)
       .on_click(() => openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address, sel: b.id } }))
       .child(div().self_start().mt(-4).w(9).h(17).mr(4).flex_none().border_l(1.5).border_color(t.input).border_b(1.5).rounded_bl(6).when(!last, (el) => el))
@@ -499,7 +499,7 @@ export default class Agents extends View {
         .when(subs.length > 0, el => el.child(teamChip(a, subs)).child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(team).child(pin))
         .when(typeof this.ctx?.[a.address] === "number", el => el.child(this.ctxBadge(t, this.ctx[a.address])))
-        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(TS.meta).text_color(t.dim).child(duration(now - when))))
+        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().w(26).text_right().text_size(TS.meta).text_color(t.dim).child(duration(now - when))))
         .child(this.status(t, a, byPriority && !isPinned));
     };
 

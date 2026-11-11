@@ -563,10 +563,10 @@ export default class Spaces extends View {
   // row's single ⋯ button right before it on hover — so buttons and badges line up down the whole list.
   trail() { return h_flex().w(TRAIL_W).flex_none().justify_end().items_center(); }
   more(t, id, tip, open) {
-    return div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim).text_size(TS.title)
+    return div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim)
       .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child("⋯");
+      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child(svg("mods/space-folders/more.svg").size(14));
   }
 
   folderHead(f, n, machine, inside, t, collapsed, nested = false) {
