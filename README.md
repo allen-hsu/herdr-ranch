@@ -44,6 +44,7 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 | `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |
 | `agents-ctx` | Herdr's agent list (cloned) + a context-used badge per Claude agent. |
 | `changes-plus` | Herdr's shipped Changes panel (0.1.14) with GitHub-like colored diffs. A frozen clone: re-clone and re-apply `diffRow` when Herdr updates `changes`. |
+| `agent-team` | **Team map** window (⌃⌘T, or the hover button on an agent in the sidebar): a sequence diagram of the agent's team — one column per teammate (Herdr agents started with `hc run`: Claude Code / Codex / Grok / Cursor / Gemini; Claude subagents; sessions it messaged) with a live status card, each message an arrow, starts dashed, completions marked. |
 | `agent-toast` | Replaces Herdr's notification look (layout root `"toast"`). Agent toasts say which agent: Finished / Needs you, its session name, space · branch · tab, what you last asked, and its last reply or the question / tool it is waiting on. Other notifications look as before. When Herdr isn't the front app it posts a macOS notification instead through `Herdr Notify.app` (built from `integrations/notifier` by install.sh: Herdr's icon, click jumps to the agent; osascript fallback). |
 | `layout-switch`, `stack-tabs`, `title-strip` | Top-right layout switcher + panel toggle; tab strip for stack nodes (`sync_panels` registers its tabs in Herdr's per-space panel memory); plain title strip. |
 

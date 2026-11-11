@@ -17,7 +17,7 @@ import live  # noqa: E402  (shared lib, copied in by install.sh)
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
-VERSION = 4
+VERSION = 5
 red = live.clean
 TAG = re.compile(r"<(agent-message|hc|cross-session-message)\b([^>]*)>(.*?)</\1>", re.S)
 NOTE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
@@ -224,6 +224,7 @@ def timeline(path, names):
             for tag, attrs, body in TAG.findall(s):
                 a = dict(ATTR.findall(attrs))
                 body = re.sub(r"^\s*\[Subagent hand-back\][^\n]*\n+", "", body)
+                body = re.sub(r"(^|\n)\s*#{1,6}\s*|\*\*|`", " ", body)  # markdown marks read badly in one line
                 if tag == "agent-message":
                     who, via = a.get("from", "?"), "sub"
                 elif tag == "hc":

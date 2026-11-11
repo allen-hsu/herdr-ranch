@@ -1,4 +1,5 @@
 {
   "place": "none",
-  "title": "Agent team"
+  "title": "Team map",
+  "overlay": { "kind": "window", "width": 1000, "height": 660 }
 }

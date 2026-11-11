@@ -142,8 +142,7 @@
                           "changes": "Changes",
                           "git": "Git",
                           "prs": "PRs",
-                          "inspector": "Inspector",
-                          "team": "Team"
+                          "inspector": "Inspector"
                         },
                         "sync_panels": true,
                         "hide": [
@@ -194,13 +193,6 @@
                       "type": "block",
                       "content": {
                         "mod": "agent-inspector"
-                      }
-                    },
-                    {
-                      "id": "team",
-                      "type": "block",
-                      "content": {
-                        "mod": "agent-team"
                       }
                     }
                   ]

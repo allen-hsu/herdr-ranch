@@ -5,9 +5,11 @@
 //   Sessions      other Claude sessions it messaged (SendMessage over a socket)
 //   Timeline      spawns, its messages, replies, completion notices (newest first)
 // Data: ./team.py (local files + hc). Refreshes every 5 s while shown.
+// Opened as an overlay (mod.open agent-team, or openOverlay with props {lead}) it is the Team Map: a sequence
+// diagram — one column per agent with a status card, each message an arrow between columns.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, appHome, focused, agents, theme, run } from "herdr";
+import { exec, appHome, focused, agents, theme, run, props, closeOverlay } from "herdr";
 
 const clock = (t) => {
   if (!t) return "";
@@ -21,11 +23,17 @@ const AGENT = { "claude-code": "Claude Code", codex: "Codex", grok: "Grok", "cur
 export default class AgentTeam extends View {
   init(_props, cx) {
     this.addr = null; this.data = null; this.open = new Set(); this.showDone = false;
+    const p = props() ?? {};
+    this.map = Boolean(p.overlay);
+    this.overlay = p.overlay;
+    this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
+    this.w = 980;
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
   }
 
   target() {
+    if (this.map && this.pinned) return this.pinned;
     const f = focused();
     return f?.agent ?? (agents().some((a) => a.address === f?.terminal) ? f.terminal : null);
   }
@@ -139,8 +147,104 @@ export default class AgentTeam extends View {
     return out;
   }
 
+  // ---------- Team Map (sequence diagram) ----------
+  columns(d) {
+    const cols = [{ key: "lead", ids: [d.lead?.id, "lead"], name: d.lead?.name ?? this.addr, vendor: AGENT[d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent] ?? d.lead?.agent ?? "",
+      status: d.lead?.status?.state ?? "idle", state: "live", doing: d.lead?.status?.msg ?? "", lead: true }];
+    const herdr = [...(d.herdr ?? [])].sort((a, b) => (a.state === "live" ? 0 : 1) - (b.state === "live" ? 0 : 1));
+    const subs = [...(d.subs ?? [])].sort((a, b) => (a.state === "finished" ? 1 : 0) - (b.state === "finished" ? 1 : 0) || (b.last ?? 0) - (a.last ?? 0));
+    const recent = new Set((d.events ?? []).slice(0, 40).map((e) => e.who));
+    const pool = [...herdr, ...subs.filter((s) => s.state !== "finished" || recent.has(s.id)),
+      ...(d.sessions ?? []).map((s) => ({ id: s.id, name: s.name, agent: "session", state: "live", status: "idle", kind: "session" }))];
+    for (const m of pool.slice(0, 7)) cols.push({ key: m.id, ids: [m.id, m.name], name: m.name, vendor: m.kind === "session" ? "Claude session" : m.kind === "sub" ? `subagent · ${m.type ?? ""}` : `${AGENT[m.agent] ?? m.agent ?? ""}${m.template ? ` · ${m.template}` : ""}`,
+      status: m.status, state: m.state, doing: this.doing(m), addr: m.kind === "herdr" && m.state === "live" ? m.id : null, out: m.out, ctx: m.ctx });
+    if (pool.length > 7) cols.push({ key: "others", ids: [], name: `${pool.length - 7} more`, vendor: "", status: "idle", state: "finished", doing: "", others: true });
+    return cols;
+  }
+
+  card(t, c, i, w) {
+    const dotC = c.state === "finished" ? t.dim : c.status === "blocked" || c.status === "error" ? t.blocked : c.status === "working" ? t.working : t.done;
+    return v_flex().id(`mc-${i}`).w(w).h(84).flex_none().px(8).py(6).gap(1).rounded(8).border_1()
+      .border_color(c.lead ? t.accent : t.border).bg(t.surface)
+      .when(Boolean(c.addr), (e) => e.cursor_pointer().hover((x) => x.bg(t.hover)).tooltip("Go to this agent").on_click(() => run("agent.focus", { terminal: c.addr })))
+      .child(h_flex().gap(6).items_center().min_w(0)
+        .child(div().w(7).h(7).rounded(4).flex_none().bg(dotC).when(c.status === "working" && c.state !== "finished", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })))
+        .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_semibold().text_color(t.foreground).child(c.name)))
+      .child(div().truncate().text_size(10).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor))
+      .child(div().truncate().text_size(10.5).text_color(c.status === "blocked" ? t.blocked : t.muted).child(c.doing || (c.state === "finished" ? "finished" : "")));
+  }
+
+  mapView(t) {
+    const d = this.data;
+    const note = (s) => div().p(20).text_size(12).text_color(t.dim).child(s);
+    const head = h_flex().h(40).px(14).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
+      .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Team map"))
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d?.lead?.name ? `· ${d.lead.name}` : ""))
+      .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.raised))
+        .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { this.pinned = this.pinned ? null : this.addr; this.load(cx); cx.notify(); }).child(this.pinned ? "Follow focused agent" : "Following focused agent"))
+      .child(div().id("mp-close").size(24).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => closeOverlay(this.overlay)).child("×"));
+    const root = v_flex().id("team-map").size_full().bg(t.popover ?? t.chrome).on_size_change((size, cx) => { if (Math.abs(size.width - this.w) > 4) { this.w = size.width; cx.notify(); } }).child(head);
+    if (!this.addr) return root.child(note("Focus an agent, then open the map."));
+    if (!d) return root.child(note("Reading…"));
+    if (!d.ok) return root.child(note(`Unavailable: ${d.error}`));
+    const cols = this.columns(d);
+    const GUT = 46, PAD = 12, ROW = 40;
+    const colW = Math.max(110, (this.w - GUT - PAD * 2) / cols.length);
+    const cx = (i) => GUT + PAD + colW * i + colW / 2;
+    const idx = (who) => { const i = cols.findIndex((c) => c.ids.includes(who)); return i >= 0 ? i : cols.findIndex((c) => c.others); };
+    const evs = [...(d.events ?? [])].slice(0, 36).reverse();
+    const H = Math.max(evs.length * ROW + 24, 120);
+    const body = div().relative().w(GUT + PAD * 2 + colW * cols.length).h(H);
+    cols.forEach((c, i) => body.child(div().absolute().left(cx(i)).top(0).w(1).h(H).bg(t.border)));
+    let lastDay = null;
+    const hm = (at) => { const x = new Date(at * 1000); return `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}`; };
+    evs.forEach((e, r) => {
+      const y = r * ROW + 8;
+      const m = idx(e.who);
+      const day = e.at ? new Date(e.at * 1000).toDateString() : null;
+      if (day && day !== lastDay && day !== new Date().toDateString()) {
+        const x = new Date(e.at * 1000);
+        body.child(div().absolute().left(6).top(y).text_size(9).text_color(t.muted).child(`${x.getMonth() + 1}/${x.getDate()}`));
+      }
+      lastDay = day;
+      body.child(div().absolute().left(6).top(y + 12).w(GUT - 6).text_size(10).text_color(t.dim).child(e.at ? hm(e.at) : ""));
+      if (m < 0) return;
+      const tip = `${clock(e.at)} ${e.name ?? e.who ?? ""}${e.times ? ` ×${e.times}` : ""}
+${e.text}`;
+      if (e.k === "note") {
+        const done = e.status === "completed";
+        body.child(div().id(`mn-${r}`).absolute().left(cx(m) - 60).top(y + 8).w(120).h(20).flex().items_center().justify_center().rounded(10).border_1()
+          .border_color(done ? t.done : t.border).bg(t.surface).text_size(10).text_color(done ? t.done : t.muted).tooltip(tip)
+          .child(`${done ? "✓ finished" : "● " + (e.text.includes("waiting") ? "waiting" : e.status || "notice")}${e.times ? ` ×${e.times}` : ""}`));
+        return;
+      }
+      const fromLead = e.k !== "from";
+      const a = fromLead ? 0 : m, b = fromLead ? m : 0;
+      if (a === b) return;
+      const x1 = Math.min(cx(a), cx(b)) + 3, x2 = Math.max(cx(a), cx(b)) - 3, right = cx(b) > cx(a);
+      const spawn = e.k === "spawn" || e.k === "hc-run";
+      const color = spawn ? t.working : fromLead ? t.muted : t.accent;
+      const label = spawn ? `✦ start${e.agent ? ` ${e.agent}` : ""}: ${e.text}` : e.text;
+      body.child(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(10.5)
+        .text_color(spawn ? t.working : t.foreground).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`));
+      if (spawn) for (let x = x1; x < x2 - 4; x += 9) body.child(div().absolute().left(x).top(y + 22).w(Math.min(5, x2 - x)).h(2).rounded(1).bg(color));
+      else body.child(div().absolute().left(x1).top(y + 22).w(x2 - x1).h(2).rounded(1).bg(color));
+      body.child(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(11).text_color(color).child(right ? "▶" : "◀"));
+    });
+    const cards = h_flex().pl(GUT + PAD).pr(PAD).pt(10).pb(8).flex_none().children(cols.map((c, i) => div().w(colW).flex_none().px(4).child(this.card(t, c, i, colW - 8))));
+    return root
+      .child(cards)
+      .child(evs.length ? v_flex().id("mp-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body) : note("No messages yet. Arrows appear as the lead starts agents and they report back."))
+      .child(h_flex().h(28).px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim).flex_none()
+        .child(div().child("── lead → member")).child(div().text_color(t.accent).child("── reply")).child(div().text_color(t.working).child("╌╌ started"))
+        .child(div().child("✓ finished")).child(div().flex_1()).child(div().child("Hover for full text · click a card to jump")));
+  }
+
   render() {
     const t = theme();
+    if (this.map) return this.mapView(t);
     return v_flex().id("agent-team").size_full().bg(t.chrome)
       .child(v_flex().id("at-scroll").flex_1().min_h(0).overflow_y_scrollbar().children([...this.body(t), div().h(16)]));
   }
