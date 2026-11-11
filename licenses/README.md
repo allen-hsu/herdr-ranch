@@ -9,3 +9,4 @@ Their original licenses still apply to the parts that came from them.
 | `mods/git-graph` | rabeeh-ta/herdr-git-graph | MIT (`git-graph-MIT.txt`) |
 | `lib/folders.js` | folder matching ported from jankeesvw/herdr-space-folders @63a78b2 | MIT |
 | `mods/changes-plus`, `mods/agents-ctx` | Herdr's shipped `changes` / agent list | Herdr's mod license |
+| `lib/team.svg` | Lucide "users" icon (lucide.dev) | ISC |

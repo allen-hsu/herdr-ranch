@@ -836,13 +836,13 @@ export default class Spaces extends View {
     const icon = (id, glyph, tip, open) => div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim)
       .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child(svg(`mods/workspace-chrome/${glyph}.svg`).size(12));
+      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child(svg(glyph.includes("/") ? glyph : `mods/workspace-chrome/${glyph}.svg`).size(12));
     const dialog = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
     if (g.linked) return [icon(`wt-del-${w.id}`, "x", "Delete this worktree (and its branch)…", () => dialog({ wt: "remove", path: g.top }, 280))];
     return [
       icon(`wt-new-${w.id}`, "plus", "New worktree…", () => dialog({ wt: "new" }, 400)),
       icon(`wt-clean-${w.id}`, "archive", "Clean up worktrees…", () => dialog({ wt: "clean" }, 420)),
-      icon(`team-${w.id}`, "git-compare", "Start an agent team here…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 196, props: { repo: root } })),
+      icon(`team-${w.id}`, "mods/space-folders/team.svg", "Start an agent team here…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 196, props: { repo: root } })),
     ];
   }
 

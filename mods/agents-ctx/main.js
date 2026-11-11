@@ -331,7 +331,7 @@ export default class Agents extends View {
         .tooltip(need ? `${need} of ${subs.length} team members need you — open the Team map` : `${subs.length} team member${subs.length === 1 ? "" : "s"} — open the Team map`)
         .cursor_pointer().hover((x) => x.text_color(t.foreground))
         .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); })
-        .child(svg("mods/workspace-chrome/git-compare.svg").size(10).flex_none())
+        .child(svg("mods/agents-ctx/team.svg").size(10).flex_none())
         .child(need ? `${need}!` : String(subs.length));
     };
 
@@ -432,7 +432,7 @@ export default class Agents extends View {
           cx.stop_propagation();
           openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } });
         })
-        .child(svg("mods/workspace-chrome/git-compare.svg").size(13));
+        .child(svg("mods/agents-ctx/team.svg").size(13));
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space.
       const full = byPriority || isPinned;
