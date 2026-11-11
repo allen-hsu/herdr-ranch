@@ -18,7 +18,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 11
+VERSION = 12
 SECRET = re.compile(r"(xox[abpr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w+|sk-[\w-]{16,}|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[\w.~+/=-]{12,}|(?i:(?:token|secret|password|api[_-]?key)=)\S+)")
 
 
@@ -229,6 +229,8 @@ def parse(path):
     slash = None  # the /command that started the current turn, until its skill text arrives
     restored = set()  # skills re-injected since the last compaction
     big = []
+    # Per API call (Claude Code records each request: api-request + api-request-blob; responses carry requestRef).
+    reqs, blobs, calls, id2tool = {}, {}, {}, {}
     for line in open(path, encoding="utf-8", errors="replace"):
         try:
             r = json.loads(line)
@@ -238,6 +240,31 @@ def parse(path):
             continue
         t = r.get("type")
         at = ts(r.get("timestamp") or "")
+        if t == "api-request":
+            pr = r.get("params") or {}
+            ttl = next(((c.get("value") or {}).get("ttl") for c in r.get("cacheControl") or [] if (c.get("path") or [None])[0] == "messages"), None)
+            reqs[r.get("id")] = {"at": at, "model": pr.get("model"), "effort": (pr.get("output_config") or {}).get("effort"),
+                                 "thinking": (pr.get("thinking") or {}).get("type"), "tail": r.get("tail") or [], "ttl": ttl, "src": r.get("querySource")}
+            continue
+        if t == "api-request-blob":
+            msg = r.get("message") or {}
+            parts = []
+            for b in msg.get("content") or [] if isinstance(msg.get("content"), list) else [{"type": "text", "text": str(msg.get("content") or "")}]:
+                if not isinstance(b, dict):
+                    continue
+                bt = b.get("type")
+                if bt == "tool_result":
+                    cc = b.get("content")
+                    n = len(cc) if isinstance(cc, str) else len(json.dumps(cc, ensure_ascii=False))
+                    parts.append({"k": "tool_result", "id": b.get("tool_use_id"), "chars": n, "err": bool(b.get("is_error"))})
+                elif bt == "text":
+                    tx = b.get("text") or ""
+                    kind = "reminder" if tx.lstrip().startswith("<system-reminder>") else "text"
+                    parts.append({"k": kind, "chars": len(tx), "snip": red(human_text(tx), 80) if kind == "text" else ""})
+                elif bt:
+                    parts.append({"k": bt, "chars": len(json.dumps(b, ensure_ascii=False))})
+            blobs[r.get("hash")] = {"role": msg.get("role"), "parts": parts}
+            continue
         m = r.get("message") or {}
         a = r.get("attachment")
         if t == "permission-mode" and r.get("permissionMode"):
@@ -402,6 +429,23 @@ def parse(path):
         if t == "assistant":
             slash = None
             u = m.get("usage") or {}
+            ref = r.get("requestRef")
+            if ref:
+                c = calls.get(ref)
+                if c is None:
+                    c = calls[ref] = {"first": at, "last": at, "usage": {}, "blocks": [], "turn": len(turns) - 1}
+                    if cur is not None:
+                        cur.setdefault("calls", []).append(ref)
+                c["last"] = at or c["last"]
+                if u:
+                    c["usage"] = u
+                for b in m.get("content") or []:
+                    if isinstance(b, dict):
+                        if b.get("type") == "tool_use":
+                            id2tool[b.get("id")] = b.get("name")
+                            c["blocks"].append({"k": "tool", "name": b.get("name"), "label": label(b.get("name"), b.get("input"))})
+                        elif b.get("type") in ("text", "thinking", "redacted_thinking"):
+                            c["blocks"].append({"k": b.get("type"), "chars": len(b.get("text") or b.get("thinking") or "")})
             g.model = m.get("model") or g.model
             if u:
                 cx = ctx_of(u)
@@ -478,10 +522,44 @@ def parse(path):
         "big": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb in big[:8]],
         "turns": [{"at": x["at"], "ms": x["ms"] or (int((x.get("end", x["at"]) - x["at"]) * 1000) if x["at"] else None),
                    "prompt": x["prompt"], "ctx_delta": (x["ctx1"] or 0) - (x["ctx0"] or x["ctx1"] or 0), "out": x["out"],
-                   "hooks": x["hooks"], "steps": x["steps"][-60:],
+                   "hooks": x["hooks"], "steps": x["steps"][-60:], "calls": call_rows(x.get("calls", [])[-30:], reqs, calls, blobs, id2tool),
                    "skills": [{"name": e["name"], "how": e["how"], "tok": e.get("tok"), "ok": e.get("ok", True)} for e in x["skills"]],
                    "missed": [n for n in x["mentions"] if n not in {e["name"] for e in x["skills"]}]} for x in turns[-15:]][::-1],
     }
+
+
+def call_rows(refs, reqs, calls, blobs, id2tool):
+    """Each API call of a turn: when, how long, what it sent that was new, the input split
+    (new / cache write / cache read), the output (and thinking), and what came back."""
+    out, prev_read = [], None
+    for ref in refs:
+        c = calls.get(ref) or {}
+        q = reqs.get(ref) or {}
+        u = c.get("usage") or {}
+        new, cw, cr = u.get("input_tokens") or 0, u.get("cache_creation_input_tokens") or 0, u.get("cache_read_input_tokens") or 0
+        start = q.get("at") or c.get("first")
+        sent, missing = [], 0
+        for h in q.get("tail") or []:
+            b = blobs.get(h)
+            if not b:
+                missing += 1
+                continue
+            for p in b["parts"]:
+                if p["k"] == "tool_result":
+                    sent.append({"k": "tool_result", "name": id2tool.get(p.get("id"), "tool"), "tok": p["chars"] // 4, "err": p.get("err")})
+                elif p["k"] == "text":
+                    sent.append({"k": "you" if b.get("role") == "user" else "text", "tok": p["chars"] // 4, "snip": p.get("snip", "")})
+                else:
+                    sent.append({"k": p["k"], "tok": p["chars"] // 4})
+        total = new + cw + cr
+        out.append({"at": start, "ms": int((c["last"] - start) * 1000) if c.get("last") and start else None,
+                    "model": q.get("model"), "effort": q.get("effort"), "ttl": q.get("ttl"),
+                    "new": new, "cache_write": cw, "cache_read": cr, "hit": round(cr / total * 100, 1) if total else None,
+                    "miss": bool(prev_read and cr < prev_read * 0.5),
+                    "out": u.get("output_tokens") or 0, "think": (u.get("output_tokens_details") or {}).get("thinking_tokens") or 0,
+                    "sent": sent[:12], "unrecorded": missing, "got": c.get("blocks", [])[:12]})
+        prev_read = cr or prev_read
+    return out
 
 
 def subagents(path, sid):

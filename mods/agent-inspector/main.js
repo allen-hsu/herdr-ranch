@@ -26,6 +26,7 @@ export default class AgentInspector extends View {
     this.data = null;
     this.tab = localStorage.getItem("tab") ?? "health";
     this.open = new Set(); // expanded turns in Trace
+    this.openCall = new Set(); // expanded API calls in Trace
     this.openSrv = new Set(); // expanded servers in MCP
     this.onlySkills = false; // Trace: only turns that loaded or named a skill
     this.load(cx);
@@ -178,6 +179,36 @@ export default class AgentInspector extends View {
           .children((tu.skills ?? []).map((s, j) => this.chip(t, `tsk-${i}-${j}`, `⚡ ${s.how === "you" ? "/" : ""}${s.name}${s.tok ? ` ~${k(s.tok)}` : ""}`,
             s.ok === false ? t.blocked : t.accent, `Skill ${s.name} loaded ${HOW[s.how] ?? s.how}${s.tok ? `, ~${k(s.tok)} tokens of instructions` : ""}${s.ok === false ? " — failed" : ""}`)))
           .children((tu.missed ?? []).map((n, j) => this.chip(t, `tms-${i}-${j}`, `? ${n}`, t.working, `This prompt asks to use ${n}, but the agent didn't load it this turn.`))))));
+      // The turn's API calls (Claude Code's own request records): one row each; click for what was sent and returned.
+      if (open && (tu.calls ?? []).length) {
+        out.push(div().pl(SPACE.panel + 22).pt(4).pb(2).text_size(TS.small).text_color(t.dim).child(`${tu.calls.length} API call${tu.calls.length === 1 ? "" : "s"} · click one for what it sent and got`));
+        for (const [j, c] of tu.calls.entries()) {
+          const key = `${i}:${j}`, co = this.openCall.has(key);
+          const tools = c.got.filter((g) => g.k === "tool").map((g) => g.name);
+          const gotText = [c.got.some((g) => g.k === "thinking" || g.k === "redacted_thinking") ? "thinking" : "", c.got.some((g) => g.k === "text") ? "reply" : "",
+            tools.length ? tools.join(", ") : ""].filter(Boolean).join(" → ");
+          out.push(v_flex().id(`call-${key}`).ml(SPACE.panel + 14).mr(SPACE.panel).px(8).py(4).rounded(6).cursor_pointer().hover((x) => x.bg(t.hover)).gap(1)
+            .on_click((_e, cx) => { co ? this.openCall.delete(key) : this.openCall.add(key); cx.notify(); })
+            .child(h_flex().gap(8).text_size(TS.meta)
+              .child(div().flex_none().text_color(t.dim).child(`#${j + 1}`))
+              .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(gotText || "—"))
+              .child(div().flex_none().text_color(c.ms > 20000 ? t.working : t.dim).child(ms(c.ms))))
+            .child(h_flex().gap(8).text_size(TS.small).text_color(t.dim)
+              .child(div().child(`in ${k(c.new + c.cache_write)} new`))
+              .child(div().text_color(c.miss ? t.blocked : t.dim).tooltip(c.miss ? "Most of the cached prefix was not reused this time" : "Read from the prompt cache").child(`${k(c.cache_read)} cached${c.hit != null ? ` (${Math.round(c.hit)}%)` : ""}${c.miss ? " · cache miss" : ""}`))
+              .child(div().child(`out ${k(c.out)}${c.think ? ` (${k(c.think)} think)` : ""}`))));
+          if (co) {
+            const line = (txt, color) => div().pl(SPACE.panel + 30).pr(SPACE.panel).text_size(TS.small).text_color(color ?? t.muted).truncate().child(txt);
+            out.push(line(`${c.model ?? ""}${c.effort ? ` · effort ${c.effort}` : ""}${c.ttl ? ` · cache ${c.ttl}` : ""} · new ${k(c.new)} · cache write ${k(c.cache_write)} · read ${k(c.cache_read)}`, t.dim));
+            out.push(line("Sent (new since the last call):", t.dim));
+            for (const x of c.sent) out.push(line(x.k === "tool_result" ? `  ↳ ${x.name} result · ~${k(x.tok)}${x.err ? " · error" : ""}` : x.k === "you" ? `  ↳ message · ~${k(x.tok)} · ${x.snip}` : x.k === "reminder" ? `  ↳ system reminder · ~${k(x.tok)}` : `  ↳ ${x.k} · ~${k(x.tok)}${x.snip ? ` · ${x.snip}` : ""}`));
+            if (c.unrecorded) out.push(line(`  ↳ ${c.unrecorded} more not recorded in the transcript`, t.dim));
+            out.push(line("Got:", t.dim));
+            for (const g of c.got) out.push(line(g.k === "tool" ? `  ▸ ${g.name}${g.label ? ` · ${g.label}` : ""}` : `  ${g.k === "text" ? "reply" : g.k}${g.chars ? ` · ${k(g.chars / 4)} tok` : ""}`, g.k === "tool" ? t.foreground : t.muted));
+          }
+        }
+        out.push(div().pl(SPACE.panel + 22).pt(6).pb(2).text_size(TS.small).text_color(t.dim).child("Steps"));
+      }
       if (open) for (const [j, s] of tu.steps.entries()) {
         const skill = s.k === "skill";
         const color = s.error ? t.blocked : skill ? t.accent : s.k === "think" ? t.dim : s.k === "agent" ? t.accent : s.k === "hook" ? t.working : s.k === "compact" ? t.working : t.muted;
