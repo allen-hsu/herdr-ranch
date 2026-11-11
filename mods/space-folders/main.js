@@ -860,10 +860,13 @@ export default class Spaces extends View {
       .text_size(TS.meta)
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
-      .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)))
+      .when(g.ahead > 0, (el) => el.child(div().id(`ahead-${name}`).flex_none().text_color(t.ansi2)
+        .tooltip(`${g.ahead} commit${g.ahead === 1 ? "" : "s"} here not pushed yet`).child(`\u2191${g.ahead}`)))
+      .when(g.behind > 0, (el) => el.child(div().id(`behind-${name}`).flex_none().text_color(t.ansi1)
+        .tooltip(`${g.behind} new commit${g.behind === 1 ? "" : "s"} on the remote you haven't pulled`).child(`\u2193${g.behind}`)))
       // Uncommitted changes and the branch's open PR (colored by CI; click reveals it).
-      .when(g.dirty > 0, (el) => el.child(h_flex().flex_none().gap(3).items_center().text_color(t.blocked)
+      .when(g.dirty > 0, (el) => el.child(h_flex().id(`dirty-${name}`).flex_none().gap(3).items_center().text_color(t.blocked)
+        .tooltip(`${g.dirty} changed file${g.dirty === 1 ? "" : "s"} not committed`)
         .child(div().size(5).rounded(3).bg(t.blocked)).child(String(g.dirty))))
       .when(Boolean(pr), (el) => {
         const c = prColor(pr, t);
