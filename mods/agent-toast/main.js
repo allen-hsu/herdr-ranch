@@ -7,7 +7,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agentName } from "./agentname.js";
-import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals } from "herdr";
+import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals, appHome } from "herdr";
 
 // "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
 // path. name: what a macOS notification can play (a file in a Sounds folder); path: what afplay plays.
@@ -33,7 +33,17 @@ export default class AgentToast extends View {
     // a macOS sound name (/System/Library/Sounds, ~/Library/Sounds) or a file path. Set them and turn Herdr's
     // own alert sound off, so each alert plays once: on the system notification in the background, afplay here.
     if (!kind && !background) return;
-    cx.spawn(async () => {
+    this.last = null;
+    cx.spawn(async (cx) => {
+      // The agent's last words (live.py reads its transcript tail): its reply, or the question it waits on.
+      if (addr && /^[A-Za-z0-9_-]+$/.test(addr)) {
+        const r = await exec("python3", [`${appHome()}/mods/agent-toast/live.py`, addr], { timeout: 6000 }).catch(() => null);
+        try {
+          const l = JSON.parse(r?.stdout || "{}")[addr] ?? {};
+          this.last = kind === "blocked" && l.tool ? (l.tool.name === "AskUserQuestion" ? `asks: ${l.tool.target}` : `wants to run ${l.tool.name}: ${l.tool.target}`) : l.text || null;
+        } catch {}
+        cx.notify();
+      }
       let conf = null;
       try { conf = JSON.parse((await readTextFile(`${home()}/.config/herdr-app/agent-toast.json`)) ?? "null"); } catch {}
       const sound = kind ? await soundFile(conf?.sounds?.[kind]) : null;
@@ -45,12 +55,12 @@ export default class AgentToast extends View {
       // Herdr's icon and focuses the agent on click; osascript is the fallback.
       const { title, subtitle } = this.lines(p);
       const helper = `${home()}/Applications/Herdr Notify.app/Contents/MacOS/herdr-notify`;
-      const args = ["--title", title, "--subtitle", subtitle, "--body", p.body || ""];
+      const args = ["--title", title, "--subtitle", subtitle, "--body", this.last || p.body || ""];
       if (addr && /^[A-Za-z0-9_-]+$/.test(addr)) args.push("--terminal", addr);
       if (sound?.name) args.push("--sound", sound.name);
       const r = await exec(helper, args, { timeout: 15000 }).catch(() => null);
       if (r?.code !== 0) {
-        await exec("osascript", ["-e", "on run a\ndisplay notification (item 3 of a) with title (item 1 of a) subtitle (item 2 of a)\nend run", title, subtitle, p.body || ""], { timeout: 5000 }).catch(() => null);
+        await exec("osascript", ["-e", "on run a\ndisplay notification (item 3 of a) with title (item 1 of a) subtitle (item 2 of a)\nend run", title, subtitle, this.last || p.body || ""], { timeout: 5000 }).catch(() => null);
         if (sound) exec("afplay", [sound.path], { timeout: 15000 }).catch(() => null);
       }
       closeOverlay(p.overlay);
@@ -100,11 +110,12 @@ export default class AgentToast extends View {
       div().relative().size(28).flex_none().flex().items_center().justify_center().rounded(7).bg(t.raised)
         .child(this.icon(t, a.program, p.level))
         .child(div().absolute().right(-2).bottom(-2).size(10).rounded(5).border_2().border_color(t.popover).bg(color)),
-      v_flex().flex_1().min_w(0).gap(2)
+      v_flex().flex_1().min_w(0).gap(1)
         .child(div().truncate().font_semibold().text_size(13).text_color(t.foreground).child(name))
         .child(h_flex().gap(6).min_w(0).text_size(11.5)
           .child(div().flex_none().font_medium().text_color(color).child(blocked ? "Needs you" : team?.startsWith("team of") ? "Team finished" : "Finished"))
-          .when(Boolean(where), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(where)))),
+          .when(Boolean(where), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(where))))
+        .when(Boolean(this.last), (el) => el.child(div().truncate().text_size(11).text_color(t.dim).child(this.last))),
     ];
   }
 
