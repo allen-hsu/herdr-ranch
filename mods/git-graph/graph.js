@@ -12,6 +12,7 @@ import { icon } from "./menu.js";
 import { loadPRs, prForPart, badgeOf, revealPR, TTL as PR_TTL } from "./prs.js";
 import { available, check, openUpdate, newer } from "./update.js";
 import { depthOf, unsearched, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
+import { TS } from "./ui.js";
 
 function location(folder) {
   if (folder) return { cwd: folder, on: null };
@@ -435,7 +436,7 @@ export class Graph {
   prBadge(pr, t, id) {
     const b = badgeOf(pr, t);
     return h_flex().id(id).flex_none().h(18).px(5).gap(3).items_center().rounded(4).border_1().border_color(b.color + "66").bg(b.color + "1a")
-      .text_size(10.5).text_color(b.color).cursor_pointer().hover((s) => s.bg(b.color + "33")).tooltip(b.tip)
+      .text_size(TS.small).text_color(b.color).cursor_pointer().hover((s) => s.bg(b.color + "33")).tooltip(b.tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); })
       .child(b.text).when(Boolean(b.glyph), (e) => e.child(b.glyph)).when(Boolean(b.review), (e) => e.child(div().text_color(t.dim).child(b.review)));
@@ -508,26 +509,26 @@ export class Graph {
     const mode = this.pickMode;
     const row = (id, on, label, right, action, color, checkout, pr, compare) => h_flex().id(id).h(28).flex_none().pl(14).pr(8).gap(8).items_center().cursor_pointer()
       .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click(action)
-      .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(color ?? (on ? t.accent : t.foreground)).child(label))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(color ?? (on ? t.accent : t.foreground)).child(label))
       .when(Boolean(pr), (e) => e.child(this.prBadge(pr, t, `${id}-pr`)))
-      .when(Boolean(right), (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(right)))
+      .when(Boolean(right), (e) => e.child(div().flex_none().text_size(TS.small).text_color(t.dim).child(right)))
       .when(Boolean(checkout), (e) => e.child(div().id(`${id}-co`).flex_none().px(6).py(1).rounded(5).border_1().border_color(t.border)
-        .text_size(10.5).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
+        .text_size(TS.small).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
         .tooltip("Check this branch out (asks first if you have uncommitted changes)")
         .on_click((_e, cx) => { cx.stop_propagation(); checkout(cx); }).child("Checkout")))
       .when(Boolean(compare), (e) => e.child(div().id(`${id}-cmp`).flex_none().px(6).py(1).rounded(5).border_1().border_color(t.border)
-        .text_size(10.5).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
+        .text_size(TS.small).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
         .tooltip("Compare this branch against the default branch (commits it would bring in a PR)")
         .on_click((_e, cx) => { cx.stop_propagation(); compare(cx); }).child("Compare")));
-    const heading = (text) => div().px(14).pt(8).pb(3).text_size(10).font_semibold().text_color(t.dim).child(text);
+    const heading = (text) => div().px(14).pt(8).pb(3).text_size(TS.tiny).font_semibold().text_color(t.dim).child(text);
     const rows = [
       div().px(10).pt(6).pb(4).child(Input.new(this.branchSearch)),
-      ...(mode !== "view" ? [div().px(14).pb(4).text_size(10.5).text_color(t.accent).child(mode === "base" ? "Pick the base branch (what the PR merges into)" : "Pick the head branch (what the PR brings in)")] : []),
+      ...(mode !== "view" ? [div().px(14).pb(4).text_size(TS.small).text_color(t.accent).child(mode === "base" ? "Pick the base branch (what the PR merges into)" : "Pick the head branch (what the PR brings in)")] : []),
     ];
     if (mode === "view") rows.push(
       row("gb-all", this.all && !this.view, "All branches", null, (_e, cx) => { this.branchPicking = false; this.setScope(true, cx); }),
       row("gb-cur", !this.all && !this.view, `Current${this.current ? ` (${this.current})` : ""}`, null, (_e, cx) => { this.branchPicking = false; this.setScope(false, cx); }));
-    if (!this.refList) rows.push(div().px(14).py(6).text_size(11).text_color(t.dim).child("Reading branches…"));
+    if (!this.refList) rows.push(div().px(14).py(6).text_size(TS.meta).text_color(t.dim).child("Reading branches…"));
     else {
       const hit = (r) => !q || r.name.toLowerCase().includes(q);
       const branchRow = (r, i) => {
@@ -545,7 +546,7 @@ export class Graph {
       const remote = this.refList.filter((r) => r.ref.startsWith("refs/remotes/") && hit(r));
       if (local.length) rows.push(heading(`LOCAL · ${local.length}`), ...local.map((r) => branchRow(r, `l${r.ref}`)));
       if (remote.length) rows.push(heading(`REMOTE · ${remote.length}`), ...remote.map((r) => branchRow(r, `r${r.ref}`)));
-      if (!local.length && !remote.length) rows.push(div().px(14).py(6).text_size(11).text_color(t.dim).child("No branch matches."));
+      if (!local.length && !remote.length) rows.push(div().px(14).py(6).text_size(TS.meta).text_color(t.dim).child("No branch matches."));
     }
     return v_flex().id(`${this.listId}-branches`).max_h(320).flex_none().py(2).overflow_y_scrollbar()
       .bg(t.raised).border_b(1).border_color(t.border).children(rows);
@@ -812,11 +813,11 @@ export class Graph {
       .child(div().w(this.cols.date).flex_none().text_right().truncate().text_color(t.dim).child(commit.uncommitted ? "*" : ago(commit.time)))
       .when(this.wide, (e) => e
         .child(div().w(this.cols.author).flex_none().truncate().text_color(t.muted).child(commit.uncommitted ? "*" : commit.author))
-        .child(div().w(this.cols.hash).flex_none().font_family(mono).text_size(11).text_color(t.dim).child(commit.uncommitted ? "*" : commit.hash.slice(0, 8))));
+        .child(div().w(this.cols.hash).flex_none().font_family(mono).text_size(TS.meta).text_color(t.dim).child(commit.uncommitted ? "*" : commit.hash.slice(0, 8))));
   }
 
   iconButton(id, glyph, tip, active, action, t) {
-    return h_flex().id(id).h(24).px(6).gap(5).flex_none().items_center().rounded(6).text_size(11.5).cursor_pointer()
+    return h_flex().id(id).h(24).px(6).gap(5).flex_none().items_center().rounded(6).text_size(TS.body).cursor_pointer()
       .text_color(active ? t.foreground : t.muted).when(active, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(action)
       .child(svg(icon(glyph)).size(13).flex_none()).when(Boolean(tip), (e) => e.child(tip));
@@ -830,29 +831,29 @@ export class Graph {
     const repo = ws && this.opened ? ws.repos.find((r) => r.path === this.opened) : null;
     const settingsShown = this.state === "workspace" || (this.state === "norepo" && !this.skipped);
     return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-      .when(!repo, (e) => e.child(div().text_size(13).font_semibold().child(ws ? "Manygit" : "Git")))
+      .when(!repo, (e) => e.child(div().text_size(TS.item).font_semibold().child(ws ? "Manygit" : "Git")))
       .when(Boolean(repo), (e) => e
         .child(h_flex().id("graph-back").h(24).pl(2).pr(6).gap(3).flex_none().items_center().rounded(6).cursor_pointer()
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.back(cx))
-          .child(svg(icon("back")).size(14).flex_none().text_color(t.muted)).child(div().text_size(13).font_semibold().child("Manygit")))
+          .child(svg(icon("back")).size(14).flex_none().text_color(t.muted)).child(div().text_size(TS.item).font_semibold().child("Manygit")))
         .child(h_flex().id("graph-repository").h(22).px(7).gap(5).min_w(0).items_center().rounded(6).cursor_pointer()
           .bg(this.picking ? t.selected : t.raised).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.togglePicker(cx))
-          .child(svg(icon("folder")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(repo.name))))
+          .child(svg(icon("folder")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(TS.body).font_semibold().child(repo.name))))
       .when(ready && Boolean(where || this.view), (e) => e.child(h_flex().id("graph-branch-chip").h(22).pl(7).pr(5).gap(5).min_w(0).items_center().rounded(6)
         .bg(this.view ? t.working + "2e" : t.accent + "26").text_color(this.view ? t.working : t.accent).cursor_pointer()
         .when(this.branchPicking, (el) => el.border_1().border_color(this.view ? t.working : t.accent))
         .hover((s) => s.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.toggleBranches(cx))
         .tooltip(this.view ? `Showing only ${this.view.replace(/^refs\/(heads|remotes)\//, "")} · click to pick another` : "Pick a branch to graph")
         .child(svg(icon(this.view || this.current ? "branch" : "commit")).size(12).flex_none())
-        .child(div().min_w(0).truncate().text_size(11.5).font_semibold().child(this.view ? this.view.replace(/^refs\/(heads|remotes)\//, "") : where))
-        .child(div().flex_none().text_size(10).text_color(t.dim).child("\u25be"))
+        .child(div().min_w(0).truncate().text_size(TS.body).font_semibold().child(this.view ? this.view.replace(/^refs\/(heads|remotes)\//, "") : where))
+        .child(div().flex_none().text_size(TS.tiny).text_color(t.dim).child("\u25be"))
         .when(Boolean(this.view), (el) => el.child(div().id("graph-branch-clear").flex_none().px(3).rounded(4).text_color(t.dim)
           .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip("Back to all branches")
           .on_click((_e, cx) => { cx.stop_propagation(); this.setView(null, cx); }).child("\u00d7")))))
-      .when(this.state === "workspace", (e) => e.child(div().flex_none().text_size(11.5).text_color(t.dim).child(count(ws.repos.length, "repo"))))
+      .when(this.state === "workspace", (e) => e.child(div().flex_none().text_size(TS.body).text_color(t.dim).child(count(ws.repos.length, "repo"))))
       .child(div().flex_1())
       // A newer release: a dot, and the update window on click.
-      .when(Boolean(available()), (e) => e.child(h_flex().id("graph-update").h(24).px(7).gap(5).flex_none().items_center().rounded(6).text_size(11.5)
+      .when(Boolean(available()), (e) => e.child(h_flex().id("graph-update").h(24).px(7).gap(5).flex_none().items_center().rounded(6).text_size(TS.body)
         .cursor_pointer().text_color(t.accent).hover((s) => s.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click(() => openUpdate()).child(div().size(6).rounded(3).bg(t.accent)).child("Update Graph")))
       .when(ready && this.remoteNames?.length > 0, (e) => e.child(this.iconButton("graph-fetch", "fetch", this.fetching ? "Fetching…" : null, false, (_e, cx) => this.fetch(cx), t)))
@@ -876,7 +877,7 @@ export class Graph {
     let height = 8;
     repos.forEach((r, i) => {
       if (grouped && r.group !== repos[i - 1]?.group) {
-        rows.push(div().h(26).flex_none().px(14).pt(9).text_size(11).text_color(t.dim).truncate().child(r.group ? `${r.group}/` : "./"));
+        rows.push(div().h(26).flex_none().px(14).pt(9).text_size(TS.meta).text_color(t.dim).truncate().child(r.group ? `${r.group}/` : "./"));
         height += 26;
       }
       rows.push(this.repoRow(r, i, grouped, t));
@@ -921,8 +922,8 @@ export class Graph {
       .when(here, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => { if (here) { this.picking = false; cx.notify(); } else this.open(r.path, cx); })
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); if (st && !st.error) this.repoMenu(r, cx); })
-      .child(div().min_w(0).truncate().text_size(11.5).text_color(here ? t.accent : t.foreground).child(r.name))
-      .child(h_flex().flex_none().gap(5).items_center().text_size(11.5)
+      .child(div().min_w(0).truncate().text_size(TS.body).text_color(here ? t.accent : t.foreground).child(r.name))
+      .child(h_flex().flex_none().gap(5).items_center().text_size(TS.body)
         .when(st?.dirty > 0, (e) => e.child(h_flex().mr(2).gap(4).items_center().text_color(t.blocked)
           .child(div().size(6).rounded(3).bg(t.blocked)).child(String(st.dirty))))
         .when(counts && st.ahead > 0, (e) => e.child(div().text_color(t.ansi2).child(`\u2191${st.ahead}`)))
@@ -931,15 +932,15 @@ export class Graph {
       .child(div().flex_1())
       // The newest tag, just before the branch (Show tags).
       .when(Boolean(tag), (e) => e.child(h_flex().flex_none().max_w(120).gap(4).items_center().text_color(t.dim)
-        .child(svg(icon("tag")).size(11).flex_none()).child(div().min_w(0).truncate().text_size(11).child(tag))))
+        .child(svg(icon("tag")).size(11).flex_none()).child(div().min_w(0).truncate().text_size(TS.meta).child(tag))))
       .when(Boolean(branch), (e) => e.child(h_flex().flex_none().max_w(200).gap(5).items_center().text_color(t.muted)
-        .child(svg(icon("branch")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(11).child(branch))))
-      .when(Boolean(problem), (e) => e.child(div().flex_none().max_w(200).truncate().text_size(11).text_color(t.ansi1).child(problem)));
+        .child(svg(icon("branch")).size(12).flex_none()).child(div().min_w(0).truncate().text_size(TS.meta).child(branch))))
+      .when(Boolean(problem), (e) => e.child(div().flex_none().max_w(200).truncate().text_size(TS.meta).text_color(t.ansi1).child(problem)));
   }
 
 
   toolbar(t) {
-    const segment = (id, text, on, action) => div().id(id).h(22).px(9).flex().items_center().rounded(5).text_size(11.5).cursor_pointer()
+    const segment = (id, text, on, action) => div().id(id).h(22).px(9).flex().items_center().rounded(5).text_size(TS.body).cursor_pointer()
       .bg(on ? t.raised : t.background).text_color(on ? t.foreground : t.muted).when(on, (e) => e.border_1().border_color(t.border))
       .hover((s) => s.text_color(t.foreground)).on_click(action).child(text);
     if (this.compare) {
@@ -948,14 +949,14 @@ export class Graph {
         .bg(this.branchPicking && this.pickMode === mode ? t.selected : t.raised).border_1().border_color(t.border).hover((s) => s.bg(t.hover))
         .tooltip(`${mode === "base" ? "Base (what the PR merges into)" : "Head (what the PR brings in)"}: ${shortRef(ref)}`)
         .on_click((_e, cx) => this.toggleBranches(cx, mode))
-        .child(div().min_w(0).max_w(180).truncate().text_size(11.5).text_color(t.foreground).child(shortRef(ref)))
-        .child(div().flex_none().text_size(10).text_color(t.dim).child("\u25be"));
+        .child(div().min_w(0).max_w(180).truncate().text_size(TS.body).text_color(t.foreground).child(shortRef(ref)))
+        .child(div().flex_none().text_size(TS.tiny).text_color(t.dim).child("\u25be"));
       const icon2 = (id, text, tip, action) => div().id(id).px(6).py(1).rounded(5).cursor_pointer().text_color(t.muted).tooltip(tip)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(action).child(text);
       return h_flex().h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).bg(t.accent + "0f")
-        .child(div().flex_none().text_size(11.5).font_semibold().text_color(t.accent).child("Compare"))
+        .child(div().flex_none().text_size(TS.body).font_semibold().text_color(t.accent).child("Compare"))
         .child(chip("cmp-base", c.base, "base")).child(div().flex_none().text_color(t.dim).child("\u2190")).child(chip("cmp-head", c.head, "head"))
-        .child(div().flex_none().text_size(11).text_color(t.dim).child(n ? `${n.ahead} ahead \u00b7 ${n.behind} behind` : "\u2026"))
+        .child(div().flex_none().text_size(TS.meta).text_color(t.dim).child(n ? `${n.ahead} ahead \u00b7 ${n.behind} behind` : "\u2026"))
         .child(div().flex_1())
         .child(icon2("cmp-swap", "\u21c4", "Swap base and head", (_e, cx) => this.setCompare({ base: c.head, head: c.base }, cx)))
         .child(icon2("cmp-close", "\u00d7", "Stop comparing", (_e, cx) => this.setScope(true, cx)));
@@ -965,7 +966,7 @@ export class Graph {
         .child(segment("graph-all", "All branches", this.all && !this.view, (_e, cx) => this.setScope(true, cx)))
         .child(segment("graph-current", "Current", !this.all && !this.view, (_e, cx) => this.setScope(false, cx)))
         .when(Boolean(this.view), (e) => e.child(segment("graph-view", `Branch: ${this.view.replace(/^refs\/(heads|remotes)\//, "")}`, true, (_e, cx) => this.toggleBranches(cx)))))
-      .child(h_flex().id("graph-remotes").h(24).px(6).gap(6).items_center().rounded(6).cursor_pointer().text_size(11.5).text_color(t.muted)
+      .child(h_flex().id("graph-remotes").h(24).px(6).gap(6).items_center().rounded(6).cursor_pointer().text_size(TS.body).text_color(t.muted)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => this.setRemotes(cx))
         .child(div().size(13).rounded(3).border_1().border_color(this.remotes ? t.accent : t.input).when(this.remotes, (e) => e.bg(t.accent)).flex().items_center().justify_center()
           .when(this.remotes, (e) => e.child(svg(icon("check")).size(10).text_color(t.accent_foreground))))
@@ -980,7 +981,7 @@ export class Graph {
       .on_mouse_down("left", (e, cx) => this.startDrag(key, e, cx))
       .child(div().w(1).h_full().when(this.drag?.key === key, (e) => e.bg(t.accent)))
       .hover((s) => s.bg(t.border));
-    return h_flex().h(24).flex_none().pr(10).items_center().border_b(1).border_color(t.border).text_size(11).text_color(t.dim)
+    return h_flex().h(24).flex_none().pr(10).items_center().border_b(1).border_color(t.border).text_size(TS.meta).text_color(t.dim)
       .child(head("Graph", width).pl(PAD)).child(handle("graph")).child(div().flex_1().min_w(0).child("Description"))
       .children(this.trailing().flatMap((k) => [handle(k), head(titles[k], this.cols[k]).when(k === "date", (e) => e.text_right())]));
   }
@@ -989,8 +990,8 @@ export class Graph {
     if (this.compare && !this.commits.length) {
       const c = this.compare, n = this.compareCount;
       return v_flex().flex_1().min_h(0).items_center().justify_center().gap(6).px(28).pb(40)
-        .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child("Nothing to bring in"))
-        .child(div().text_size(11.5).text_color(t.dim).text_center()
+        .child(div().text_size(TS.item).font_semibold().text_color(t.foreground).child("Nothing to bring in"))
+        .child(div().text_size(TS.body).text_color(t.dim).text_center()
           .child(`${shortRef(c.head)} has no commits that ${shortRef(c.base)} lacks — it's merged or was never committed to.`
             + (n?.behind ? ` ${shortRef(c.base)} is ${n.behind} commit${n.behind === 1 ? "" : "s"} ahead of it.` : "")));
     }
@@ -1023,7 +1024,7 @@ export class Graph {
     const grip = div().id("graph-details-grip").h(6).w_full().flex_none().border_t(1).border_color(t.border).cursor_row_resize()
       .on_mouse_down("left", (e, cx) => this.startDetailDrag(e, cx))
       .hover((s) => s.bg(t.accent));
-    const top = h_flex().h(32).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).text_size(11.5);
+    const top = h_flex().h(32).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border).text_size(TS.body);
     const close = div().id("graph-details-close").px(6).py(1).rounded(4).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { this.selected = null; this.details = null; this.diff = null; cx.notify(); }).child("×");
     if (this.diff) {
@@ -1033,7 +1034,7 @@ export class Graph {
         .child(top.child(div().id("graph-diff-back").px(6).py(1).rounded(4).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
             .on_click((_e, cx) => { this.diff = null; cx.notify(); }).child("← Files"))
           .child(div().flex_1().min_w(0).truncate().font_family(mono).text_color(t.foreground).child(this.diff.path)).child(close))
-        .child(div().flex_1().min_h(0).relative().font_family(mono).text_size(11)
+        .child(div().flex_1().min_h(0).relative().font_family(mono).text_size(TS.meta)
           .when(!rows, (e) => e.child(div().p(12).text_color(t.dim).child("Loading diff…")))
           .when(Boolean(rows), (e) => e.child(div().id(`${this.diffId}-x`).size_full().overflow_x_scrollbar()
               .child(div().w_full().min_w(this.diff.width).h_full().child(v_virtual_list(this.diffId, rows.length, DIFF_ROW, (i) => String(i),
@@ -1050,7 +1051,7 @@ export class Graph {
         .child(close))
       .child(content);
     if (d?.error) return pane(body.child(div().text_color(t.ansi1).child(d.error)));
-    const meta = (k, v, color) => h_flex().gap(8).text_size(11.5).child(div().w(64).flex_none().text_color(t.dim).child(k)).child(div().min_w(0).truncate().text_color(color ?? t.muted).child(v));
+    const meta = (k, v, color) => h_flex().gap(8).text_size(TS.body).child(div().w(64).flex_none().text_color(t.dim).child(k)).child(div().min_w(0).truncate().text_color(color ?? t.muted).child(v));
     // The history already has the header: it shows at once, and what git adds lands below it.
     const head = commit.uncommitted ? body : body
       .child(div().font_semibold().child(commit.subject))
@@ -1058,13 +1059,13 @@ export class Graph {
       .child(meta("Parents", commit.parents.map((p) => p.slice(0, 8)).join(", ") || "none"))
       .child(meta("Author", `${commit.author} <${commit.email}>`))
       .child(meta("Date", `${stamp(commit.time)} · ${ago(commit.time)}`));
-    if (!d) return pane(head.child(div().pt(8).text_size(11.5).text_color(t.dim).child(commit.uncommitted ? "Loading…" : "Loading files…")));
+    if (!d) return pane(head.child(div().pt(8).text_size(TS.body).text_color(t.dim).child(commit.uncommitted ? "Loading…" : "Loading files…")));
     const add = d.files.reduce((n, f) => n + f.add, 0), del = d.files.reduce((n, f) => n + f.del, 0);
     const lines = commit.uncommitted ? "" : d.message.split("\n").slice(1).join("\n").trim();
     return pane(head
       .when(Boolean(d.committer && d.committer !== d.author), (el) => el.child(meta("Committer", d.committer)))
       .when(Boolean(lines), (el) => el.child(v_flex().pt(6).children(lines.split("\n").map((line) => div().text_color(t.muted).child(line || " ")))))
-      .child(h_flex().pt(8).pb(2).gap(8).items_center().text_size(11.5)
+      .child(h_flex().pt(8).pb(2).gap(8).items_center().text_size(TS.body)
         .child(div().text_color(t.muted).child(count(d.files.length + d.more, "file")))
         .when(add > 0 || del > 0, (e) => e.child(div().text_color(t.ansi2).child(`+${add}`)).child(div().text_color(t.ansi1).child(`−${del}`))))
       .children(d.files.map((f, i) => {
@@ -1072,12 +1073,12 @@ export class Graph {
         const sc = f.status === "A" ? t.ansi2 : f.status === "D" || f.status === "U" ? t.ansi1 : t.blocked;
         return h_flex().id(`gf-${i}`).h(24).flex_none().px(6).gap(8).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => this.openDiff(commit, f, cx))
-          .child(div().w(12).flex_none().text_size(11).text_color(sc).child(f.status))
+          .child(div().w(12).flex_none().text_size(TS.meta).text_color(sc).child(f.status))
           .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().min_w(0).truncate().child(name)))
-          .when(f.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${f.add}`)))
-          .when(f.del > 0, (e) => e.child(div().text_size(11).text_color(t.ansi1).child(`−${f.del}`)));
+          .when(f.add > 0, (e) => e.child(div().text_size(TS.meta).text_color(t.ansi2).child(`+${f.add}`)))
+          .when(f.del > 0, (e) => e.child(div().text_size(TS.meta).text_color(t.ansi1).child(`−${f.del}`)));
       }))
-      .when(d.more > 0, (e) => e.child(div().text_size(11).text_color(t.dim).child(`and ${d.more} more`))));
+      .when(d.more > 0, (e) => e.child(div().text_size(TS.meta).text_color(t.dim).child(`and ${d.more} more`))));
   }
 
   // GitHub-like rows — tinted background, stronger gutter, +/− marker, accent hunk headers.
@@ -1104,8 +1105,8 @@ export class Graph {
     return v_flex().flex_1().min_h(0).items_center().justify_center().gap(10).px(28).pb(40)
       .child(div().size(46).rounded(12).bg(t.raised).border_1().border_color(t.border).flex().items_center().justify_center()
         .child(svg(icon(glyph)).size(22).text_color(s === "error" ? t.ansi1 : t.muted)))
-      .child(div().text_size(14).font_semibold().text_color(t.foreground).child(title))
-      .when(Boolean(body), (e) => e.child(div().max_w(280).text_center().text_size(12).text_color(t.muted).child(body)));
+      .child(div().text_size(TS.title).font_semibold().text_color(t.foreground).child(title))
+      .when(Boolean(body), (e) => e.child(div().max_w(280).text_center().text_size(TS.body).text_color(t.muted).child(body)));
   }
 
   render(cx) {
@@ -1125,7 +1126,7 @@ export class Graph {
     const t = theme(), mono = settings().font_family ?? "JetBrains Mono", ready = this.state === "ready";
     if (ready) this.maybeLoadPRs(cx);
     return v_flex().id("git-graph").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
-      .text_color(t.foreground).text_size(12.5).track_focus(this.handle)
+      .text_color(t.foreground).text_size(TS.item).track_focus(this.handle)
       .on_mouse_move((e, cx) => this.moveDrag(e, cx))
       .on_mouse_up("left", (_e, cx) => this.endDrag(cx))
       .on_hover((hovered, cx) => { if (!hovered) this.endDrag(cx); })

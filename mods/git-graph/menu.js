@@ -5,6 +5,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { props, closeOverlay, notify, theme, run } from "herdr";
 import { menuFor } from "./git.js";
 import { perform, openDialog, showChanges } from "./act.js";
+import { TS } from "./ui.js";
 
 // A glyph of this mod, or another mod's icon by its path (Herdr's own Changes icon).
 export const icon = (name) => (name.includes("/") ? name : `mods/git-graph/icons/${name}.svg`);
@@ -56,7 +57,7 @@ export class Menu {
 
   render(cx) {
     const t = theme();
-    return v_flex().id("git-graph-menu").track_focus(this.handle).w_full().min_h(0).p(5).bg(t.popover).text_size(12.8)
+    return v_flex().id("git-graph-menu").track_focus(this.handle).w_full().min_h(0).p(5).bg(t.popover).text_size(TS.item)
       .on_key_down((e, cx) => {
         if (e.key === "down") this.move(1);
         else if (e.key === "up") this.move(-1);

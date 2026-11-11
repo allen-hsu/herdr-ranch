@@ -8,6 +8,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agentName } from "./agentname.js";
 import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals, appHome } from "herdr";
+import { TS } from "./ui.js";
 
 // "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
 // path. name: what a macOS notification can play (a file in a Sounds folder); path: what afplay plays.
@@ -112,11 +113,11 @@ export default class AgentToast extends View {
         .child(this.icon(t, a.program, p.level))
         .child(div().absolute().right(-2).bottom(-2).size(10).rounded(5).border_2().border_color(t.popover).bg(color)),
       v_flex().flex_1().min_w(0).gap(1)
-        .child(div().truncate().font_semibold().text_size(13).text_color(t.foreground).child(name))
-        .child(h_flex().gap(6).min_w(0).text_size(11.5)
+        .child(div().truncate().font_semibold().text_size(TS.item).text_color(t.foreground).child(name))
+        .child(h_flex().gap(6).min_w(0).text_size(TS.body)
           .child(div().flex_none().font_medium().text_color(color).child(blocked ? "Needs you" : team?.startsWith("team of") ? "Team finished" : "Finished"))
           .when(Boolean(where), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(where))))
-        .when(Boolean(this.last), (el) => el.child(div().truncate().text_size(11).text_color(t.dim).child(this.last))),
+        .when(Boolean(this.last), (el) => el.child(div().truncate().text_size(TS.meta).text_color(t.dim).child(this.last))),
     ];
   }
 
@@ -131,11 +132,11 @@ export default class AgentToast extends View {
       .when(Boolean(a), (el) => el.children(a ? this.agentView(t, p, a) : []))
       .when(!a, (el) => el.child(p.icon ? image(p.icon).w(18).h(18).flex_none() : div().size(8).rounded(4).flex_none().bg(t[DOT[p.level] ?? "accent"])))
       .when(!a, (el) => el.child(v_flex().flex_1().overflow_hidden()
-        .child(div().truncate().font_semibold().text_size(13).text_color(t.foreground).child(login ? `${login[1]} needs a login: run` : p.title ?? ""))
-        .when(!login && Boolean(p.body), (el) => el.child(div().truncate().text_size(12).text_color(t.muted).child(p.body ?? "")))
+        .child(div().truncate().font_semibold().text_size(TS.item).text_color(t.foreground).child(login ? `${login[1]} needs a login: run` : p.title ?? ""))
+        .when(!login && Boolean(p.body), (el) => el.child(div().truncate().text_size(TS.body).text_color(t.muted).child(p.body ?? "")))
         .when(Boolean(login), (el) => el.child(h_flex().gap(8).items_center()
-          .child(div().flex_1().min_w(0).truncate().tooltip(command).text_size(12).text_color(t.muted).child(command))
-          .child(div().id("toast-login-copy").flex_none().px(6).py(3).rounded(4).bg(t.raised).text_size(12).text_color(t.foreground).cursor_pointer()
+          .child(div().flex_1().min_w(0).truncate().tooltip(command).text_size(TS.body).text_color(t.muted).child(command))
+          .child(div().id("toast-login-copy").flex_none().px(6).py(3).rounded(4).bg(t.raised).text_size(TS.body).text_color(t.foreground).cursor_pointer()
             .hover((s) => s.bg(t.hover)).on_click((_e, cx) => { cx.stop_propagation(); cx.write_to_clipboard(command); this.copied = true; cx.notify(); })
             .child(this.copied ? "Copied" : "Copy"))))));
   }

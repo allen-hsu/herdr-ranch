@@ -16,6 +16,7 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
+import { TS } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30; // the right-hand column every row shares // The mod that owns worktree dialogs
 const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
@@ -562,7 +563,7 @@ export default class Spaces extends View {
   // row's single ⋯ button right before it on hover — so buttons and badges line up down the whole list.
   trail() { return h_flex().w(TRAIL_W).flex_none().justify_end().items_center(); }
   more(t, id, tip, open) {
-    return div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim).text_size(14)
+    return div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim).text_size(TS.title)
       .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child("⋯");
@@ -595,7 +596,7 @@ export default class Spaces extends View {
       })
       .on_hover((h, cx) => { if (h) this.hoveredFolder = f.id; else if (this.hoveredFolder === f.id) this.hoveredFolder = null; cx.notify(); })
       .on_click(() => this.toggleFolder(machine, f.id))
-      .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 196, props: { folderMenu: f.id, machine } }));
+      .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }));
     // Built like a space's avatar: a filled 18px tile in the folder's color, its mark in white.
     const tile = h_flex().size(18).flex_none().rounded(5).items_center().justify_center().bg(f.color ? (MARK[f.color] ?? f.color) : t.dim)
       .child(svg("mods/workspace-chrome/folder.svg").size(12).mt(1).ml(1).text_color("#ffffff")); // Lucide's folder sits high-left
@@ -607,21 +608,21 @@ export default class Spaces extends View {
       .when(f.folded && status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(f.folded && Boolean(status) && status !== "working", (el) => el.child(div().flex_none().text_color(tone(t, status)).child(glyph(status))))
       .when(this.hoveredFolder === f.id, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
-        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 196, props: { folderMenu: f.id, machine } }))))
+        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }))))
       .child(this.trail().gap(4)
-        .child(div().text_size(11.5).text_color(t.dim).child(String(inside.length)))
+        .child(div().text_size(TS.body).text_color(t.dim).child(String(inside.length)))
         .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim)));
   }
 
   folderMenuView(t) {
     const { id, machine, overlay } = this.folderMenu;
-    const item = (key, label, action) => div().id(key).h(30).px(10).flex().items_center().rounded(6).cursor_pointer()
+    const item = (key, label, action) => div().id(key).h(32).px(10).flex().items_center().rounded(6).cursor_pointer()
       .hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); }).child(label);
     const current = folders(machine).list.find((x) => x.id === id)?.color ?? null;
     const swatch = (color) => div().id(`folder-color-${color ?? "grey"}`).size(20).flex_none().rounded(10).cursor_pointer()
       .bg(color ? MARK[color] : t.dim).border_2().border_color(color === current ? t.foreground : t.popover)
       .hover((s) => s.border_color(t.muted)).on_click(() => { this.paint(machine, id, color); closeOverlay(overlay); });
-    return v_flex().id("folder-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
+    return v_flex().id("folder-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(TS.item)
       .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([null, ...Object.keys(MARK)].map(swatch)))
       .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
       .when(!machine, (el) => el.child(item("folder-team", "Start an agent team…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: id } }))))
@@ -636,17 +637,17 @@ export default class Spaces extends View {
     const { machine, overlay } = this.editing;
     const button = (key, label, primary, action) => h_flex().id(key).h(32).px(14).flex_none().items_center().rounded(8).border_1()
       .border_color(primary ? t.solid : t.input).bg(primary ? t.solid : t.raised).text_color(primary ? t.solid_foreground : t.foreground)
-      .text_size(12.5).font_medium().cursor_pointer().hover((s) => s.opacity(0.88)).on_click(action).child(label);
+      .text_size(TS.item).font_medium().cursor_pointer().hover((s) => s.opacity(0.88)).on_click(action).child(label);
     const field = (label, input, hint, extra = null) => v_flex().gap(6)
-      .child(div().text_size(12).font_medium().text_color(t.muted).child(label))
+      .child(div().text_size(TS.body).font_medium().text_color(t.muted).child(label))
       .child(h_flex().gap(8)
         .child(div().flex_1().min_w(0).h(34).px(10).flex().items_center().rounded(8).border_1().border_color(t.input).bg(t.background)
-          .child(Input.new(input).w_full().text_size(13).text_color(t.foreground)))
+          .child(Input.new(input).w_full().text_size(TS.item).text_color(t.foreground)))
         .when(Boolean(extra), (el) => el.child(extra)))
-      .when(Boolean(hint), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(hint)));
+      .when(Boolean(hint), (el) => el.child(div().text_size(TS.body).text_color(t.dim).child(hint)));
     return v_flex().id("folder-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(overlay); cx.stop_propagation(); } })
-      .child(div().text_size(15).font_semibold().child("Edit folder"))
+      .child(div().text_size(TS.title).font_semibold().child("Edit folder"))
       .child(field("Name", this.name, null))
       .child(field("Start new spaces in", this.path, "Its + and New space here open a space there.",
         machine ? null : button("folder-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
@@ -686,7 +687,7 @@ export default class Spaces extends View {
   }
 
   loadingRow(m, t, collapsed) {
-    return div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
+    return div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(TS.body).text_color(t.dim).child(collapsed ? "…" : "Loading…");
   }
 
   // A machine's header and, unless it's folded, its folders and spaces. In a
@@ -696,7 +697,7 @@ export default class Spaces extends View {
     const machine = this.machines.find(k => k.name === m);
     const connected = !m || machine?.state === "connected";
     const folded = this.folded.has(m);
-    const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().pl(collapsed ? 2 : nested ? 26 : 8).pr(collapsed ? 2 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+    const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().pl(collapsed ? 2 : nested ? 26 : 8).pr(collapsed ? 2 : 8).gap(7).items_center().text_size(TS.meta).text_color(t.dim)
       .cursor_pointer().hover(s => s.bg(t.hover))
       .on_click((_e, cx) => {
         folded ? this.folded.delete(m) : this.folded.add(m);
@@ -713,7 +714,7 @@ export default class Spaces extends View {
         .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
         .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
     const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().pl(indent(null, nested)).pr(8).gap(7).items_center().rounded(7)
-      .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+      .text_size(TS.body).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_click(() => newSpaceIn(m, null))
       .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
     const body = mine.length || guests.length ? this.foldered(mine, m, t, collapsed, { guests, nested, hidden: hidden || folded, seen })
@@ -759,7 +760,7 @@ export default class Spaces extends View {
       .gap(5)
       .justify_end()
       .items_center()
-      .text_size(11.5)
+      .text_size(TS.body)
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
@@ -770,7 +771,7 @@ export default class Spaces extends View {
       .when(Boolean(pr), (el) => {
         const c = prColor(pr, t);
         return el.child(div().id(`pr-${name}-${pr.number}`).flex_none().px(4).rounded(4).border_1().border_color(c + "66").bg(c + "1a")
-          .text_size(10.5).text_color(c).cursor_pointer().hover((s) => s.bg(c + "33")).tooltip(prTip(pr))
+          .text_size(TS.small).text_color(c).cursor_pointer().hover((s) => s.bg(c + "33")).tooltip(prTip(pr))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
           .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); }).child(`#${pr.number}`));
       });
@@ -833,7 +834,7 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(TS.small).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
           .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
@@ -848,14 +849,14 @@ export default class Spaces extends View {
     let root = null, on = null;
     try { const [o, common] = JSON.parse(g?.repo ?? "[]"); on = o; if (common?.endsWith("/.git")) root = common.slice(0, -5); } catch {}
     const items = (root ? (g.linked ? 2 : 3) : 0) + 2;
-    openOverlay({ mod: "space-folders", kind: "popup", width: 220, height: 12 + items * 31 + 9,
+    openOverlay({ mod: "space-folders", kind: "popup", width: 220, height: 12 + items * 33 + 9,
       props: { spaceMenu: w.id, root, on, linked: Boolean(g?.linked), top: g?.top ?? null } });
   }
 
   spaceMenuView(t) {
     const { spaceMenu: id, root, on, linked, top, overlay } = this.spaceMenu;
     const wt = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
-    const item = (key, icon, label, action, danger) => h_flex().id(key).h(30).px(8).gap(8).items_center().rounded(6).cursor_pointer()
+    const item = (key, icon, label, action, danger) => h_flex().id(key).h(32).px(8).gap(8).items_center().rounded(6).cursor_pointer()
       .text_color(danger ? t.blocked : t.foreground).hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
       .child(div().w(14).flex_none().flex().justify_center().child(svg(icon.includes("/") ? icon : `mods/workspace-chrome/${icon}.svg`).size(13).text_color(danger ? t.blocked : t.muted)))
       .child(div().flex_1().child(label));
@@ -867,7 +868,7 @@ export default class Spaces extends View {
          item("sm-team", "mods/space-folders/team.svg", "Start an agent team…", team),
          item("sm-clean", "archive", "Clean up worktrees…", () => wt({ wt: "clean" }, 420))];
     // Herdr's own space actions, same look as ours (its menu mod would draw a different one).
-    return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_size(12.5)
+    return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_size(TS.item)
       .children(rows)
       .when(rows.length > 0, (el) => el.child(div().mx(6).my(3).h(1).bg(t.border)))
       .child(item("sm-rename", "square-pen", "Rename", () => run("space.rename", { id })))
@@ -913,8 +914,8 @@ export default class Spaces extends View {
       .hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(action).child(svg(`mods/workspace-chrome/${icon}.svg`).size(14));
     const seen = [], rows = this.grouped(t, collapsed, seen);
     this.seen = seen;
-    return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
-      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
+    return v_flex().size_full().min_h(0).bg(t.chrome).text_size(TS.item)
+      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(TS.body).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null))))
@@ -929,7 +930,7 @@ export default class Spaces extends View {
         .children(rows)
         .when(leaving && !collapsed, el => el.child(div().id("folder-out").mt(6).h(34).flex_none().flex().items_center().justify_center()
           .rounded(8).border_1().border_dashed().border_color(this.overFolder === "out" ? t.accent : t.border)
-          .text_size(12).text_color(this.overFolder === "out" ? t.foreground : t.dim)
+          .text_size(TS.body).text_color(this.overFolder === "out" ? t.foreground : t.dim)
           .on_mouse_move((_e, cx) => { if (this.overFolder !== "out") { this.overFolder = "out"; this.over = null; cx.notify(); } })
           .child("Drop here to take it out of its folder"))));
   }

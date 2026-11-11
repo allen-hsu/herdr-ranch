@@ -4,6 +4,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { run, shared, layouts, keys, props, theme, layout } from "herdr";
+import { TS } from "./ui.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -38,7 +39,7 @@ export default class LayoutSwitch extends View {
     return h_flex().id("layout-switch").size_full().px(10).gap(2).items_center().justify_end().bg(t.chrome).border_b(1).border_color(t.border)
       .children(this.items().map((i) => {
         const on = i.name === current;
-        return div().id(`ls-${i.name}`).px(8).py(2).rounded(6).text_size(11.5).cursor_pointer()
+        return div().id(`ls-${i.name}`).px(8).py(2).rounded(6).text_size(TS.body).cursor_pointer()
           .text_color(on ? t.foreground : t.muted).when(on, (el) => el.bg(t.selected))
           .hover((s) => s.bg(t.hover).text_color(t.foreground))
           .tooltip(i.key ? `${i.label} (${i.key})` : i.label)

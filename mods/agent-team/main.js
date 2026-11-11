@@ -12,6 +12,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
 import { NewTeam } from "./newteam.js";
 import { agentName } from "./agentname.js";
+import { TS } from "./ui.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -58,11 +59,11 @@ export default class AgentTeam extends View {
   }
 
   h(t, title, right) {
-    return h_flex().px(14).pt(14).pb(6).gap(6).items_center().text_size(10.5).font_medium()
+    return h_flex().px(14).pt(14).pb(6).gap(6).items_center().text_size(TS.small).font_medium()
       .child(div().text_color(t.dim).child(title.toUpperCase())).child(div().flex_1())
       .when(right != null, (el) => el.child(div().text_color(t.dim).child(String(right))));
   }
-  note(t, s) { return div().px(14).py(3).text_size(10.5).text_color(t.dim).child(s); }
+  note(t, s) { return div().px(14).py(3).text_size(TS.small).text_color(t.dim).child(s); }
   dot(t, m) {
     const c = m.state === "finished" ? t.dim : m.status === "blocked" ? t.blocked : m.status === "working" ? t.working : m.status === "error" ? t.blocked : t.done;
     return div().w(7).h(7).rounded(4).flex_none().bg(c).when(m.status === "working" && m.state !== "finished", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 }));
@@ -74,7 +75,7 @@ export default class AgentTeam extends View {
   }
   msgs(t, m) {
     const s = [m.msgs_to ? `→${m.msgs_to}` : "", m.msgs_from ? `←${m.msgs_from}` : ""].filter(Boolean).join(" ");
-    return s ? div().flex_none().text_size(10).text_color(t.muted).tooltip(`${m.msgs_to || 0} sent to it · ${m.msgs_from || 0} from it`).child(s) : null;
+    return s ? div().flex_none().text_size(TS.tiny).text_color(t.muted).tooltip(`${m.msgs_to || 0} sent to it · ${m.msgs_from || 0} from it`).child(s) : null;
   }
 
   member(t, m, i, kind) {
@@ -90,10 +91,10 @@ export default class AgentTeam extends View {
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(h_flex().gap(6).items_center().min_w(0)
           .when(Boolean(icon), (e) => e.child(icon))
-          .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(m.state === "finished" ? t.muted : t.foreground).child(m.name))
+          .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(m.state === "finished" ? t.muted : t.foreground).child(m.name))
           .when(Boolean(this.msgs(t, m)), (e) => e.child(this.msgs(t, m))))
-        .child(div().truncate().text_size(10).text_color(t.dim).child(`${who}${right ? ` · ${right}` : ""}${m.started ? ` · ${since(m.started)}` : ""}`))
-        .child(div().truncate().text_size(10.5).text_color(m.status === "blocked" ? t.blocked : t.muted).child(this.doing(m))));
+        .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child(`${who}${right ? ` · ${right}` : ""}${m.started ? ` · ${since(m.started)}` : ""}`))
+        .child(div().truncate().text_size(TS.small).text_color(m.status === "blocked" ? t.blocked : t.muted).child(this.doing(m))));
   }
 
   event(t, e, i) {
@@ -101,7 +102,7 @@ export default class AgentTeam extends View {
     const color = e.k === "from" ? t.accent : e.k === "note" ? (e.status === "completed" ? t.done : t.dim) : e.k.startsWith("hc") || e.k === "spawn" ? t.working : t.muted;
     const via = e.via === "herdr" ? "Herdr" : e.via === "session" ? "session" : e.via === "sub" ? "subagent" : "";
     const what = e.k === "spawn" ? `started ${e.agent ?? "subagent"}${e.bg ? " (background)" : ""}` : e.k === "hc-run" ? "started in Herdr" : "";
-    return h_flex().id(`te-${i}`).px(14).py(3).gap(6).items_start().text_size(10.5)
+    return h_flex().id(`te-${i}`).px(14).py(3).gap(6).items_start().text_size(TS.small)
       .tooltip(`${clock(e.at)} ${glyph} ${e.name ?? e.who ?? ""} (${via})${e.times ? ` ×${e.times}` : ""}\n${e.text}`)
       .child(div().flex_none().w(34).text_color(t.dim).child(clock(e.at)))
       .child(div().flex_none().w(10).text_color(color).child(glyph))
@@ -114,15 +115,15 @@ export default class AgentTeam extends View {
 
   body(t) {
     const d = this.data;
-    const note = (s) => [div().p(16).text_size(12).text_color(t.dim).child(s)];
+    const note = (s) => [div().p(16).text_size(TS.body).text_color(t.dim).child(s)];
     if (!this.addr) return note("Select an agent to see its team.");
     if (!d) return note("Reading…");
     if (!d.ok) return note(`Unavailable: ${d.error}`);
     const herdr = d.herdr ?? [], subs = d.subs ?? [];
     const running = subs.filter((s) => s.state !== "finished");
     const out = [v_flex().px(14).pt(12).gap(2)
-      .child(div().text_size(13).font_semibold().text_color(t.foreground).truncate().child(d.lead?.name ?? this.addr))
-      .child(div().text_size(10.5).text_color(t.dim).child(`${herdr.length} Herdr agent${herdr.length === 1 ? "" : "s"} · ${subs.length} subagent${subs.length === 1 ? "" : "s"}${running.length ? ` (${running.length} running)` : ""} · ${(d.sessions ?? []).length} session${(d.sessions ?? []).length === 1 ? "" : "s"}`))];
+      .child(div().text_size(TS.item).font_semibold().text_color(t.foreground).truncate().child(d.lead?.name ?? this.addr))
+      .child(div().text_size(TS.small).text_color(t.dim).child(`${herdr.length} Herdr agent${herdr.length === 1 ? "" : "s"} · ${subs.length} subagent${subs.length === 1 ? "" : "s"}${running.length ? ` (${running.length} running)` : ""} · ${(d.sessions ?? []).length} session${(d.sessions ?? []).length === 1 ? "" : "s"}`))];
     if (!herdr.length && !subs.length && !(d.events ?? []).length) {
       out.push(this.note(t, "No teammates yet. They show up here when this agent starts others — any CLI through Herdr (hc run --bg codex \"…\"), or Claude Code subagents."));
       return out;
@@ -136,12 +137,12 @@ export default class AgentTeam extends View {
       const shown = [...running].reverse().concat(this.showDone ? [...done].reverse() : [...done].reverse().slice(0, Math.max(0, 6 - running.length)));
       shown.forEach((m, i) => out.push(this.member(t, m, i, "sub")));
       const hidden = subs.length - shown.length;
-      if (hidden > 0 || this.showDone) out.push(div().id("tm-more").px(14).py(4).text_size(10.5).text_color(t.accent).cursor_pointer()
+      if (hidden > 0 || this.showDone) out.push(div().id("tm-more").px(14).py(4).text_size(TS.small).text_color(t.accent).cursor_pointer()
         .on_click((_e, cx) => { this.showDone = !this.showDone; cx.notify(); }).child(this.showDone ? "Show fewer" : `Show ${hidden} more finished`));
     }
     if ((d.sessions ?? []).length) {
       out.push(this.h(t, "Sessions", d.sessions.length));
-      d.sessions.forEach((s, i) => out.push(h_flex().id(`ts-${i}`).px(14).py(3).gap(8).text_size(11).child(div().text_color(t.accent).child("⇄")).child(div().truncate().text_color(t.foreground).child(s.name))));
+      d.sessions.forEach((s, i) => out.push(h_flex().id(`ts-${i}`).px(14).py(3).gap(8).text_size(TS.meta).child(div().text_color(t.accent).child("⇄")).child(div().truncate().text_color(t.foreground).child(s.name))));
     }
     out.push(this.h(t, "Timeline", (d.events ?? []).length ? "newest first" : null));
     if (!(d.events ?? []).length) out.push(this.note(t, "No messages yet."));
@@ -181,21 +182,21 @@ export default class AgentTeam extends View {
       .on_click((_e, cx) => { this.sel = sel ? null : c.key; cx.notify(); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(7).h(7).rounded(4).flex_none().bg(dotC).when(c.status === "working" && c.state !== "finished", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })))
-        .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_semibold().text_color(t.foreground).child(c.name)))
-      .child(div().truncate().text_size(10).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor))
-      .child(div().truncate().text_size(10.5).text_color(c.status === "blocked" ? t.blocked : t.muted).child(c.doing || (c.state === "finished" ? "finished" : "")));
+        .child(div().flex_1().min_w(0).truncate().text_size(TS.body).font_semibold().text_color(t.foreground).child(c.name)))
+      .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor))
+      .child(div().truncate().text_size(TS.small).text_color(c.status === "blocked" ? t.blocked : t.muted).child(c.doing || (c.state === "finished" ? "finished" : "")));
   }
 
   mapView(t) {
     const d = this.data;
-    const note = (s) => div().p(20).text_size(12).text_color(t.dim).child(s);
+    const note = (s) => div().p(20).text_size(TS.body).text_color(t.dim).child(s);
     const head = h_flex().h(40).px(14).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
-      .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Team map"))
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d?.lead ? `· ${agentName(agents().find((x) => x.address === d.lead.id)) || d.lead.name}` : ""))
-      .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
+      .child(div().text_size(TS.item).font_semibold().text_color(t.foreground).child("Team map"))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color(t.dim).child(d?.lead ? `· ${agentName(agents().find((x) => x.address === d.lead.id)) || d.lead.name}` : ""))
+      .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click(() => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: {} })).child("New team…"))
-      .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.raised))
+      .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.raised))
         .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.pinned = this.pinned ? null : this.addr; this.load(cx); cx.notify(); }).child(this.pinned ? "Follow focused agent" : "Following focused agent"))
       .child(div().id("mp-close").size(24).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
@@ -223,10 +224,10 @@ export default class AgentTeam extends View {
       const day = e.at ? new Date(e.at * 1000).toDateString() : null;
       if (day && day !== lastDay && day !== new Date().toDateString()) {
         const x = new Date(e.at * 1000);
-        body.child(div().absolute().left(6).top(y).text_size(9).text_color(t.muted).child(`${x.getMonth() + 1}/${x.getDate()}`));
+        body.child(div().absolute().left(6).top(y).text_size(TS.tiny).text_color(t.muted).child(`${x.getMonth() + 1}/${x.getDate()}`));
       }
       lastDay = day;
-      body.child(div().absolute().left(6).top(y + 12).w(GUT - 6).text_size(10).text_color(t.dim).child(e.at ? hm(e.at) : ""));
+      body.child(div().absolute().left(6).top(y + 12).w(GUT - 6).text_size(TS.tiny).text_color(t.dim).child(e.at ? hm(e.at) : ""));
       if (m < 0) return;
       const tip = `${clock(e.at)} ${e.name ?? e.who ?? ""}${e.times ? ` ×${e.times}` : ""}\n${e.text}`;
       const selIdx = this.sel ? cols.findIndex((c) => c.key === this.sel) : -1;
@@ -234,7 +235,7 @@ export default class AgentTeam extends View {
       if (e.k === "note") {
         const done = e.status === "completed";
         body.child(div().id(`mn-${r}`).absolute().left(cx(m) - 60).when(faded, (x) => x.opacity(0.25)).top(y + 8).w(120).h(20).flex().items_center().justify_center().rounded(10).border_1()
-          .border_color(done ? t.done : t.border).bg(t.surface).text_size(10).text_color(done ? t.done : t.muted).tooltip(tip)
+          .border_color(done ? t.done : t.border).bg(t.surface).text_size(TS.tiny).text_color(done ? t.done : t.muted).tooltip(tip)
           .child(`${done ? "✓ finished" : "● " + (e.text.includes("waiting") ? "waiting" : e.status || "notice")}${e.times ? ` ×${e.times}` : ""}`));
         return;
       }
@@ -247,11 +248,11 @@ export default class AgentTeam extends View {
       const label = spawn ? `✦ start${e.agent ? ` ${e.agent}` : ""}: ${e.text}` : e.verdict ? `${e.verdict === "APPROVE" ? "✓ APPROVED" : "✗ CHANGES"} · ${e.text}` : e.text;
       const vColor = e.verdict === "APPROVE" ? t.done : e.verdict === "CHANGES" ? t.blocked : null;
       const fade = (el) => (faded ? el.opacity(0.2) : el);
-      body.child(fade(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(10.5)
+      body.child(fade(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(TS.small)
         .text_color(spawn ? t.working : vColor ?? t.foreground).when(Boolean(vColor), (x) => x.font_semibold()).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`)));
       if (spawn) for (let x = x1; x < x2 - 4; x += 9) body.child(fade(div().absolute().left(x).top(y + 22).w(Math.min(5, x2 - x)).h(2).rounded(1).bg(color)));
       else body.child(fade(div().absolute().left(x1).top(y + 22).w(x2 - x1).h(2).rounded(1).bg(color)));
-      body.child(fade(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(11).text_color(color).child(right ? "▶" : "◀")));
+      body.child(fade(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(TS.meta).text_color(color).child(right ? "▶" : "◀")));
     });
     const cards = h_flex().pl(GUT + PAD).pr(PAD).pt(10).pb(8).flex_none().children(cols.map((c, i) => div().w(colW).flex_none().px(4).child(this.card(t, c, i, colW - 8))));
     const diagram = v_flex().flex_1().min_w(0).h_full()
@@ -260,15 +261,15 @@ export default class AgentTeam extends View {
     const selCol = cols.find((c) => c.key === this.sel);
     const waiting = cols.filter((c) => !c.others && c.state !== "finished" && (c.status === "blocked" || c.status === "error"));
     const banner = waiting.length ? h_flex().px(14).py(8).gap(10).items_center().flex_none().bg(t.blocked).opacity(0.92)
-      .child(div().text_size(12).font_semibold().text_color("#fff").child(`⚠ ${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`))
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color("#fff").child(waiting[0].doing || "a permission prompt or a question is waiting"))
-      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(3).rounded(6).bg("#ffffff33").text_size(11).text_color("#fff").cursor_pointer()
+      .child(div().text_size(TS.body).font_semibold().text_color("#fff").child(`⚠ ${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color("#fff").child(waiting[0].doing || "a permission prompt or a question is waiting"))
+      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(3).rounded(6).bg("#ffffff33").text_size(TS.meta).text_color("#fff").cursor_pointer()
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: waiting[0].addr })).child("Go to agent")))
       : null;
     return root
       .when(Boolean(banner), (e) => e.child(banner))
       .child(h_flex().flex_1().min_h(0).child(diagram).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
-      .child(h_flex().h(28).px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim).flex_none()
+      .child(h_flex().h(28).px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(TS.tiny).text_color(t.dim).flex_none()
         .child(div().child("── lead → member")).child(div().text_color(t.accent).child("── reply")).child(div().text_color(t.working).child("╌╌ started"))
         .child(div().child("✓ finished")).child(div().flex_1()).child(div().child("Hover for full text · click a card for details")));
   }
@@ -278,28 +279,28 @@ export default class AgentTeam extends View {
     const mine = (e) => c.lead ? true : c.ids.includes(e.who);
     const evs = (d.events ?? []).filter(mine);
     const spawn = evs.find((e) => e.k === "spawn" || e.k === "hc-run");
-    const sec = (title) => div().pt(12).pb(4).text_size(10).font_medium().text_color(t.dim).child(title.toUpperCase());
-    const para = (txt, color) => div().text_size(11).text_color(color ?? t.muted).child(txt);
+    const sec = (title) => div().pt(12).pb(4).text_size(TS.tiny).font_medium().text_color(t.dim).child(title.toUpperCase());
+    const para = (txt, color) => div().text_size(TS.meta).text_color(color ?? t.muted).child(txt);
     const out = [];
     out.push(h_flex().gap(8).items_center()
-      .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(c.name))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_semibold().text_color(t.foreground).child(c.name))
       .child(div().id("dr-x").size(22).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.sel = null; cx.notify(); }).child("×")));
-    out.push(div().text_size(10.5).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.state === "finished" ? "finished" : m.status, m.out ? `${k(m.out)} tokens out` : "", m.ctx != null ? `context ${Math.round(m.ctx)}%` : "", m.started ? `started ${since(m.started)} ago` : ""].filter(Boolean).join(" · ")));
-    if (c.addr) out.push(div().id("dr-go").mt(8).h(28).px(10).flex().items_center().justify_center().rounded(7).bg(t.accent).text_size(11.5).text_color(t.accent_foreground ?? "#fff")
+    out.push(div().text_size(TS.small).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.state === "finished" ? "finished" : m.status, m.out ? `${k(m.out)} tokens out` : "", m.ctx != null ? `context ${Math.round(m.ctx)}%` : "", m.started ? `started ${since(m.started)} ago` : ""].filter(Boolean).join(" · ")));
+    if (c.addr) out.push(div().id("dr-go").mt(8).h(28).px(10).flex().items_center().justify_center().rounded(7).bg(t.accent).text_size(TS.body).text_color(t.accent_foreground ?? "#fff")
       .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: c.addr })).child("Go to agent"));
     if (c.doing) { out.push(sec("Now")); out.push(para(c.doing, t.foreground)); }
     if (spawn?.prompt && !c.lead) { out.push(sec("Task it was given")); out.push(para(spawn.prompt)); }
-    if ((m.steps ?? []).length) { out.push(sec("Recent steps")); for (const [i, st] of [...m.steps].reverse().entries()) out.push(div().id(`dr-st-${i}`).truncate().text_size(10.5).text_color(t.muted).child(`▸ ${st.tool}${st.target ? ` · ${st.target}` : ""}`)); }
-    if ((m.screen ?? []).length) { out.push(sec("Screen")); out.push(v_flex().p(6).rounded(6).bg(t.surface).children(m.screen.map((l, i) => div().id(`dr-sc-${i}`).truncate().text_size(10).text_color(t.muted).font_family("Menlo").child(l)))); }
+    if ((m.steps ?? []).length) { out.push(sec("Recent steps")); for (const [i, st] of [...m.steps].reverse().entries()) out.push(div().id(`dr-st-${i}`).truncate().text_size(TS.small).text_color(t.muted).child(`▸ ${st.tool}${st.target ? ` · ${st.target}` : ""}`)); }
+    if ((m.screen ?? []).length) { out.push(sec("Screen")); out.push(v_flex().p(6).rounded(6).bg(t.surface).children(m.screen.map((l, i) => div().id(`dr-sc-${i}`).truncate().text_size(TS.tiny).text_color(t.muted).font_family("Menlo").child(l)))); }
     const msgs = evs.filter((e) => e.k !== "spawn" && e.k !== "hc-run").slice(0, c.lead ? 12 : 30);
     out.push(sec(c.lead ? "Latest messages" : `Messages with the lead (${msgs.length})`));
     if (!msgs.length) out.push(para("None yet."));
     for (const [i, e] of msgs.entries()) {
       const dir = e.k === "from" ? `← ${c.lead ? e.name ?? e.who : "to lead"}` : e.k === "note" ? "✓ notice" : `→ ${c.lead ? e.name ?? e.who : "from lead"}`;
       out.push(v_flex().id(`dr-m-${i}`).mt(4).p(6).rounded(6).bg(t.surface).gap(2)
-        .child(h_flex().gap(6).text_size(10).child(div().text_color(e.k === "from" ? t.accent : t.dim).child(dir)).child(div().flex_1()).child(div().text_color(t.dim).child(clock(e.at))))
-        .child(div().text_size(10.5).text_color(t.foreground).child((e.full || e.text || "").slice(0, 500))));
+        .child(h_flex().gap(6).text_size(TS.tiny).child(div().text_color(e.k === "from" ? t.accent : t.dim).child(dir)).child(div().flex_1()).child(div().text_color(t.dim).child(clock(e.at))))
+        .child(div().text_size(TS.small).text_color(t.foreground).child((e.full || e.text || "").slice(0, 500))));
     }
     return v_flex().id("mp-drawer").w(330).h_full().flex_none().border_l(1).border_color(t.border).bg(t.chrome)
       .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(14).py(12).overflow_y_scrollbar().children(out));

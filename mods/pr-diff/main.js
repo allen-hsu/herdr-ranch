@@ -3,6 +3,7 @@
 import { View, div, uniform_list } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, props, theme } from "herdr";
+import { TS } from "./ui.js";
 
 const MAX_LINES = 20000;
 
@@ -50,7 +51,7 @@ export default class PRDiff extends View {
 
   render() {
     const t = theme();
-    const head = h_flex().px(12).h(36).flex_none().gap(8).items_center().border_b(1).border_color(t.border).text_size(11.5)
+    const head = h_flex().px(12).h(36).flex_none().gap(8).items_center().border_b(1).border_color(t.border).text_size(TS.body)
       .child(div().flex_none().text_color(t.dim).child(`${String(this.p.repo ?? "").split("/")[1] ?? ""} #${this.p.number ?? ""}`))
       .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(String(this.p.title ?? "")))
       .when(this.lines != null, (el) => el
@@ -62,16 +63,16 @@ export default class PRDiff extends View {
         .on_click(() => exec("open", [String(this.p.url)]))
         .child("↗"));
     let body;
-    if (this.error) body = div().p(14).text_size(12).text_color(t.blocked).child(`${this.error}`);
-    else if (!this.lines) body = div().p(14).text_size(12).text_color(t.dim).child("Loading diff…");
+    if (this.error) body = div().p(14).text_size(TS.body).text_color(t.blocked).child(`${this.error}`);
+    else if (!this.lines) body = div().p(14).text_size(TS.body).text_color(t.dim).child("Loading diff…");
     else body = uniform_list("diff-lines", this.lines.length, (i) => String(i), (range) => {
       const out = [];
       for (let i = range.start; i < range.end; i++) out.push(this.row(t, i));
       return out;
-    }).flex_1().font_family("JetBrains Mono").text_size(12);
+    }).flex_1().font_family("JetBrains Mono").text_size(TS.body);
     return v_flex().id("pr-diff").size_full().bg(t.background)
       .child(head)
-      .when(Boolean(this.truncated), (el) => el.child(div().px(12).py(4).text_size(11).text_color(t.working).child(`Showing the first ${MAX_LINES} of ${this.truncated} lines — open on GitHub for the rest.`)))
+      .when(Boolean(this.truncated), (el) => el.child(div().px(12).py(4).text_size(TS.meta).text_color(t.working).child(`Showing the first ${MAX_LINES} of ${this.truncated} lines — open on GitHub for the rest.`)))
       .child(body);
   }
 }

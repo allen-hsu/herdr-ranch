@@ -3,6 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { exec, appHome, theme } from "herdr";
+import { TS } from "./ui.js";
 
 const left = (resetsAt, now) => {
   if (!resetsAt) return "";
@@ -63,7 +64,7 @@ export default class UsageBar extends View {
     const t = theme();
     const now = this.data?.now ?? Date.now() / 1000;
     return h_flex().id("usage-bar").size_full().px(12).gap(14).items_center().justify_end()
-      .text_size(11).bg(t.chrome).text_color(t.muted)
+      .text_size(TS.meta).bg(t.chrome).text_color(t.muted)
       .child(div().text_color(t.dim).child("Used"))
       .child(this.provider(t, "u-claude", "icons/claude.svg", null, this.data?.claude, now, "unavailable"))
       .child(this.provider(t, "u-codex", "icons/codex.svg", null, this.data?.codex, now, "stale · run Codex to refresh"))

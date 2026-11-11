@@ -8,6 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, agents, panes, spaces, focused, props, run, theme, shared, setShared, terminals, openOverlay } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
 import { agentName } from "./agentname.js";
+import { TS } from "./ui.js";
 
 // Workflow order, left to right: waiting on you -> not started / idle -> in progress -> finished.
 const COLUMNS = [
@@ -29,7 +30,7 @@ function statusDots(t, items) {
   const counts = {};
   for (const a of items) counts[norm(a.status)] = (counts[norm(a.status)] ?? 0) + 1;
   return h_flex().gap(7).items_center().children(COLUMNS.map((c) => c.status).filter((s) => counts[s]).map((s) =>
-    h_flex().gap(3).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(10.5).text_color(t.dim).child(String(counts[s])))));
+    h_flex().gap(3).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(counts[s])))));
 }
 
 export default class AgentBoard extends View {
@@ -152,21 +153,21 @@ export default class AgentBoard extends View {
       .tooltip(openLayout ? "Open this agent" : "Focus this agent")
       .child(h_flex().gap(6).items_center()
         .child(this.icon(t, a.program))
-        .child(div().flex_1().min_w(0).truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(agentName(a) || a.program?.name || a.address))
-        .child(div().flex_none().text_size(10.5).text_color(t.dim).child(since(now - (this.changed[a.address]?.at ?? now)))))
-      .when(Boolean(where), (el) => el.child(div().truncate().text_size(10.5).text_color(t.dim).child(where)))
+        .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_semibold().text_color(t.foreground).child(agentName(a) || a.program?.name || a.address))
+        .child(div().flex_none().text_size(TS.small).text_color(t.dim).child(since(now - (this.changed[a.address]?.at ?? now)))))
+      .when(Boolean(where), (el) => el.child(div().truncate().text_size(TS.small).text_color(t.dim).child(where)))
       .when(Boolean(roleChip), (el) => el.child(h_flex().child(div().id(`role-${a.address}`).max_w_full().truncate().px(6).rounded(8).border_1().border_color(t.accent)
-        .text_size(10).text_color(t.accent).tooltip(kids && !tm ? "Open the Team map" : "Team role")
+        .text_size(TS.tiny).text_color(t.accent).tooltip(kids && !tm ? "Open the Team map" : "Team role")
         .when(kids > 0 && !tm, (x) => x.cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); }))
         .child(roleChip))))
-      .when(Boolean(l?.task), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(`${l?.parent ? "Lead" : "You"}: ${l.task}`)))
-      .child(div().text_size(11).text_color(dc).child(dt))
+      .when(Boolean(l?.task), (el) => el.child(div().truncate().text_size(TS.meta).text_color(t.muted).child(`${l?.parent ? "Lead" : "You"}: ${l.task}`)))
+      .child(div().text_size(TS.meta).text_color(dc).child(dt))
       .when(ctx != null || l?.cost != null, (el) => el.child(h_flex().gap(6).items_center().pt(2)
         .when(ctx != null, (el) => el
           .child(div().w(54).h(4).rounded(2).bg(t.border).child(div().h(4).rounded(2).bg(ctxColor).w(Math.max(1, Math.round(54 * Math.min(ctx, 100) / 100)))))
-          .child(div().text_size(10.5).text_color(ctx >= 60 ? ctxColor : t.dim).child(`${Math.round(ctx)}%`)))
+          .child(div().text_size(TS.small).text_color(ctx >= 60 ? ctxColor : t.dim).child(`${Math.round(ctx)}%`)))
         .child(div().flex_1())
-        .when(l?.cost != null, (el) => el.child(div().text_size(10.5).text_color(t.dim).child(`$${l.cost.toFixed(2)}`)))));
+        .when(l?.cost != null, (el) => el.child(div().text_size(TS.small).text_color(t.dim).child(`$${l.cost.toFixed(2)}`)))));
   }
 
   render() {
@@ -177,12 +178,12 @@ export default class AgentBoard extends View {
     const list = this.filtered(everyone).filter((a) => !(this.hideIdle && a.status === "idle"));
     const recent = (a, b) => (b.pinned - a.pinned) || (this.changed[b.address]?.at ?? 0) - (this.changed[a.address]?.at ?? 0);
     const f = getFilter();
-    const pill = (id, label, on, onClick, tip) => div().id(id).px(9).py(2).rounded(6).cursor_pointer().text_size(11)
+    const pill = (id, label, on, onClick, tip) => div().id(id).px(9).py(2).rounded(6).cursor_pointer().text_size(TS.meta)
       .border(1).border_color(on ? t.accent : t.border).text_color(on ? t.foreground : t.muted).when(on, (el) => el.bg(t.selected))
       .hover((s) => s.text_color(t.foreground)).tooltip(tip).on_click(onClick).child(label);
     const bar = h_flex().px(6).h(32).flex_none().gap(8).items_center()
-      .child(div().text_size(11.5).font_semibold().text_color(t.foreground).child("Agents"))
-      .child(div().text_size(11).text_color(t.dim).child(f === "all" ? String(everyone.length) : `${list.length} / ${everyone.length}`))
+      .child(div().text_size(TS.body).font_semibold().text_color(t.foreground).child("Agents"))
+      .child(div().text_size(TS.meta).text_color(t.dim).child(f === "all" ? String(everyone.length) : `${list.length} / ${everyone.length}`))
       .child(statusDots(t, list))
       .child(div().flex_1())
       .child(pill("flt-spaces", `${this.filterLabel(everyone)}  ▾`, f !== "all",
@@ -196,12 +197,12 @@ export default class AgentBoard extends View {
         return v_flex().id(`col-${col.status}`).flex_1().min_w(0).h_full().rounded(10).bg(t.chrome).border(1).border_color(t.border)
           .child(h_flex().px(12).h(34).flex_none().gap(6).items_center()
             .child(div().w(7).h(7).rounded(4).bg(t[col.status] ?? t.dim))
-            .child(div().text_size(11.5).font_semibold().text_color(t.foreground).child(col.label))
-            .child(div().text_size(11).text_color(t.dim).child(String(items.length))))
+            .child(div().text_size(TS.body).font_semibold().text_color(t.foreground).child(col.label))
+            .child(div().text_size(TS.meta).text_color(t.dim).child(String(items.length))))
           .child(v_flex().id(`colbody-${col.status}`).flex_1().min_h(0).pt(2).overflow_y_scrollbar()
-            .children(items.length ? items.map((a) => this.card(t, a, now)) : [div().px(12).py(6).text_size(11).text_color(t.dim).child("—")]));
+            .children(items.length ? items.map((a) => this.card(t, a, now)) : [div().px(12).py(6).text_size(TS.meta).text_color(t.dim).child("—")]));
       }));
-    const empty = !list.length ? div().p(16).text_size(12).text_color(t.dim).child(f === "current" ? "No agents in the selected space." : "No agents match this filter.") : null;
+    const empty = !list.length ? div().p(16).text_size(TS.body).text_color(t.dim).child(f === "current" ? "No agents in the selected space." : "No agents match this filter.") : null;
     return v_flex().id("agent-board").size_full().bg(t.canvas).p(6).gap(4).child(bar).child(empty ?? board);
   }
 }

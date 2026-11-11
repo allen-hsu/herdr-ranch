@@ -6,6 +6,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { run, closeOverlay, spaces, panes, agents, notify, exec, knownAgents } from "herdr";
 import { create, remove, inspect, list, prune, defaultBase, branches, repoName, validBranch } from "./wt.js";
+import { TS } from "./ui.js";
 
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.round(d / 60)}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
 const size = (kb) => (kb == null ? "–" : kb > 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb > 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
@@ -44,7 +45,7 @@ export class WorktreeDialog {
   close() { closeOverlay(this.overlay); }
 
   btn(t, id, label, action, { primary = false, danger = false, disabled = false } = {}) {
-    return div().id(id).h(30).px(12).flex().items_center().rounded(7).text_size(12)
+    return div().id(id).h(30).px(12).flex().items_center().rounded(7).text_size(TS.body)
       .bg(disabled ? t.raised : danger ? t.blocked : primary ? t.solid : t.raised).text_color(disabled ? t.dim : danger || primary ? t.solid_foreground ?? "#fff" : t.foreground)
       .when(!disabled, (e) => e.cursor_pointer().on_click(action)).child(label);
   }
@@ -77,28 +78,28 @@ export class WorktreeDialog {
   }
 
   viewNew(t) {
-    const tab = (id, label) => div().id(`wtm-${id}`).px(10).py(4).rounded(6).cursor_pointer().text_size(12)
+    const tab = (id, label) => div().id(`wtm-${id}`).px(10).py(4).rounded(6).cursor_pointer().text_size(TS.body)
       .bg(this.mode === id ? t.selected : t.background).text_color(this.mode === id ? t.foreground : t.muted)
       .on_click((_e, cx) => { this.mode = id; cx.notify(); }).child(label);
-    const field = (label, input, hint) => v_flex().gap(4).child(div().text_size(11).text_color(t.dim).child(label)).child(Input.new(input))
-      .when(Boolean(hint), (e) => e.child(div().text_size(10.5).text_color(t.dim).child(hint)));
+    const field = (label, input, hint) => v_flex().gap(4).child(div().text_size(TS.meta).text_color(t.dim).child(label)).child(Input.new(input))
+      .when(Boolean(hint), (e) => e.child(div().text_size(TS.small).text_color(t.dim).child(hint)));
     const suggestions = this.mode === "existing" && this.branchList?.length
       ? h_flex().flex_wrap().gap(4).children(this.branchList.filter((b) => !b.startsWith("origin/") || !this.branchList.includes(b.slice(7))).slice(0, 8)
-          .map((b) => div().id(`wtb-${b}`).px(6).py(1).rounded(5).border_1().border_color(t.border).text_size(10.5).text_color(t.muted).cursor_pointer()
+          .map((b) => div().id(`wtb-${b}`).px(6).py(1).rounded(5).border_1().border_color(t.border).text_size(TS.small).text_color(t.muted).cursor_pointer()
             .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { this.name.set_value(b.replace(/^origin\//, "")); cx.notify(); }).child(b)))
       : null;
     return v_flex().size_full().p(16).gap(12).text_color(t.foreground)
-      .child(div().text_size(14).font_semibold().child(`New worktree · ${repoName(this.root)}`))
+      .child(div().text_size(TS.title).font_semibold().child(`New worktree · ${repoName(this.root)}`))
       .child(h_flex().gap(4).child(tab("new", "New branch")).child(tab("existing", "Existing branch")).child(tab("pr", "From PR")))
       .when(this.mode === "new", (e) => e.child(field("Branch name", this.name)).child(field("Branch from", this.base, "A branch, tag or commit. Defaults to the remote's default branch.")))
       .when(this.mode === "existing", (e) => e.child(field("Branch", this.name, "Local, or on origin (a tracking branch is created).")).when(Boolean(suggestions), (x) => x.child(suggestions)))
       .when(this.mode === "pr", (e) => e.child(field("Pull request", this.prNum)).child(field("Local branch name (optional)", this.name, "Defaults to the PR's branch.")))
-      .child(h_flex().gap(6).items_center().child(div().text_size(11).text_color(t.dim).child("Start"))
-        .children([null, ...this.agents].map((a) => div().id(`wta-${a?.key ?? "none"}`).px(8).py(2).rounded(6).cursor_pointer().text_size(11.5)
+      .child(h_flex().gap(6).items_center().child(div().text_size(TS.meta).text_color(t.dim).child("Start"))
+        .children([null, ...this.agents].map((a) => div().id(`wta-${a?.key ?? "none"}`).px(8).py(2).rounded(6).cursor_pointer().text_size(TS.body)
           .bg(this.agent?.key === a?.key ? t.selected : t.background).text_color(t.muted)
           .on_click((_e, cx) => { this.agent = a; cx.notify(); }).child(a?.name ?? "Shell only"))))
-      .child(div().text_size(10.5).text_color(t.dim).child("Copies the files listed in .worktreeinclude from the main checkout and links orca.yaml sharedDirectories."))
-      .when(Boolean(this.error), (e) => e.child(div().text_size(11.5).text_color(t.blocked).child(this.error)))
+      .child(div().text_size(TS.small).text_color(t.dim).child("Copies the files listed in .worktreeinclude from the main checkout and links orca.yaml sharedDirectories."))
+      .when(Boolean(this.error), (e) => e.child(div().text_size(TS.body).text_color(t.blocked).child(this.error)))
       .child(div().flex_1())
       .child(h_flex().gap(8).justify_end()
         .child(this.btn(t, "wt-cancel", "Cancel", () => this.close()))
@@ -130,14 +131,14 @@ export class WorktreeDialog {
     ].filter(Boolean);
     const safe = i && !risks.some(([c]) => c === t.blocked);
     return v_flex().size_full().p(16).gap(10).text_color(t.foreground)
-      .child(div().text_size(14).font_semibold().child(`Delete worktree ${i?.branch ?? ""}`))
-      .child(div().text_size(11).text_color(t.dim).child(this.path))
-      .when(!i, (e) => e.child(div().text_size(12).text_color(t.dim).child("Checking what would be lost…")))
-      .when(Boolean(i) && !risks.length, (e) => e.child(div().text_size(12).text_color(t.done).child("Clean: nothing uncommitted, everything pushed and merged.")))
-      .children(risks.map(([c, s], k) => h_flex().id(`risk-${k}`).gap(8).items_center().text_size(12)
+      .child(div().text_size(TS.title).font_semibold().child(`Delete worktree ${i?.branch ?? ""}`))
+      .child(div().text_size(TS.meta).text_color(t.dim).child(this.path))
+      .when(!i, (e) => e.child(div().text_size(TS.body).text_color(t.dim).child("Checking what would be lost…")))
+      .when(Boolean(i) && !risks.length, (e) => e.child(div().text_size(TS.body).text_color(t.done).child("Clean: nothing uncommitted, everything pushed and merged.")))
+      .children(risks.map(([c, s], k) => h_flex().id(`risk-${k}`).gap(8).items_center().text_size(TS.body)
         .child(div().size(7).rounded(4).bg(c)).child(div().text_color(t.foreground).child(s))))
-      .child(div().text_size(10.5).text_color(t.dim).child("Closes its space, removes the folder, then deletes the branch (kept when it has unmerged commits)."))
-      .when(Boolean(this.error), (e) => e.child(div().text_size(11.5).text_color(t.blocked).child(this.error)))
+      .child(div().text_size(TS.small).text_color(t.dim).child("Closes its space, removes the folder, then deletes the branch (kept when it has unmerged commits)."))
+      .when(Boolean(this.error), (e) => e.child(div().text_size(TS.body).text_color(t.blocked).child(this.error)))
       .child(div().flex_1())
       .child(h_flex().gap(8).justify_end()
         .child(this.btn(t, "wr-cancel", "Cancel", () => this.close()))
@@ -174,15 +175,15 @@ export class WorktreeDialog {
       return [t.working, `${i.unmerged} not merged`, false];
     };
     return v_flex().size_full().p(16).gap(8).text_color(t.foreground)
-      .child(div().text_size(14).font_semibold().child(`Clean up worktrees · ${repoName(this.root)}`))
-      .child(div().text_size(10.5).text_color(t.dim).child("Merged and stale worktrees are pre-selected. Ones with uncommitted or unpushed work can't be picked here; use Delete on the row."))
-      .when(!this.rows, (e) => e.child(div().text_size(12).text_color(t.dim).child("Reading worktrees…")))
-      .when(Boolean(this.rows) && !rows.length, (e) => e.child(div().text_size(12).text_color(t.dim).child("No linked worktrees.")))
+      .child(div().text_size(TS.title).font_semibold().child(`Clean up worktrees · ${repoName(this.root)}`))
+      .child(div().text_size(TS.small).text_color(t.dim).child("Merged and stale worktrees are pre-selected. Ones with uncommitted or unpushed work can't be picked here; use Delete on the row."))
+      .when(!this.rows, (e) => e.child(div().text_size(TS.body).text_color(t.dim).child("Reading worktrees…")))
+      .when(Boolean(this.rows) && !rows.length, (e) => e.child(div().text_size(TS.body).text_color(t.dim).child("No linked worktrees.")))
       .child(v_flex().id("wc-list").flex_1().min_h(0).overflow_y_scrollbar().gap(2).children(rows.map((r, k) => {
         const [c, label, ok] = state(r);
         if (ok && r.info && !this.autoPicked?.has(r.path)) { (this.autoPicked ??= new Set()).add(r.path); this.picked.add(r.path); }
         const on = this.picked.has(r.path);
-        return h_flex().id(`wc-${k}`).h(30).px(6).gap(8).items_center().rounded(6).text_size(11.5)
+        return h_flex().id(`wc-${k}`).h(30).px(6).gap(8).items_center().rounded(6).text_size(TS.body)
           .when(ok, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { on ? this.picked.delete(r.path) : this.picked.add(r.path); cx.notify(); }))
           .child(div().size(13).flex_none().rounded(3).border_1().border_color(on ? t.accent : t.input).when(on, (e) => e.bg(t.accent)).when(!ok, (e) => e.opacity(0.3)))
           .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(r.branch ?? r.path.split("/").pop()))

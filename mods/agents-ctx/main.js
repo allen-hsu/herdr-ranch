@@ -4,6 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile } from "herdr";
+import { TS } from "./ui.js";
 
 // ---- context usage (added): Claude Code session -> % of context used ----
 // ~/.claude/herdr-status-snapshot.py (called from the status line) writes the percentages;
@@ -142,7 +143,7 @@ export default class Agents extends View {
       .tooltip(parts.map(([s, label]) => `${counts[s]} ${label}`).join(" · "))
       .children(parts.map(([s]) => h_flex().gap(3).items_center()
         .child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim))
-        .child(div().text_size(10).text_color(s === "idle" ? t.dim : t.muted).child(String(counts[s])))));
+        .child(div().text_size(TS.tiny).text_color(s === "idle" ? t.dim : t.muted).child(String(counts[s])))));
   }
 
   ctxBadge(t, pct) {
@@ -151,7 +152,7 @@ export default class Agents extends View {
     return h_flex().flex_none().gap(4).items_center().tooltip(`Context used: ${Math.round(pct)}%`)
       .child(div().w(w).h(4).rounded(2).bg(t.border)
         .child(div().h(4).rounded(2).bg(color).w(Math.max(1, Math.round(w * Math.min(pct, 100) / 100)))))
-      .child(div().text_size(10).text_color(color).child(`${Math.round(pct)}%`));
+      .child(div().text_size(TS.tiny).text_color(color).child(`${Math.round(pct)}%`));
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -215,8 +216,8 @@ export default class Agents extends View {
       .w_full()
       .p(5)
       .bg(t.popover)
-      .text_size(12.8)
-      .child(div().px(8).pt(4).pb(6).text_size(11).text_color(t.dim).child("Sort agents"))
+      .text_size(TS.item)
+      .child(div().px(8).pt(4).pb(6).text_size(TS.meta).text_color(t.dim).child("Sort agents"))
       .children(SORTS.map((s) => h_flex()
         .id(`sort-${s.id}`)
         .h(31)
@@ -265,7 +266,7 @@ export default class Agents extends View {
       .flex_none()
       .gap(0)
       .items_center()
-      .text_size(12.5)
+      .text_size(TS.item)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
       .on_click(() => (this.listed.has(k.address) ? run("pane.focus", { terminal: k.address }) : this.peek(k.address)))
@@ -281,8 +282,8 @@ export default class Agents extends View {
   status(t, a, compact = false) {
     const color = t[a.status] ?? t.dim;
     if (a.status === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
-    if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(10.5).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
-    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
+    if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(TS.small).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
+    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(TS.small).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
     // Idle: a ring; done: a dot.
     if (a.status === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle ?? t.dim);
     return div().size(7).mx(3).flex_none().rounded(4).bg(a.status === "done" ? color : t.dim + "00");
@@ -326,7 +327,7 @@ export default class Agents extends View {
     // ranch: a lead's team at a glance — members, and how many need the person (blocked / error).
     const teamChip = (a, subs) => {
       const need = subs.filter((s) => { const st = kidStatus(s.t, this.listed); return st === "blocked"; }).length;
-      return div().id(`tchip-${a.address}`).flex_none().h(16).px(4).gap(2).flex().items_center().rounded(8).text_size(10)
+      return div().id(`tchip-${a.address}`).flex_none().h(16).px(4).gap(2).flex().items_center().rounded(8).text_size(TS.tiny)
         .when(need > 0, (x) => x.bg(t.blocked).text_color("#fff")).when(!need, (x) => x.text_color(t.dim))
         .tooltip(need ? `${need} of ${subs.length} team members need you — open the Team map` : `${subs.length} team member${subs.length === 1 ? "" : "s"} — open the Team map`)
         .cursor_pointer().hover((x) => x.text_color(t.foreground))
@@ -348,7 +349,7 @@ export default class Agents extends View {
         .flex()
         .items_center()
         .rounded(4)
-        .text_size(11)
+        .text_size(TS.meta)
         .text_color(open ? t.dim : (t[top] ?? t.dim))
         .cursor_pointer()
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
@@ -463,11 +464,11 @@ export default class Agents extends View {
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
           .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
           .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
-        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
+        .when(Boolean(machine), el => el.child(div().text_size(TS.tiny).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(teamChip(a, subs)).child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(team).child(pin))
         .when(typeof this.ctx?.[a.address] === "number", el => el.child(this.ctxBadge(t, this.ctx[a.address])))
-        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
+        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(TS.meta).text_color(t.dim).child(duration(now - when))))
         .child(this.status(t, a, byPriority && !isPinned));
     };
 
@@ -493,7 +494,7 @@ export default class Agents extends View {
         .flex_none()
         .gap(6)
         .items_center()
-        .text_size(11)
+        .text_size(TS.meta)
         .font_medium()
         .cursor_pointer()
         .hover((s) => s.text_color(t.foreground))
@@ -518,7 +519,7 @@ export default class Agents extends View {
       .bg(t.chrome)
       .border_t(1)
       .border_color(t.border)
-      .text_size(13)
+      .text_size(TS.item)
       .when(!collapsed, (el) =>
         el.child(
           h_flex()
@@ -529,11 +530,11 @@ export default class Agents extends View {
             .flex_none()
             .items_center()
             .justify_between()
-            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
+            .child(div().text_size(TS.body).font_medium().text_color(t.dim).child("Agents"))
             .child(
               div()
                 .id("ag-sort")
-                .text_size(11)
+                .text_size(TS.meta)
                 .text_color(t.dim)
                 .hover((s) => s.text_color(t.foreground))
                 .on_click(() => openOverlay({ mod: "agents-ctx", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
@@ -543,7 +544,7 @@ export default class Agents extends View {
         ),
       )
       .when(list.length === 0 && !collapsed, (el) =>
-        el.child(div().px(12).text_size(12).text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
+        el.child(div().px(12).text_size(TS.body).text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
       )
       .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows))
       .when(collapsed, (el) =>
@@ -555,7 +556,7 @@ export default class Agents extends View {
             .child(
               div()
                 .id("collapse")
-                .text_size(13)
+                .text_size(TS.item)
                 .text_color(t.dim)
                 .hover((s) => s.text_color(t.foreground))
                 .on_click(toggleSidebar)

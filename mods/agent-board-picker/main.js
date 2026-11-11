@@ -5,6 +5,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, panes, focused, theme, shared, setShared } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
+import { TS } from "./ui.js";
 
 const FILTER = "agent-board.filter";
 const ORDER = ["blocked", "idle", "working", "done"];
@@ -27,7 +28,7 @@ export default class BoardPicker extends View {
     const c = {};
     for (const a of items) c[norm(a.status)] = (c[norm(a.status)] ?? 0) + 1;
     return h_flex().flex_none().gap(6).items_center().children(ORDER.filter((s) => c[s]).map((s) =>
-      h_flex().gap(3).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(10.5).text_color(t.dim).child(String(c[s])))));
+      h_flex().gap(3).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(c[s])))));
   }
 
   render() {
@@ -53,15 +54,15 @@ export default class BoardPicker extends View {
       set(next.size ? { spaces: [...next] } : "all");
     };
     const check = (on, partial) => div().w(14).h(14).flex_none().rounded(3).border(1).border_color(on || partial ? t.accent : t.input)
-      .flex().items_center().justify_center().when(on, (el) => el.bg(t.accent).child(div().text_size(10).text_color(t.accent_foreground ?? t.background).child("✓")))
+      .flex().items_center().justify_center().when(on, (el) => el.bg(t.accent).child(div().text_size(TS.tiny).text_color(t.accent_foreground ?? t.background).child("✓")))
       .when(partial && !on, (el) => el.child(div().w(6).h(2).bg(t.accent)));
     const radio = (on) => div().w(14).h(14).flex_none().rounded(7).border(1).border_color(on ? t.accent : t.input)
       .flex().items_center().justify_center().when(on, (el) => el.child(div().w(6).h(6).rounded(3).bg(t.accent)));
     const row = (id, indent) => h_flex().id(id).w_full().pl(8 + indent).pr(8).h(28).flex_none().gap(8).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover));
-    const name = (text, strong) => div().flex_1().min_w(0).truncate().text_size(12).text_color(t.foreground).when(strong, (el) => el.font_medium()).child(text);
+    const name = (text, strong) => div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(t.foreground).when(strong, (el) => el.font_medium()).child(text);
 
     const rows = [
-      row("p-all", 0).on_click(() => set("all")).child(radio(f === "all")).child(name("All spaces")).child(div().text_size(10.5).text_color(t.dim).child(String(everyone.length))),
+      row("p-all", 0).on_click(() => set("all")).child(radio(f === "all")).child(name("All spaces")).child(div().text_size(TS.small).text_color(t.dim).child(String(everyone.length))),
       row("p-cur", 0).on_click(() => set("current")).child(radio(f === "current"))
         .child(name(`Current · ${label(spaces().find((s) => s.id === focused()?.space)?.name)}`)),
       div().my(4).h(1).flex_none().bg(t.border),
@@ -88,10 +89,10 @@ export default class BoardPicker extends View {
       const on = picked.has(s.id);
       rows.push(row(`p-s-${s.id}`, 0).on_click(() => toggle([s.id], on)).child(check(on)).child(name(label(s.name))).child(this.dots(t, everyone.filter((a) => a.space === s.id))));
     }
-    if (rows.length === 3) rows.push(div().px(8).py(6).text_size(11).text_color(t.dim).child("No spaces with agents."));
+    if (rows.length === 3) rows.push(div().px(8).py(6).text_size(TS.meta).text_color(t.dim).child("No spaces with agents."));
 
     return v_flex().id("board-picker").w(300).p(6).gap(4)
-      .child(div().px(8).pt(2).pb(2).text_size(10.5).text_color(t.dim).child("SHOW AGENTS FROM"))
+      .child(div().px(8).pt(2).pb(2).text_size(TS.small).text_color(t.dim).child("SHOW AGENTS FROM"))
       .when(showSearch, (el) => el.child(div().px(2).child(Input.new(this.search))))
       .child(v_flex().id("p-list").max_h(320).overflow_y_scrollbar().children(rows));
   }
