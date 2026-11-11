@@ -12,7 +12,7 @@ import { icon } from "./menu.js";
 import { loadPRs, prForPart, badgeOf, revealPR, TTL as PR_TTL } from "./prs.js";
 import { available, check, openUpdate, newer } from "./update.js";
 import { depthOf, unsearched, findArgs, parseFound, REPO_STATUS, LATEST_TAG, FETCH, REMOTES, fetchable, parseRepoStatus, parseRemotes, webUrl, syncOf } from "./repos.js";
-import { TS } from "./ui.js";
+import { TS, field } from "./ui.js";
 
 function location(folder) {
   if (folder) return { cwd: folder, on: null };
@@ -520,9 +520,9 @@ export class Graph {
         .text_size(TS.small).text_color(t.muted).hover((s) => s.bg(t.background).text_color(t.foreground))
         .tooltip("Compare this branch against the default branch (commits it would bring in a PR)")
         .on_click((_e, cx) => { cx.stop_propagation(); compare(cx); }).child("Compare")));
-    const heading = (text) => div().px(14).pt(8).pb(3).text_size(TS.tiny).font_semibold().text_color(t.dim).child(text);
+    const heading = (text) => div().px(14).pt(8).pb(3).text_size(11).font_semibold().text_color(t.dim).child(text);
     const rows = [
-      div().px(10).pt(6).pb(4).child(Input.new(this.branchSearch)),
+      div().px(10).pt(6).pb(4).child(field(t, this.branchSearch, { size: "panel", icon: "mods/workspace-chrome/search.svg" })),
       ...(mode !== "view" ? [div().px(14).pb(4).text_size(TS.small).text_color(t.accent).child(mode === "base" ? "Pick the base branch (what the PR merges into)" : "Pick the head branch (what the PR brings in)")] : []),
     ];
     if (mode === "view") rows.push(

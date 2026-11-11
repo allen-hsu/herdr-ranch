@@ -12,7 +12,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
 import { NewTeam } from "./newteam.js";
 import { agentName } from "./agentname.js";
-import { TS, SPACE } from "./ui.js";
+import { TS, SPACE, escChip } from "./ui.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -62,8 +62,8 @@ export default class AgentTeam extends View {
   }
 
   h(t, title, right) {
-    return h_flex().px(SPACE.dialog).pt(14).pb(6).gap(6).items_center().text_size(TS.small).font_medium()
-      .child(div().text_color(t.dim).child(title.toUpperCase())).child(div().flex_1())
+    return h_flex().px(SPACE.dialog).pt(14).pb(6).gap(6).items_center().text_size(11).font_semibold()
+      .child(div().text_color(t.dim).child(title)).child(div().flex_1())
       .when(right != null, (el) => el.child(div().text_color(t.dim).child(String(right))));
   }
   note(t, s) { return div().px(SPACE.dialog).py(4).text_size(TS.small).text_color(t.dim).child(s); }
@@ -202,8 +202,7 @@ export default class AgentTeam extends View {
       .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.raised))
         .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.pinned = this.pinned ? null : this.addr; this.load(cx); cx.notify(); }).child(this.pinned ? "Follow focused agent" : "Following focused agent"))
-      .child(div().id("mp-close").size(24).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => closeOverlay(this.overlay)).child("×"));
+      .child(escChip(t, "mp-close", () => closeOverlay(this.overlay)));
     const root = v_flex().id("team-map").size_full().bg(t.popover ?? t.chrome).on_size_change((size, cx) => { if (Math.abs(size.width - this.w) > 4) { this.w = size.width; cx.notify(); } }).child(head);
     if (!this.addr) return root.child(note("Focus an agent, then open the map."));
     if (!d) return root.child(note("Reading…"));
@@ -295,13 +294,13 @@ export default class AgentTeam extends View {
     const mine = (e) => c.lead ? true : c.ids.includes(e.who);
     const evs = (d.events ?? []).filter(mine);
     const spawn = evs.find((e) => e.k === "spawn" || e.k === "hc-run");
-    const sec = (title) => div().pt(12).pb(4).text_size(TS.tiny).font_medium().text_color(t.dim).child(title.toUpperCase());
+    const sec = (title) => div().pt(12).pb(4).text_size(11).font_semibold().text_color(t.dim).child(title);
     const para = (txt, color) => div().text_size(TS.meta).text_color(color ?? t.muted).child(txt);
     const out = [];
     out.push(h_flex().gap(8).items_center()
       .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_semibold().text_color(t.foreground).child(c.name))
       .child(div().id("dr-x").size(22).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.sel = null; cx.notify(); }).child("×")));
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.sel = null; cx.notify(); }).child(svg("mods/workspace-chrome/x.svg").size(12))));
     out.push(div().text_size(TS.small).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.state === "finished" ? "finished" : m.status, m.out ? `${k(m.out)} tokens out` : "", m.ctx != null ? `context ${Math.round(m.ctx)}%` : "", m.started ? `started ${since(m.started)} ago` : ""].filter(Boolean).join(" · ")));
     if (c.addr) out.push(div().id("dr-go").mt(8).h(28).px(10).flex().items_center().justify_center().rounded(7).bg(t.accent).text_size(TS.body).text_color(t.accent_foreground ?? "#fff")
       .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: c.addr })).child("Go to agent"));

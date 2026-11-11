@@ -62,8 +62,8 @@ export default class AgentInspector extends View {
 
   // ---------- small pieces ----------
   h(t, title, right) {
-    return h_flex().px(SPACE.panel).pt(14).pb(6).gap(6).items_center().text_size(TS.small).font_medium()
-      .child(div().text_color(t.dim).child(title.toUpperCase())).child(div().flex_1())
+    return h_flex().px(SPACE.panel).pt(14).pb(6).gap(6).items_center().text_size(11).font_semibold()
+      .child(div().text_color(t.dim).child(title)).child(div().flex_1())
       .when(right != null, (el) => el.child(div().text_color(t.dim).child(String(right))));
   }
   row(t, id, left, mid, right, color) {

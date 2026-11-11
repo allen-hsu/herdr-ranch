@@ -6,7 +6,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { run, closeOverlay, spaces, panes, agents, notify, exec, knownAgents } from "herdr";
 import { create, remove, inspect, list, prune, defaultBase, branches, repoName, validBranch } from "./wt.js";
-import { TS } from "./ui.js";
+import { TS, field as inputField } from "./ui.js";
 
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.round(d / 60)}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
 const size = (kb) => (kb == null ? "–" : kb > 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb > 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
@@ -81,12 +81,12 @@ export class WorktreeDialog {
     const tab = (id, label) => div().id(`wtm-${id}`).px(10).py(4).rounded(6).cursor_pointer().text_size(TS.body)
       .bg(this.mode === id ? t.selected : t.background).text_color(this.mode === id ? t.foreground : t.muted)
       .on_click((_e, cx) => { this.mode = id; cx.notify(); }).child(label);
-    const field = (label, input, hint) => v_flex().gap(4).child(div().text_size(TS.meta).text_color(t.dim).child(label)).child(Input.new(input))
+    const field = (label, input, hint) => v_flex().gap(4).child(div().text_size(TS.meta).text_color(t.dim).child(label)).child(inputField(t, input, { size: "panel" }))
       .when(Boolean(hint), (e) => e.child(div().text_size(TS.small).text_color(t.dim).child(hint)));
     const suggestions = this.mode === "existing" && this.branchList?.length
       ? h_flex().flex_wrap().gap(4).children(this.branchList.filter((b) => !b.startsWith("origin/") || !this.branchList.includes(b.slice(7))).slice(0, 8)
           .map((b) => div().id(`wtb-${b}`).px(6).py(1).rounded(5).border_1().border_color(t.border).text_size(TS.small).text_color(t.muted).cursor_pointer()
-            .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { this.name.set_value(b.replace(/^origin\//, "")); cx.notify(); }).child(b)))
+            .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => { this.name.set_value(b.replace(/^origin\//, "")); cx.notify(); }).child(b)))
       : null;
     return v_flex().size_full().p(16).gap(12).text_color(t.foreground)
       .child(div().text_size(TS.title).font_semibold().child(`New worktree · ${repoName(this.root)}`))

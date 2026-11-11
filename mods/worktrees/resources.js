@@ -318,7 +318,7 @@ export class ResourcesWindow {
   cleanupView(t) {
     const st = shared(CACHE);
     const head = (text, sub) => h_flex().px(10).pt(10).pb(4).gap(6).items_center().text_size(TS.small).font_semibold().text_color(t.dim)
-      .child(div().child(text.toUpperCase())).when(Boolean(sub), (e) => e.child(div().font_normal().child(sub)));
+      .child(div().child(text)).when(Boolean(sub), (e) => e.child(div().font_normal().child(sub)));
     const body = [];
     let k = 0;
     for (const r of st?.repos ?? []) { body.push(head(r.name, r.root.replace(home(), "~"))); for (const w of r.worktrees) body.push(this.cleanupRow(t, w, k++)); }

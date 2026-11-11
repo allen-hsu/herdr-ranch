@@ -5,7 +5,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, panes, focused, theme, shared, setShared } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
-import { TS } from "./ui.js";
+import { TS, field } from "./ui.js";
 
 const FILTER = "agent-board.filter";
 const ORDER = ["blocked", "idle", "working", "done"];
@@ -92,8 +92,8 @@ export default class BoardPicker extends View {
     if (rows.length === 3) rows.push(div().px(8).py(6).text_size(TS.meta).text_color(t.dim).child("No spaces with agents."));
 
     return v_flex().id("board-picker").w(300).p(6).gap(4)
-      .child(div().px(8).pt(2).pb(2).text_size(TS.small).text_color(t.dim).child("SHOW AGENTS FROM"))
-      .when(showSearch, (el) => el.child(div().px(2).child(Input.new(this.search))))
+      .child(div().px(8).pt(2).pb(2).text_size(11).font_semibold().text_color(t.dim).child("Show agents from"))
+      .when(showSearch, (el) => el.child(div().px(2).child(field(t, this.search, { size: "panel", icon: "mods/workspace-chrome/search.svg" }))))
       .child(v_flex().id("p-list").max_h(320).overflow_y_scrollbar().children(rows));
   }
 }
