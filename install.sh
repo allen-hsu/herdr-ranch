@@ -29,34 +29,48 @@ need git; need python3; need rsync
 [ -d "$APP" ] || { echo "Herdr app home not found: $APP (start the Herdr app once first)" >&2; exit 1; }
 HAVE_HERDR=1; command -v herdr-app >/dev/null 2>&1 || HAVE_HERDR=0
 
-# Copy a mod folder into $APP/mods/<name>. A folder Herdr has never seen appears in one rename,
-# with its mod.json already inside, so Herdr never auto-docks it into the shown layout.
-install_mod() {
-  local src="$1" name="$2" dst="$APP/mods/$2"
-  [ -f "$src/mod.json" ] || { echo "no mod.json in $src" >&2; exit 1; }
-  if [ -d "$dst" ]; then
-    run rsync -a --delete --exclude jsconfig.json --exclude '*.d.ts' --exclude __pycache__ "$src/" "$dst/"
-  else
-    local stage="$APP/.ranch-staging-$name"
-    run rm -rf "$stage"
-    run rsync -a --exclude jsconfig.json --exclude '*.d.ts' --exclude __pycache__ "$src/" "$stage/"
-    run mv "$stage" "$dst"
+# Build a mod (its folder + the shared lib/ files its lib.json lists) and copy it into $APP/mods/<name>.
+# A folder Herdr has never seen appears in one rename, with its mod.json already inside, so Herdr never
+# auto-docks it into the shown layout.
+EXCL=(--exclude jsconfig.json --exclude '*.d.ts' --exclude __pycache__ --exclude lib.json)
+build_mod() {
+  local src="$1" out="$2"
+  rm -rf "$out"; mkdir -p "$out"
+  rsync -a "${EXCL[@]}" "$src/" "$out/"
+  if [ -f "$src/lib.json" ]; then
+    python3 - "$src/lib.json" <<'PY' | while IFS= read -r f; do
+import json, sys
+for f in json.load(open(sys.argv[1])): print(f)
+PY
+      case "$f" in */*|..*|"") echo "bad lib entry '$f' in $src/lib.json" >&2; exit 1 ;; esac
+      [ -f "$HERE/lib/$f" ] || { echo "missing lib/$f (listed by $src/lib.json)" >&2; exit 1; }
+      [ ! -e "$src/$f" ] || { echo "$src/$f shadows lib/$f; delete one" >&2; exit 1; }
+      cp "$HERE/lib/$f" "$out/$f"
+    done
   fi
-  say "mod  $name"
+}
+install_mod() {
+  local src="$1" name="$2" dst="$APP/mods/$2" stage="$APP/.ranch-staging-$2"
+  [ -f "$src/mod.json" ] || { echo "no mod.json in $src" >&2; exit 1; }
+  if [ "$DRY" = 1 ]; then say "[dry-run] mod $name <- ${src#$HERE/}"; return; fi
+  build_mod "$src" "$stage"
+  if [ -d "$dst" ]; then rsync -a --delete "${EXCL[@]}" "$stage/" "$dst/"; rm -rf "$stage"; else mv "$stage" "$dst"; fi
+  say "mod  $name  (${src#$HERE/})"
 }
 
 echo "herdr-ranch -> $APP"
 
-echo "Mods"
-for d in "$HERE"/mods/*/; do install_mod "${d%/}" "$(basename "$d")"; done
+echo "Mods (mods/: ours; forks/*/mods/: third-party mods we forked, kept here with git subtree)"
+for d in "$HERE"/mods/*/ "$HERE"/forks/*/mods/*/; do [ -d "$d" ] && install_mod "${d%/}" "$(basename "$d")"; done
 
-echo "Third-party mods (vendor.json, pinned)"
+echo "Pinned third-party mods (vendor.json)"
 python3 - "$HERE/vendor.json" <<'PY' > "$CACHE.vendor.tsv.tmp" 2>/dev/null || true
 import json, sys
 for m in json.load(open(sys.argv[1]))["mods"]:
     print("\t".join([m["name"], m["repo"], m["path"], m["commit"], m.get("ref", "")]))
 PY
 mkdir -p "$CACHE"
+[ -s "$CACHE.vendor.tsv.tmp" ] || say "none"
 while IFS=$'\t' read -r name repo path commit ref; do
   [ -n "$name" ] || continue
   dir="$CACHE/vendor/$name"
@@ -133,7 +147,7 @@ if [ "$DRY" = 0 ] && [ "$HAVE_HERDR" = 1 ]; then
   fail=0
   for d in "$APP"/mods/*/; do
     n="$(basename "$d")"
-    [ -d "$HERE/mods/$n" ] || grep -q "\"name\": \"$n\"" "$HERE/vendor.json" || continue
+    [ -d "$HERE/mods/$n" ] || compgen -G "$HERE/forks/*/mods/$n" >/dev/null || grep -q "\"name\": \"$n\"" "$HERE/vendor.json" || continue
     if herdr-app check "$d" >/dev/null 2>&1; then say "ok   $n"; else say "FAIL $n"; fail=1; fi
   done
   [ "$fail" = 0 ] || { echo "Some mods failed herdr-app check; see: herdr-app check <mod folder>" >&2; exit 1; }

@@ -1,4 +1,4 @@
-// herdr-extensions: a worktree resource manager, like Orca's. Two views of this mod (props.resources):
+// The worktree scan, the status-bar pill and the Resource Manager window (Orca-like). Views (props.view):
 //   "pill"   a status-bar button: worktree count, disk used, how many can be cleaned; click opens the window
 //   "window" every repo's worktrees (repos = the main checkouts behind this computer's spaces) with state,
 //            agent activity, last commit, size; cleanable ones pre-selected; plus folders under
@@ -9,7 +9,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, spaces, panes, agents, run, openOverlay, notify, home, shared, setShared } from "herdr";
 import { mainRoot, list, inspect, remove, prune, repoName } from "./wt.js";
 
-const CACHE = "space-folders.resources"; // shared: { at, repos: [...], orphans: [...] } so pill and window agree
+const CACHE = "worktrees.scan"; // shared: { at, repos: [...], orphans: [...] } so pill and window agree
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
 const size = (kb) => (kb == null ? "–" : kb > 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb > 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
 const spaceAt = (path) => spaces().find((s) => !s.machine && (s.folder === path || panes().some((p) => s.tabs?.some((tb) => tb.id === p.tab) && (p.cwd === path || p.cwd?.startsWith(path + "/")))));
@@ -95,7 +95,7 @@ export class ResourcesPill {
     return h_flex().id("wt-pill").size_full().px(8).gap(6).items_center().justify_end().text_size(11).text_color(t.dim)
       .child(h_flex().id("wt-pill-btn").h(20).px(7).gap(5).items_center().rounded(5).cursor_pointer().hover((st) => st.bg(t.hover).text_color(t.foreground))
         .tooltip("Worktrees across your repos: state, size, what can be cleaned")
-        .on_click(() => openOverlay({ mod: "space-folders", kind: "window", key: "worktree-resources", width: 560, height: 680, props: { resources: "window" } }))
+        .on_click(() => openOverlay({ mod: "worktrees", kind: "window", key: "worktree-resources", width: 560, height: 680, props: { view: "window" } }))
         .child(svg("mods/workspace-chrome/git-branch.svg").size(12))
         .child(div().child(`${s.count} worktree${s.count === 1 ? "" : "s"} · ${size(s.kb)}`))
         .when(s.cleanable > 0, (e) => e.child(div().text_color(t.working).child(`${s.cleanable} cleanable`))));

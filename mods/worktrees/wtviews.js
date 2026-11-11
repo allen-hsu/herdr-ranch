@@ -1,4 +1,4 @@
-// herdr-extensions: the worktree dialogs, opened as overlays of this mod:
+// The worktree dialogs, opened as overlays of this mod:
 //   { wt: "new", root, on, space }      New worktree: from a base branch, an existing branch, or a PR
 //   { wt: "remove", root, path, on, space }  Delete a worktree (and its branch) after showing what would be lost
 //   { wt: "clean", root, on }           Clean up: every worktree of the repo with its state, pick and delete

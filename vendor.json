@@ -1,21 +1,4 @@
 {
-  "_comment": "Third-party mods: fetched by install.sh at a pinned commit, never vendored here. Review the diff before bumping a commit (see docs/security-reviews.md).",
-  "mods": [
-    {
-      "name": "space-folders",
-      "repo": "https://github.com/allen-hsu/herdr-space-folders.git",
-      "path": "mods/space-folders",
-      "commit": "aba9174fdff390e6bd1ffd39d69e8150a067d08c",
-      "ref": "herdr-extensions",
-      "note": "Fork of jankeesvw/herdr-space-folders; our extensions live on branch herdr-extensions."
-    },
-    {
-      "name": "git-graph",
-      "repo": "https://github.com/allen-hsu/herdr-git-graph.git",
-      "path": "mods/git-graph",
-      "ref": "herdr-extensions",
-      "commit": "1dd59b5c31d5182dc06bd5bd672725b5cf6ac8a8",
-      "note": "Fork of rabeeh-ta/herdr-git-graph; our extensions live on branch herdr-extensions."
-    }
-  ]
+  "_doc": "Third-party mods installed as-is at a pinned commit (fetched into ~/.cache/herdr-ranch/vendor). Mods we change live in forks/ instead (see forks/README.md).",
+  "mods": []
 }

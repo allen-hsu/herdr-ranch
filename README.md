@@ -23,8 +23,8 @@ cd ~/Documents/personal/herdr-ranch
 ./install.sh --statusline   # also wire the Claude Code status-line snapshot (context %, cost)
 ```
 
-The installer copies `mods/` and `layouts/` into `~/.config/herdr-app`, fetches the pinned
-third-party mods in `vendor.json`, puts integration scripts in `~/.config/herdr-app/ranch/`,
+The installer builds every mod in `mods/` and `forks/*/mods/` (adding the `lib/` files it lists), copies
+`layouts/` into `~/.config/herdr-app`, fetches any pinned mods in `vendor.json`, puts integration scripts in `~/.config/herdr-app/ranch/`,
 merges `config.example/keys.json` into your `keys.json` (your existing keys always win), and runs
 `herdr-app check` on every mod. New mod folders are moved in atomically so Herdr never auto-docks
 them. Edit here, then re-run `./install.sh`; don't edit the copies in `~/.config/herdr-app`.
@@ -48,14 +48,15 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 The right panel *is* Herdr's own `panel` / `panel-body`, so the tab bar's Files and Changes buttons open
 tabs in the same panel instead of a second column.
 
-Third-party (pinned in `vendor.json`, reviewed in `docs/security-reviews.md`):
-`space-folders` (our fork of jankeesvw/herdr-space-folders: agent status dot / unread bold / dirty count / PR badge on
-space rows; hover a repo row for New worktree (base / existing / PR, copies `.worktreeinclude`, links orca.yaml
-`worktree.sharedDirectories`) and Clean up; hover a worktree row for a guarded Delete; a status-bar pill opens a worktree resource manager window with
-every repo's worktrees, sizes and cleanable picks) and `git-graph` (our fork of rabeeh-ta/herdr-git-graph, branch `herdr-extensions`).
-The fork adds: a branch picker (graph any local/remote branch), checkout from the picker with a stash prompt
-for uncommitted changes, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state on
-branch labels (click reveals the PR in the PR panel), GitHub-like diff colors, and an untracked-diff fix.
+| `worktrees` | Git worktrees, Orca-style. Status-bar pill (count · disk · cleanable) → **Resource Manager**: CPU / memory per repo → worktree → terminal with sparklines, disk use, and a clean-up list (select all cleanable, guarded delete; 🗑 pre-selects everything safe). Dialogs for New worktree (base / existing branch / PR; copies `.worktreeinclude`, links orca.yaml `worktree.sharedDirectories`), Delete, Clean up — opened by any mod via `openOverlay({ mod: "worktrees", props: { wt, root, ... } })`. |
+
+Forked third-party mods live in `forks/` (git subtree, history kept; see `forks/README.md`), reviewed in
+`docs/security-reviews.md`:
+- `space-folders` (jankeesvw/herdr-space-folders): adds an agent status dot / unread bold / dirty count / PR badge
+  on space rows, and hover actions that open the `worktrees` dialogs (repo row: New, Clean up; worktree row: Delete).
+- `git-graph` (rabeeh-ta/herdr-git-graph): adds a branch picker (graph any local/remote branch), checkout from the
+  picker with a stash prompt, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state on
+  branch labels (click reveals the PR in the PR panel), GitHub-like diff colors, and an untracked-diff fix.
 
 ## Data and credentials
 
@@ -76,13 +77,26 @@ snippets, owner-only (0700/0600).
 ## Layout of this repo
 
 ```
-mods/              our mods (copied into ~/.config/herdr-app/mods)
+mods/              our mods (one folder per mod, copied into ~/.config/herdr-app/mods)
+forks/<name>/      third-party mods we changed, as git subtrees (mods/<name>/ inside is what gets installed)
+lib/               code shared by several mods: prs.js (GitHub PR badges), folders.js (space-folders
+                   state), codexlog.py (Codex sessions). A mod lists what it needs in lib.json; the
+                   installer copies those files into the installed mod (Herdr mods can't import across mods)
 layouts/           overview.json, focus.json
-vendor.json        third-party mods at pinned commits
+vendor.json        third-party mods installed unchanged at a pinned commit (none right now)
 integrations/      claude-statusline snapshot helper; review requesters (Slack) + Slack app manifest
 config.example/    pr-panel.json, slack-review.json, keys.json (merged by install.sh)
-docs/              security reviews of third-party mods, notes
+scripts/dev.sh     install one mod now while developing: scripts/dev.sh <name>
+docs/              security reviews of third-party code, notes
 ```
+
+Rules that keep it maintainable:
+- One concern per mod; mods talk through overlay props and `shared` keys, never by importing each other.
+  Contracts: `worktrees` dialogs (`{ wt, root, path?, on? }`), `pr-panel.reveal` / `pr-panel.listening`.
+- Code needed by two mods goes in `lib/`, never copied by hand.
+- Changes to third-party mods stay in `forks/`, marked `herdr-extensions:`, as small as possible so
+  upstream updates merge cleanly; anything that can stand alone becomes its own mod in `mods/`.
+- UI labels in English; no personal ids or paths in code (they go in `~/.config/herdr-app/*.json`).
 
 Known gaps: conversation full-text search, one prompt → several agents, Code layout, multiple
 Claude accounts; Grok usage.

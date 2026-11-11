@@ -1,4 +1,4 @@
-// herdr-extensions: worktree engine shared by the sidebar's New / Delete / Clean up dialogs.
+// The worktree engine behind the New / Delete / Clean up dialogs.
 // Worktrees go where Herdr's own worktree mod puts them: ~/.herdr/worktrees/<repo>/<branch, slugged>.
 // After creating one it copies the main checkout's .worktreeinclude files (Orca's format: literal gitignored
 // paths, one per line, # comments; globs and negations skipped) and links orca.yaml's

@@ -1,6 +1,6 @@
 # Security reviews of third-party mods
 
-Pins live in `vendor.json`; this file records what was reviewed.
+Forked mods live in `forks/` (git subtree), pinned mods in `vendor.json`; this file records what was reviewed.
 
 | Mod | Source | Commit | Audited |
 |---|---|---|---|

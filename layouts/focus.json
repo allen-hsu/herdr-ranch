@@ -267,9 +267,9 @@
                 "px": 230
               },
               "content": {
-                "mod": "space-folders",
+                "mod": "worktrees",
                 "props": {
-                  "resources": "pill"
+                  "view": "pill"
                 }
               }
             },

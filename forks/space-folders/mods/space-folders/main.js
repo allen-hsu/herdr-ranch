@@ -16,8 +16,7 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
-import { WorktreeDialog } from "./wtviews.js";
-import { ResourcesPill, ResourcesWindow } from "./resources.js";
+const WORKTREES_MOD = "worktrees"; // herdr-extensions: the mod that owns worktree dialogs
 const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
@@ -166,11 +165,7 @@ export default class Spaces extends View {
     this.notifyLater = () => { this.prDirty = true; };
     cx.timer.every(3000, (cx) => { if (this.prDirty) { this.prDirty = false; cx.notify(); } });
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
-    const { folderMenu, edit, machine = null, fresh = false, overlay, wt } = props() ?? {};
-    if (wt) { this.wtd = new WorktreeDialog({ ...props(), overlay }, cx); return; }
-    const res = props()?.resources;
-    if (res === "pill") { this.res = new ResourcesPill(cx); return; }
-    if (res === "window") { this.res = new ResourcesWindow({ ...props(), overlay }, cx); return; }
+    const { folderMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
@@ -833,6 +828,7 @@ export default class Spaces extends View {
   }
 
   // herdr-extensions: hover actions. A repo's own row: new worktree, clean up; a worktree's row: delete it.
+  // They open the separate "worktrees" mod's dialogs (props contract: { wt, root, path?, on }); no worktree code here.
   worktreeActions(w, g, t) {
     const [on, common] = JSON.parse(g.repo);
     if (!common?.endsWith("/.git")) return [];
@@ -841,7 +837,7 @@ export default class Spaces extends View {
       .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child(svg(`mods/workspace-chrome/${glyph}.svg`).size(12));
-    const dialog = (props, height) => openOverlay({ mod: "space-folders", kind: "dialog", width: 480, height, props: { ...props, root, on } });
+    const dialog = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
     if (g.linked) return [icon(`wt-del-${w.id}`, "x", "Delete this worktree (and its branch)…", () => dialog({ wt: "remove", path: g.top }, 280))];
     return [
       icon(`wt-new-${w.id}`, "plus", "New worktree…", () => dialog({ wt: "new" }, 400)),
@@ -865,8 +861,6 @@ export default class Spaces extends View {
 
   render() {
     const t = theme();
-    if (this.wtd) return this.wtd.render(t);
-    if (this.res) return this.res.render(t);
     if (this.folderMenu) return this.folderMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
