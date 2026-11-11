@@ -88,6 +88,12 @@ rm -f "$CACHE.vendor.tsv.tmp"
 echo "Layouts"
 for f in "$HERE"/layouts/*.json; do run cp "$f" "$APP/layouts/"; say "layout $(basename "$f" .json)"; done
 
+echo "Agent team: role templates -> ~/.config/herdr-core/templates, playbooks -> $APP/ranch/teams"
+run mkdir -p "$HOME/.config/herdr-core/templates" "$APP/ranch/teams"
+for f in "$HERE"/templates/*.md; do run cp "$f" "$HOME/.config/herdr-core/templates/"; done
+run rsync -a --delete "$HERE/teams/" "$APP/ranch/teams/"
+say "$(/bin/ls "$HERE"/templates/*.md | wc -l | tr -d ' ') templates, $(/bin/ls "$HERE"/teams/*.md | wc -l | tr -d ' ') playbooks"
+
 echo "Integration scripts -> $APP/ranch"
 run mkdir -p "$APP/ranch"
 run rsync -a "$HERE/integrations/requesters/" "$APP/ranch/requesters/"

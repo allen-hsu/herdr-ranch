@@ -17,7 +17,7 @@ import live  # noqa: E402  (shared lib, copied in by install.sh)
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
-VERSION = 6
+VERSION = 7
 red = live.clean
 TAG = re.compile(r"<(agent-message|hc|cross-session-message)\b([^>]*)>(.*?)</\1>", re.S)
 NOTE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
@@ -83,8 +83,10 @@ def herdr_members(lead):
     def add(parent, depth):
         for t in sorted(by_parent.get(parent, []), key=lambda x: x["address"]):
             g = hc_json("get", t["address"]) or {}
+            tpl = g.get("template") or ""
+            vendor = {"claude": "claude-code", "codex": "codex", "grok": "grok", "cursor": "cursor-agent", "gemini": "gemini"}.get(tpl.rsplit("-", 1)[-1]) if tpl else None
             m = {"kind": "herdr", "id": t["address"], "name": t.get("name") or t["address"], "parent": parent, "depth": depth,
-                 "agent": t.get("agent"), "state": t.get("state"), "status": t.get("status"), "turn": t.get("turn"),
+                 "agent": vendor or t.get("agent"), "role": tpl.rsplit("-", 1)[0] if tpl else None, "state": t.get("state"), "status": t.get("status"), "turn": t.get("turn"),
                  "template": g.get("template"), "title": red(g.get("title") or "", 80), "started": (g.get("created_ms") or 0) / 1000 or None,
                  "ended": (g.get("finished_ms") or 0) / 1000 or None, "exit": g.get("exit_code"), "where": red(t.get("where") or "", 60)}
             if t.get("state") == "live":
@@ -205,7 +207,7 @@ def timeline(path, names):
         c[k] += 1
 
     for line in open(path, encoding="utf-8", errors="replace"):
-        if '"tool_use"' not in line and "<agent-message" not in line and "<hc " not in line and "task-notification" not in line \
+        if '"tool_use"' not in line and "<agent-message" not in line and "<hc " not in line and "<hc>" not in line and "task-notification" not in line \
                 and "cross-session-message" not in line and '"tool_result"' not in line:
             continue
         try:
@@ -238,24 +240,35 @@ def timeline(path, names):
                     if mm:
                         rest = mm.group(2).strip()
                         name = re.search(r"--name[ =](\S+)", rest)
-                        tgt = name.group(1) if name else (rest.split()[0] if mm.group(1) == "send" and rest else first_program(rest))
+                        tgt = name.group(1) if name else first_program(rest) if mm.group(1) == "run" else next((w for w in rest.split() if not w.startswith("-")), None)
                         ev.append({"at": at, "k": "hc-" + mm.group(1), "who": tgt, "via": "herdr",
                                    "text": red(i.get("description") or rest, 140), "prompt": red(rest, 900)})
                         if tgt:
                             bump(tgt, "to")
-        elif r.get("type") == "user":
+        elif r.get("type") in ("user", "attachment"):
+            att = r.get("attachment") if isinstance(r.get("attachment"), dict) else {}
+            if r.get("type") == "attachment" and att.get("type") != "queued_command":
+                continue  # reports that arrive while the lead is busy are queued_command attachments
             tur = r.get("toolUseResult") if isinstance(r.get("toolUseResult"), dict) else {}
             if tur.get("agentId"):
                 for b in m.get("content") or []:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
                         agent_of_tool[b.get("tool_use_id")] = tur["agentId"]
-            s = text_of(m.get("content"))
+            s = att.get("prompt") or "" if att else text_of(m.get("content"))
             for tag, attrs, body in TAG.findall(s):
                 a = dict(ATTR.findall(attrs))
                 body = re.sub(r"^\s*\[Subagent hand-back\][^\n]*\n+", "", body)
                 body = re.sub(r"(^|\n)\s*#{1,6}\s*|\*\*|`", " ", body)  # markdown marks read badly in one line
                 if tag == "agent-message":
                     who, via = a.get("from", "?"), "sub"
+                elif tag == "hc" and not a.get("from"):
+                    # hc's own notice about a member: "<t> <name> exited (exit 0). Last lines: ..."
+                    w = body.strip().split()
+                    who = w[1] if len(w) > 1 and re.fullmatch(r"(\w+/)?t\w+", w[0]) else (w[0] if w else "?")
+                    stt = re.search(r"\b(exited|blocked|errored|error|finished)\b", body)
+                    ev.append({"at": at, "k": "note", "who": who, "via": "herdr", "status": stt.group(1) if stt else "",
+                               "text": red(" ".join(w[2:]) if len(w) > 2 else body, 140)})
+                    continue
                 elif tag == "hc":
                     frm = a.get("from", "?").split()
                     who, via = (frm[1] if len(frm) > 1 else frm[0]) if frm else "?", "herdr"

@@ -1,0 +1,156 @@
+// New team dialog: pick a pattern, write the task, choose the repo and which agent plays each role, then start
+// a lead Claude Code in a new tab with that pattern's playbook (ranch/teams/<pattern>.md). Members are started
+// by the lead with `hc run <role>-<agent>` templates (installed by herdr-ranch into ~/.config/herdr-core/templates).
+// Role preferences: ~/.config/herdr-app/agent-team.json (see config.example/agent-team.json).
+import { div } from "gpui-kit";
+import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
+import { exec, run, home, appHome, readTextFile, spaces, panes, focused, closeOverlay, openOverlay, pickFolder } from "herdr";
+
+export const PATTERNS = [
+  { key: "maker-checker", name: "Maker / Checker", line: "One agent builds, another vendor reviews; loop until approved.", roles: ["implementer", "reviewer"] },
+  { key: "leader-workers", name: "Leader / Workers", line: "Split into parallel subtasks, one worktree each; the lead merges.", roles: ["implementers", "reviewer?"] },
+  { key: "arena", name: "Arena", line: "Same task to several agents; the lead compares and picks.", roles: ["contestants", "reviewer?"] },
+  { key: "research-build", name: "Research → Build", line: "Research first, then build from the notes.", roles: ["researcher", "implementer", "reviewer?"] },
+];
+const CLI = { claude: "claude", codex: "codex", grok: "grok", cursor: "cursor-agent", gemini: "gemini" };
+const NAME = { claude: "Claude", codex: "Codex", grok: "Grok", cursor: "Cursor", gemini: "Gemini" };
+const TEMPLATES = { implementer: ["claude", "codex", "grok", "cursor"], reviewer: ["codex", "claude", "grok"], researcher: ["gemini", "grok", "claude"] };
+const DEFAULTS = { implementer: ["claude", "codex", "grok", "cursor"], reviewer: ["codex", "claude", "grok"], researcher: ["gemini", "grok", "claude"] };
+const ROLE_LABEL = { implementer: "Implementer", implementers: "Workers", contestants: "Contestants", reviewer: "Reviewer", researcher: "Researcher" };
+const slugify = (s) => (s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 28) || "task");
+
+export class NewTeam {
+  constructor(p, cx) {
+    this.overlay = p.overlay;
+    this.pattern = "maker-checker";
+    this.task = TextareaState.new({ placeholder: "What should the team do? e.g. Add rate limiting to the /api/login endpoint with tests", rows: 5 });
+    const sp = spaces().find((s) => s.active);
+    const cwd = panes().find((x) => x.pane === focused()?.pane)?.cwd;
+    this.repo = InputState.new({ value: cwd || sp?.folder || home(), placeholder: "Repository folder" });
+    this.base = InputState.new({ placeholder: "default branch" });
+    this.installed = {};
+    this.prefs = DEFAULTS;
+    this.pick = {}; // role -> agent key, or Set for multi roles
+    this.useReviewer = true;
+    this.error = null; this.busy = false;
+    cx.spawn(async (cx) => {
+      for (const [k, bin] of Object.entries(CLI)) this.installed[k] = (await exec("/bin/sh", ["-lc", `command -v ${bin}`], { timeout: 4000 }).catch(() => null))?.code === 0;
+      try { const c = JSON.parse((await readTextFile(`${home()}/.config/herdr-app/agent-team.json`)) ?? "null"); if (c?.roles) this.prefs = { ...DEFAULTS, ...c.roles }; } catch {}
+      this.defaults();
+      cx.notify();
+    });
+  }
+
+  avail(role) { return (this.prefs[role] ?? []).filter((a) => this.installed[a] && TEMPLATES[role]?.includes(a)); }
+  defaults() {
+    const impl = this.avail("implementer"), rev = this.avail("reviewer"), res = this.avail("researcher");
+    this.pick.implementer = impl[0];
+    this.pick.reviewer = rev.find((a) => a !== impl[0]) ?? rev[0];
+    this.pick.researcher = res[0];
+    this.pick.implementers = new Set(impl.slice(0, 2));
+    this.pick.contestants = new Set(impl.slice(0, 3));
+  }
+
+  chip(t, id, label, on, enabled, action) {
+    return div().id(id).h(26).px(10).flex().items_center().rounded(13).text_size(11.5).border_1()
+      .border_color(on ? t.accent : t.border).bg(on ? t.accent : t.surface).text_color(on ? (t.accent_foreground ?? "#fff") : enabled ? t.foreground : t.dim)
+      .when(enabled, (e) => e.cursor_pointer().hover((x) => x.border_color(t.accent)).on_click(action)).child(label);
+  }
+
+  roleRow(t, roleSpec) {
+    const optional = roleSpec.endsWith("?");
+    const role = roleSpec.replace("?", "");
+    const base = role === "implementers" || role === "contestants" ? "implementer" : role;
+    const multi = base !== role;
+    const list = this.avail(base);
+    const label = h_flex().w(96).flex_none().gap(6).items_center().child(div().text_size(11.5).text_color(t.muted).child(ROLE_LABEL[role]));
+    const row = h_flex().gap(6).flex_wrap().flex_1().min_w(0);
+    if (optional) row.child(this.chip(t, `r-${role}-none`, "None", !this.useReviewer, true, (_e, cx) => { this.useReviewer = !this.useReviewer; cx.notify(); }));
+    for (const a of list) {
+      const on = multi ? this.pick[role].has(a) : this.pick[role] === a && (!optional || this.useReviewer);
+      row.child(this.chip(t, `r-${role}-${a}`, NAME[a], on, true, (_e, cx) => {
+        if (multi) { on ? this.pick[role].delete(a) : this.pick[role].add(a); }
+        else { this.pick[role] = a; if (optional) this.useReviewer = true; }
+        cx.notify();
+      }));
+    }
+    if (!list.length) row.child(div().text_size(11).text_color(t.dim).child("No installed agent has this role."));
+    return h_flex().py(4).gap(10).items_center().child(label).child(row);
+  }
+
+  async start(cx) {
+    const task = this.task.value().trim(), repo = this.repo.value().trim().replace(/^~/, home()), base = this.base.value().trim();
+    const P = PATTERNS.find((p) => p.key === this.pattern);
+    if (!task) { this.error = "Write the task first."; cx.notify(); return; }
+    if (base && !/^[\w./-]+$/.test(base)) { this.error = "That base branch name looks wrong."; cx.notify(); return; }
+    this.busy = true; this.error = null; cx.notify();
+    const isRepo = (await exec("git", ["-C", repo, "rev-parse", "--show-toplevel"], { timeout: 5000 }).catch(() => null));
+    if (isRepo?.code !== 0) { this.busy = false; this.error = "That folder isn't a git repository."; cx.notify(); return; }
+    const root = isRepo.stdout.trim();
+    let baseRef = base;
+    if (!baseRef) {
+      const s = await exec("git", ["-C", root, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"], { timeout: 5000 }).catch(() => null);
+      baseRef = s?.code === 0 && s.stdout.trim() ? s.stdout.trim().replace(/^origin\//, "") : "main";
+    }
+    const tpl = (role, a) => `${role}-${a}`;
+    const multi = (role) => [...this.pick[role]].map((a) => tpl("implementer", a));
+    const reviewer = this.useReviewer && this.pick.reviewer ? tpl("reviewer", this.pick.reviewer) : null;
+    const rounds = 3;
+    const reviewStep = !reviewer ? "" : this.pattern === "research-build"
+      ? `5. Start the reviewer in the builder's worktree: \`hc run --bg --name checker --cwd <worktree> ${reviewer} "Review git diff ${baseRef}...HEAD; write to /tmp/review-{{slug}}.md"\`. Send CHANGES findings back to the builder; repeat up to ${rounds} rounds.`
+      : `   Review: for each branch, \`hc run --bg --name review-<n> --cwd <worktree> ${reviewer} "Review git diff ${baseRef}...HEAD; write to /tmp/review-{{slug}}-<n>.md"\`; send CHANGES findings back to that member and repeat up to ${rounds} rounds.`;
+    const slug = slugify(task);
+    let play = (await readTextFile(`${appHome()}/ranch/teams/${this.pattern}.md`).catch(() => null)) ?? "";
+    if (!play) { this.busy = false; this.error = "Playbook missing: run herdr-ranch's install.sh."; cx.notify(); return; }
+    const vars = { task, repo: root, repo_name: root.split("/").pop(), base: baseRef, slug, rounds: String(rounds), workers: String(Math.max(2, this.pick.implementers.size)),
+      implementer: tpl("implementer", this.pick.implementer), implementers: multi("implementers").join(", "), contestants: multi("contestants").join(", "),
+      reviewer: reviewer ?? "(none)", researcher: tpl("researcher", this.pick.researcher), review_step: reviewStep };
+    play = play.replace(/\{\{review_step\}\}/g, vars.review_step).replace(/\{\{(\w+)\}\}/g, (m, k) => vars[k] ?? m);
+    // The task goes first: --allowedTools takes several values and would swallow it.
+    const argv = ["claude", play, "--permission-mode", "auto", "--allowedTools", "Bash(hc:*),Bash(git:*)"];
+    // run() returns nothing: give the lead a unique terminal name, then look its address up through hc.
+    const name = `team-${slug}`.slice(0, 26) + "-" + Math.random().toString(36).slice(2, 6);
+    run("terminal.open", { argv, folder: root, place: "tab", name });
+    let addr = null;
+    for (let i = 0; i < 20 && !addr; i++) {
+      const g = await exec("hc", ["get", name, "--json"], { timeout: 3000 }).catch(() => null);
+      try { addr = g?.code === 0 ? JSON.parse(g.stdout).address : null; } catch {}
+      if (!addr) await exec("/bin/sleep", ["0.25"]).catch(() => null);
+    }
+    closeOverlay(this.overlay);
+    if (addr) openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${addr}`, width: 1000, height: 660, props: { lead: addr } });
+  }
+
+  render(t) {
+    const P = PATTERNS.find((p) => p.key === this.pattern);
+    const card = (p) => {
+      const on = p.key === this.pattern;
+      return v_flex().id(`pt-${p.key}`).flex_1().min_w(0).p(10).gap(3).rounded(8).border_1().border_color(on ? t.accent : t.border).bg(on ? t.selected ?? t.raised : t.surface)
+        .cursor_pointer().hover((x) => x.border_color(t.accent)).on_click((_e, cx) => { this.pattern = p.key; cx.notify(); })
+        .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child(p.name))
+        .child(div().text_size(10.5).text_color(t.muted).child(p.line));
+    };
+    const field = (label, el) => v_flex().gap(4).child(div().text_size(11).text_color(t.muted).child(label)).child(el);
+    const box = (el) => div().px(8).py(5).rounded(6).border_1().border_color(t.input ?? t.border).bg(t.surface).child(el);
+    return v_flex().size_full().bg(t.popover ?? t.chrome).text_color(t.foreground)
+      .child(h_flex().h(44).px(16).items_center().border_b(1).border_color(t.border).flex_none()
+        .child(div().text_size(14).font_semibold().child("New team")).child(div().flex_1())
+        .child(div().id("nt-x").size(24).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover))
+          .on_click(() => closeOverlay(this.overlay)).child("×")))
+      .child(v_flex().id("nt-body").flex_1().min_h(0).px(16).py(12).gap(14).overflow_y_scrollbar()
+        .child(field("Pattern", v_flex().gap(8).child(h_flex().gap(8).child(card(PATTERNS[0])).child(card(PATTERNS[1]))).child(h_flex().gap(8).child(card(PATTERNS[2])).child(card(PATTERNS[3])))))
+        .child(field("Task", box(Textarea.new(this.task)).min_h(96)))
+        .child(h_flex().gap(10)
+          .child(v_flex().flex_1().min_w(0).child(field("Repository", h_flex().gap(6).child(box(Input.new(this.repo)).flex_1().min_w(0))
+            .child(div().id("nt-pick").h(30).px(10).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11.5).cursor_pointer().hover((x) => x.bg(t.hover))
+              .on_click((_e, cx) => cx.spawn(async (cx) => { const f = await pickFolder({ prompt: "Use this repository" }); if (f) { this.repo.set_value(f); cx.notify(); } })).child("Choose…")))))
+          .child(v_flex().w(200).flex_none().child(field("Base branch", box(Input.new(this.base))))))
+        .child(field("Roles", v_flex().gap(2).children(P.roles.map((r) => this.roleRow(t, r)))))
+        .child(div().text_size(10.5).text_color(t.dim).child("Starts a lead Claude Code in a new tab with this pattern's playbook. It creates worktrees (team/… branches), starts the members through Herdr, and never pushes without asking. The Team map opens so you can watch.")))
+      .child(h_flex().h(54).px(16).gap(10).items_center().border_t(1).border_color(t.border).flex_none()
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.blocked).child(this.error ?? ""))
+        .child(div().id("nt-cancel").h(30).px(12).flex().items_center().rounded(7).text_size(12).cursor_pointer().hover((x) => x.bg(t.hover)).on_click(() => closeOverlay(this.overlay)).child("Cancel"))
+        .child(div().id("nt-start").h(30).px(14).flex().items_center().rounded(7).text_size(12).bg(this.busy ? t.raised : t.accent).text_color(this.busy ? t.dim : (t.accent_foreground ?? "#fff"))
+          .when(!this.busy, (e) => e.cursor_pointer().on_click((_e, cx) => cx.spawn(async (cx) => this.start(cx)))).child(this.busy ? "Starting…" : "Start team")));
+  }
+}

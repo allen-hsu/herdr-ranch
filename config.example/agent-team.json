@@ -1,0 +1,7 @@
+{
+  "roles": {
+    "implementer": ["claude", "codex", "grok", "cursor"],
+    "reviewer": ["codex", "claude", "grok"],
+    "researcher": ["gemini", "grok", "claude"]
+  }
+}

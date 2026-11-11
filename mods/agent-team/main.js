@@ -9,7 +9,8 @@
 // diagram — one column per agent with a status card, each message an arrow between columns.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, appHome, focused, agents, theme, run, props, closeOverlay } from "herdr";
+import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
+import { NewTeam } from "./newteam.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -24,6 +25,7 @@ export default class AgentTeam extends View {
   init(_props, cx) {
     this.addr = null; this.data = null; this.open = new Set(); this.showDone = false;
     const p = props() ?? {};
+    if (p.view === "new") { this.form = new NewTeam(p, cx); return; }
     this.map = Boolean(p.overlay);
     this.overlay = p.overlay;
     this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
@@ -151,13 +153,16 @@ export default class AgentTeam extends View {
   columns(d) {
     const cols = [{ key: "lead", ids: [d.lead?.id, "lead"], name: d.lead?.name ?? this.addr, vendor: AGENT[d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent] ?? d.lead?.agent ?? "",
       status: d.lead?.status?.state ?? "idle", state: "live", doing: d.lead?.status?.msg ?? "", lead: true, addr: d.lead?.id }];
-    const herdr = [...(d.herdr ?? [])].sort((a, b) => (a.state === "live" ? 0 : 1) - (b.state === "live" ? 0 : 1));
+    // A member restarted under the same name (e.g. a checker) is one column: keep the newest.
+    const byName = new Map();
+    for (const m of d.herdr ?? []) { const o = byName.get(m.name); if (!o || (m.started ?? 0) > (o.started ?? 0)) byName.set(m.name, m); }
+    const herdr = [...byName.values()].sort((a, b) => (a.started ?? 0) - (b.started ?? 0));
     const subs = [...(d.subs ?? [])].sort((a, b) => (a.state === "finished" ? 1 : 0) - (b.state === "finished" ? 1 : 0) || (b.last ?? 0) - (a.last ?? 0));
     const recent = new Set((d.events ?? []).slice(0, 40).map((e) => e.who));
     const pool = [...herdr, ...subs.filter((s) => s.state !== "finished" || recent.has(s.id)),
       ...(d.sessions ?? []).map((s) => ({ id: s.id, name: s.name, agent: "session", state: "live", status: "idle", kind: "session", addr: s.addr }))];
-    for (const m of pool.slice(0, 7)) cols.push({ key: m.id, ids: [m.id, m.name], name: m.name, vendor: m.kind === "session" ? "Claude session" : m.kind === "sub" ? `subagent · ${m.type ?? ""}` : `${AGENT[m.agent] ?? m.agent ?? ""}${m.template ? ` · ${m.template}` : ""}`,
-      status: m.status, state: m.state, doing: this.doing(m), addr: m.kind === "herdr" && m.state === "live" ? m.id : m.kind === "session" ? m.addr : null,
+    for (const m of pool.slice(0, 7)) cols.push({ key: m.id, ids: [m.id, m.name], name: m.name, vendor: m.kind === "session" ? "Claude session" : m.kind === "sub" ? `subagent · ${m.type ?? ""}` : `${AGENT[m.agent] ?? m.agent ?? ""}${m.role ? ` · ${m.role}` : ""}`,
+      status: m.status, state: m.state, doing: m.state === "finished" ? (m.role ? `${m.role} · finished` : "finished") : this.doing(m), addr: m.kind === "herdr" && m.state === "live" ? m.id : m.kind === "session" ? m.addr : null,
       out: m.out, ctx: m.ctx, m });
     if (pool.length > 7) cols.push({ key: "others", ids: [], name: `${pool.length - 7} more`, vendor: "", status: "idle", state: "finished", doing: "", others: true });
     return cols;
@@ -185,6 +190,9 @@ export default class AgentTeam extends View {
     const head = h_flex().h(40).px(14).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
       .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Team map"))
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d?.lead?.name ? `· ${d.lead.name}` : ""))
+      .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click(() => openOverlay({ mod: "agent-team", kind: "dialog", width: 620, height: 640, props: { view: "new" } })).child("New team…"))
       .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.raised))
         .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.pinned = this.pinned ? null : this.addr; this.load(cx); cx.notify(); }).child(this.pinned ? "Follow focused agent" : "Following focused agent"))
@@ -201,7 +209,7 @@ export default class AgentTeam extends View {
     const colW = Math.max(110, (this.w - DRAWER - GUT - PAD * 2) / cols.length);
     const cx = (i) => GUT + PAD + colW * i + colW / 2;
     const idx = (who) => { const i = cols.findIndex((c) => c.ids.includes(who)); return i >= 0 ? i : cols.findIndex((c) => c.others); };
-    const evs = [...(d.events ?? [])].slice(0, 36).reverse();
+    const evs = [...(d.events ?? [])].filter((e) => idx(e.who) >= 0).slice(0, 36).reverse();
     const H = Math.max(evs.length * ROW + 24, 120);
     const body = div().relative().w(GUT + PAD * 2 + colW * cols.length).h(H);
     cols.forEach((c, i) => body.child(div().absolute().left(cx(i)).top(0).w(1).h(H).bg(t.border)));
@@ -288,6 +296,7 @@ export default class AgentTeam extends View {
 
   render() {
     const t = theme();
+    if (this.form) return this.form.render(t);
     if (this.map) return this.mapView(t);
     return v_flex().id("agent-team").size_full().bg(t.chrome)
       .child(v_flex().id("at-scroll").flex_1().min_h(0).overflow_y_scrollbar().children([...this.body(t), div().h(16)]));
