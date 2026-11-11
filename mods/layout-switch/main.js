@@ -40,12 +40,13 @@ export default class LayoutSwitch extends View {
     // Optional props.board: a mod opened as an overlay (e.g. "space-board"), shown as a "Board" button.
     const board = props()?.board;
     const boardKey = board && keys().find((b) => b.section === "global" && b.action === `mod.open:${board}`)?.keys;
-    return h_flex().id("layout-switch").size_full().px(10).gap(2).items_center().justify_end().bg(t.chrome).border_b(1).border_color(t.border)
-      .when(Boolean(board), (el) => el.child(div().id("ls-board").px(8).py(2).gap(5).flex().items_center().rounded(6).text_size(TS.body).cursor_pointer()
+    return h_flex().id("layout-switch").size_full().pl(board ? 3 : 10).pr(10).gap(3).items_center().justify_end().bg(t.chrome).border_b(1).border_color(t.border)
+      // Same button as the tab bar's Files / Changes (h 26, px 8, gap 5, 14px icon) so the row reads as one.
+      .when(Boolean(board), (el) => el.child(h_flex().id("ls-board").h(26).px(8).gap(5).flex_none().items_center().rounded(6).text_size(TS.body).cursor_pointer()
         .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
         .tooltip(`Board: every space by status${boardKey ? ` (${pretty(boardKey)})` : ""}`)
         .on_click(() => run("mod.open", { name: board }))
-        .child(svg("mods/workspace-chrome/layers.svg").size(13)).child("Board")))
+        .child(svg("mods/workspace-chrome/layers.svg").size(14)).child("Board")))
       .children(this.items().map((i) => {
         const on = i.name === current;
         return div().id(`ls-${i.name}`).px(8).py(2).rounded(6).text_size(TS.body).cursor_pointer()
@@ -58,7 +59,7 @@ export default class LayoutSwitch extends View {
       // Optional props.panel: id of a layout node this button shows/hides (e.g. the right panel).
       .when(Boolean(panel), (el) => {
         const shown = !find(layout(), panel)?.hidden;
-        return el.child(div().w(1).h(14).mx(4).bg(t.border)).child(div().id("ls-panel").px(6).py(2).rounded(6).cursor_pointer()
+        return el.child(div().w(1).h(14).mx(4).bg(t.border)).child(div().id("ls-panel").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer()
           .text_color(shown ? t.foreground : t.dim).when(shown, (e) => e.bg(t.selected))
           .hover((s) => s.bg(t.hover).text_color(t.foreground))
           .tooltip(`${shown ? "Hide" : "Show"} the right panel${panelKey ? ` (${pretty(panelKey)})` : ""}`)
