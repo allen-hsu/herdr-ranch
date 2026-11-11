@@ -597,7 +597,7 @@ export default class Spaces extends View {
     const mine = all.filter((a) => a.space === r.w.id && !childOf.has(a.address));
     if (!mine.length) return [];
     this.adata.track(all);
-    const pad = indent(r.folder, r.nested) + (r.tree ? 22 : 27);
+    const pad = indent(r.folder, r.nested) + 8; // one small step in from the space, not under its name
     const folded = this.agentsFold.has(r.w.id);
     const need = mine.filter((a) => a.status === "blocked" || a.status === "error").length;
     const working = mine.filter((a) => a.status === "working").length;
@@ -861,8 +861,7 @@ export default class Spaces extends View {
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().id(`ahead-${name}`).flex_none().text_color(t.ansi2)
         .tooltip(`${g.ahead} commit${g.ahead === 1 ? "" : "s"} here not pushed yet`).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().id(`behind-${name}`).flex_none().text_color(t.ansi1)
-        .tooltip(`${g.behind} new commit${g.behind === 1 ? "" : "s"} on the remote you haven't pulled`).child(`\u2193${g.behind}`)))
+      // Behind the remote isn't shown: nearly every repo is a little behind, and it needs no action here.
       // Uncommitted changes and the branch's open PR (colored by CI; click reveals it).
       .when(g.dirty > 0, (el) => el.child(h_flex().id(`dirty-${name}`).flex_none().gap(3).items_center().text_color(t.blocked)
         .tooltip(`${g.dirty} changed file${g.dirty === 1 ? "" : "s"} not committed`)
