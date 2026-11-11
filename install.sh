@@ -95,6 +95,14 @@ run mkdir -p "$HOME/.claude"
 run cp "$HERE/integrations/claude-statusline/herdr-status-snapshot.py" "$HOME/.claude/herdr-status-snapshot.py"
 say "claude status-line snapshot helper -> ~/.claude/herdr-status-snapshot.py"
 
+echo "Herdr Notify.app (macOS notifications with Herdr's icon; click goes to the agent)"
+NOTIFY_APP="$HOME/Applications/Herdr Notify.app"
+NOTIFY_SRC="$HERE/integrations/notifier"
+if [ "$(uname)" != Darwin ]; then say "skipped (not macOS)"
+elif ! command -v swiftc >/dev/null 2>&1; then say "skipped: needs swiftc (xcode-select --install); toasts fall back to osascript"
+elif [ -x "$NOTIFY_APP/Contents/MacOS/herdr-notify" ] && [ "$NOTIFY_APP/Contents/MacOS/herdr-notify" -nt "$NOTIFY_SRC/main.swift" ] && [ "$NOTIFY_APP/Contents/Info.plist" -nt "$NOTIFY_SRC/Info.plist" ]; then say "up to date"
+else run "$NOTIFY_SRC/build.sh" >/dev/null && say "built -> ~/Applications/Herdr Notify.app (allow its notifications the first time)"; fi
+
 echo "Keybindings (merge; your existing keys win)"
 python3 - "$HERE/config.example/keys.json" "$APP/keys.json" "$DRY" <<'PY'
 import json, os, sys

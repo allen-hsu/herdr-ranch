@@ -43,7 +43,7 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 | `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |
 | `agents-ctx` | Herdr's agent list (cloned) + a context-used badge per Claude agent. |
 | `changes-plus` | Herdr's shipped Changes panel (0.1.14) with GitHub-like colored diffs. A frozen clone: re-clone and re-apply `diffRow` when Herdr updates `changes`. |
-| `agent-toast` | Replaces Herdr's notification look (layout root `"toast"`). Agent toasts say which agent: Finished / Needs you, its session name, space · branch · tab, what you last asked, and its last reply or the question / tool it is waiting on. Other notifications look as before. |
+| `agent-toast` | Replaces Herdr's notification look (layout root `"toast"`). Agent toasts say which agent: Finished / Needs you, its session name, space · branch · tab, what you last asked, and its last reply or the question / tool it is waiting on. Other notifications look as before. When Herdr isn't the front app it posts a macOS notification instead through `Herdr Notify.app` (built from `integrations/notifier` by install.sh: Herdr's icon, click jumps to the agent; osascript fallback). |
 | `layout-switch`, `stack-tabs`, `title-strip` | Top-right layout switcher + panel toggle; tab strip for stack nodes (`sync_panels` registers its tabs in Herdr's per-space panel memory); plain title strip. |
 
 The right panel *is* Herdr's own `panel` / `panel-body`, so the tab bar's Files and Changes buttons open
@@ -82,7 +82,7 @@ lib/               code shared by several mods: prs.js (GitHub PR badges), folde
                    installer copies those files into the installed mod (Herdr mods can't import across mods)
 layouts/           overview.json, focus.json
 vendor.json        third-party mods installed unchanged at a pinned commit (none right now)
-integrations/      claude-statusline snapshot helper; review requesters (Slack) + Slack app manifest
+integrations/      notifier (Herdr Notify.app, Swift); claude-statusline snapshot helper; review requesters (Slack) + Slack app manifest
 config.example/    pr-panel.json, slack-review.json, keys.json (merged by install.sh)
 scripts/dev.sh     install one mod now while developing: scripts/dev.sh <name>
 tests/             node tests (npm test)

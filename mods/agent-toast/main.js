@@ -2,10 +2,11 @@
 // Herdr's own agent toasts ("<program> finished", "... needs you") carry action agent.focus {terminal};
 // for those it shows the agent's session name and Finished / Needs you · space · branch · tab.
 // Every other notify() looks like Herdr's shipped toast. Click: go there. When Herdr isn't the front app
-// (macOS) it posts a Notification Center notification instead (osascript; clicking it can't target the agent).
+// (macOS) it posts a Notification Center notification instead: through Herdr Notify.app (integrations/notifier,
+// Herdr's icon, click focuses the agent), else osascript.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, agents, spaces, window, exec } from "herdr";
+import { props, closeOverlay, run, theme, agents, spaces, window, exec, home } from "herdr";
 
 const DOT = { error: "blocked", warning: "working", success: "done", info: "accent" };
 
@@ -18,6 +19,12 @@ export default class AgentToast extends View {
     if (window()?.platform === "macos" && !window()?.active) {
       const { title, subtitle } = this.lines(p);
       cx.spawn(async () => {
+        // Herdr Notify.app (built by herdr-ranch's install.sh): Herdr's icon, click goes to the agent.
+        const helper = `${home()}/Applications/Herdr Notify.app/Contents/MacOS/herdr-notify`;
+        const args = ["--title", title, "--subtitle", subtitle, "--body", p.body || ""];
+        if (addr && /^[A-Za-z0-9_-]+$/.test(addr)) args.push("--terminal", addr);
+        const r = await exec(helper, args, { timeout: 15000 }).catch(() => null);
+        if (r?.code === 0) { closeOverlay(p.overlay); return; }
         await exec("osascript", ["-e", "on run a\ndisplay notification (item 3 of a) with title (item 1 of a) subtitle (item 2 of a)\nend run", title, subtitle, p.body || ""], { timeout: 5000 }).catch(() => null);
         closeOverlay(p.overlay);
       });
