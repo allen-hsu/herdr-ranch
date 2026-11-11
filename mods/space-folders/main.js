@@ -581,7 +581,7 @@ export default class Spaces extends View {
     // A folder dragged over this one: a line where it would go, as for spaces.
     const moving = this.moving, aimed = moving && moving.id !== f.id && this.overMove === f.id;
     // As tall as a space's row, with an 18px tile where a space has its avatar.
-    const head = h_flex().relative().id(`folder-${f.id}`).h(28).flex_none().px(collapsed ? 2 : 8).when(!collapsed, (el) => el.pl(indent(null, nested))).gap(9).items_center().rounded(8)
+    const head = h_flex().relative().id(`folder-${f.id}`).h(28).mt(n > 0 ? 6 : 0).flex_none().px(collapsed ? 2 : 8).when(!collapsed, (el) => el.pl(indent(null, nested))).gap(9).items_center().rounded(8)
       .text_color(t.foreground).cursor_pointer()
       .when(target, (el) => el.bg(t.selected).border_1().border_color(t.accent))
       .when(!target, (el) => el.hover((s) => s.bg(t.hover)))
@@ -608,7 +608,7 @@ export default class Spaces extends View {
     const tint = f.color ? (MARK[f.color] ?? f.color) : t.muted;
     const logo = this.logos?.[f.id];
     const mark = h_flex().size(18).flex_none().items_center().justify_center()
-      .child(logo ? image(logo).w(15).h(15).rounded(3)
+      .child(logo ? h_flex().size(16).rounded(4).bg("#f4f4f5").items_center().justify_center().child(image(logo).w(12).h(12))
         : svg(f.folded ? "mods/workspace-chrome/folder.svg" : "mods/space-folders/folder-open.svg").size(15).text_color(tint));
     if (collapsed) return head.justify_center().child(mark);
     const hover = this.hoveredFolder === f.id;
@@ -880,12 +880,18 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(TS.small).font_bold().text_color(color ? "#ffffff" : t.muted).child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
+          // Orca-style: a status mark where the avatar was (spinner working, red needs you, blue finished unseen,
+          // ring idle, faint dot no agent) — the same 18px column as folder icons and logos.
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().items_center().justify_center().child(
+            top === "working" ? svg("mods/workspace-chrome/spinner.svg").size(11).text_color(t.working).spin(900)
+            : dot ? div().size(7).rounded(4).bg(dot)
+            : mine.length ? div().size(7).rounded(4).border_1().border_color(t.dim)
+            : div().size(5).rounded(3).bg(t.border))))
+          .child(div().flex_shrink(0).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(w.name))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
           .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
           .when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))
-          .child(this.trail().child(dot ? div().size(7).rounded(4).bg(dot).when(top === "working", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })) : div())),
+          .child(this.trail()),
       );
   }
 
