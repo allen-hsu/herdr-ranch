@@ -671,11 +671,10 @@ export default class Spaces extends View {
       // Folded, it still says when something in it is running or needs you.
       .when(f.folded && status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(f.folded && Boolean(status) && status !== "working", (el) => el.child(div().flex_none().text_color(tone(t, status)).child(glyph(status))))
-      .when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
-        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }))))
-      .child(this.trail().gap(4).when(hover, (el) => el
-        .child(div().text_size(TS.meta).text_color(t.dim).child(String(inside.length)))
-        .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim))));
+      .when(hover, (el) => el.child(div().flex_none().text_size(TS.meta).text_color(t.dim).tooltip(`${inside.length} space${inside.length === 1 ? "" : "s"}`).child(String(inside.length))))
+      // ⋯ in the right-hand column, the same place as on space rows; clicking the row folds it (Orca-style).
+      .child(this.trail().when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
+        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } })))));
   }
 
   // Each folder's logo, Orca-style: a favicon / app icon found in the folder's path or the repos of its spaces,
@@ -948,9 +947,10 @@ export default class Spaces extends View {
           .when(Boolean(g) && !g.linked && !tree, (el) => el.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border)
             .text_size(TS.tiny).text_color(t.dim).child("primary")))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
-          .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
-          .when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))
-          .child(this.trail()),
+          .child(g ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
+
+          // The right-hand column is free (status sits on the left), so ⋯ lives there and covers nothing.
+          .child(this.trail().when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))),
       );
   }
 
