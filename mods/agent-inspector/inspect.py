@@ -18,7 +18,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 9
+VERSION = 10
 SECRET = re.compile(r"(xox[abpr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w+|sk-[\w-]{16,}|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[\w.~+/=-]{12,}|(?i:(?:token|secret|password|api[_-]?key)=)\S+)")
 
 
@@ -72,14 +72,102 @@ def short_cmd(c):
     return (m.group(1) if m else c)[:80]
 
 
+def mentions(text, names):
+    """Skills a prompt asks for by name: "/name" anywhere, a distinctive name (has - or :), or a plain name
+    next to the word "skill". Plain words like "simplify" alone don't count."""
+    if len(text) > 1500 or text.startswith("This session is being continued"):
+        return []  # pasted documents and compaction summaries name skills without asking for them
+    low = text.lower()
+    found = []
+    for n in names:
+        nl = n.lower()
+        if len(nl) < 3 or nl not in low:
+            continue
+        if re.search(r"(?<![\w/-])/" + re.escape(nl) + r"(?![\w-])", low):
+            found.append(n)
+        elif re.search(r"(?<![\w-])" + re.escape(nl) + r"(?![\w-])", low) and ("-" in nl or ":" in nl or ("skill" in low and len(nl) >= 5)):
+            found.append(n)
+    return sorted(found)[:5]
+
+
+def mcp_key(display):
+    """'claude.ai Vercel' -> 'claude_ai_Vercel', the form used in mcp__<server>__<tool> names."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", display)
+
+
+# Claude Code's own slash commands: not skills.
+BUILTIN_COMMANDS = set("""add-dir agents bug clear compact config context cost doctor exit export feedback fast help hooks ide init
+install-github-app login logout mcp memory model output-style permissions plan plugin plugins pr-comments privacy-settings release-notes
+resume review rewind security-review status statusline terminal-setup todos upgrade usage vim artifacts effort theme keybindings""".split())
+
+AUTH_TOOLS = {"authenticate", "complete_authentication"}
+
+
+def pretty_server(key):
+    """claude_ai_Google_Drive -> claude.ai Google Drive; plugin_vercel_vercel -> vercel (plugin)."""
+    if key.startswith("claude_ai_"):
+        return "claude.ai " + key[10:].replace("_", " ")
+    if key.startswith("plugin_"):
+        return key.split("_")[-1] + " (plugin)"
+    return key
+
+
+def mcp_summary(g):
+    servers = []
+    failed = {mcp_key(x) for x in g.mcp_failed}
+    pending = {mcp_key(x) for x in g.mcp_pending}
+    for x in g.mcp.values():
+        tools = x["tools"] | x["surfaced"] | x["loaded"] | set(x["calls"])
+        status = "failed" if x["key"] in failed else "pending" if x["key"] in pending else \
+            "needs auth" if tools and tools <= AUTH_TOOLS else "connected"
+        servers.append({
+            "name": x["name"], "key": x["key"], "status": status, "tools": len(tools),
+            "upfront": len(x["surfaced"]), "loaded": len(x["loaded"] | x["surfaced"]), "called": len(x["calls"]),
+            "calls": sum(x["calls"].values()), "errors": x["errors"],
+            "top": [{"tool": t, "n": n} for t, n in x["calls"].most_common(4)],
+            "instr_tok": x["instr_tok"], "def_tok": x["def_tok"],
+            # Every deferred tool's name sits in the prompt: roughly its name in tokens.
+            "list_tok": sum(len(f"mcp__{x['key']}__{t}") // 4 + 1 for t in tools),
+        })
+    order = {"failed": 0, "needs auth": 1, "pending": 2, "connected": 3}
+    servers.sort(key=lambda s: (-(s["calls"] > 0), order[s["status"]], -s["tools"]))
+    tot = lambda k: sum(s[k] for s in servers)
+    return {"servers": servers, "failed": sorted(g.mcp_failed), "pending": sorted(g.mcp_pending),
+            "deferred_tools": max(0, g.deferred),
+            "totals": {"servers": len(servers), "connected": sum(s["status"] == "connected" for s in servers),
+                       "tools": tot("tools"), "loaded": tot("loaded"), "called": tot("called"), "calls": tot("calls"),
+                       "context_tok": tot("instr_tok") + tot("def_tok") + tot("list_tok")}}
+
+
+def skill_summary(g, turns):
+    events = [{k: v for k, v in e.items() if k != "step"} for e in g.skill_events]
+    used = {}
+    for e in events:
+        u = used.setdefault(e["name"], {"name": e["name"], "count": 0, "restored": 0, "tok": 0, "how": [], "last": None, "failed": 0})
+        if e["how"] == "restored":
+            u["restored"] += 1
+        else:
+            u["count"] += 1
+            if e["how"] not in u["how"]:
+                u["how"].append(e["how"])
+        u["tok"] = max(u["tok"], e.get("tok") or 0)
+        u["last"] = e.get("at") or u["last"]
+        u["failed"] += 0 if e.get("ok", True) else 1
+    missed = collections.Counter(n for x in turns for n in x["mentions"] if n not in {e["name"] for e in x["skills"]})
+    return {"available": g.skills_avail, "available_tok": g.skills_avail_tok,
+            "used": sorted(used.values(), key=lambda u: -(u["last"] or 0)),
+            "events": [e for e in events if e["how"] != "restored"][-40:][::-1], "missed": [{"name": n, "turns": c} for n, c in missed.most_common(8)]}
+
+
 class Agg:
     def __init__(self):
         self.memory = {}          # path -> {path, type, tokens, how}
         self.skills_avail = 0
         self.skills_avail_tok = 0
-        self.skills_used = {}     # name -> {name, tokens, count}
+        self.skill_names = set()  # every skill the listing offered
+        self.skill_events = []    # one per load: {at, name, how: model|you|subagent|restored, tok, ok, error, args, allowed, turn}
         self.hooks = {}           # key -> stats
-        self.mcp = {}             # server -> {name, instr_tok, calls}
+        self.mcp = {}             # server key (as in mcp__<key>__tool) -> see srv()
         self.mcp_failed, self.mcp_pending = set(), set()
         self.deferred = 0
         self.agent_types = 0
@@ -91,6 +179,13 @@ class Agg:
         self.tools = {}           # name -> {name, calls, result_tok, errors, ms}
         self.compactions = []
         self.cache_drops = 0
+
+    def srv(self, key, display=None):
+        x = self.mcp.setdefault(key, {"key": key, "name": display or pretty_server(key), "tools": set(), "surfaced": set(), "loaded": set(),
+                                      "calls": collections.Counter(), "errors": 0, "instr_tok": 0, "def_tok": 0})
+        if display:
+            x["name"] = display
+        return x
 
     def issue(self, level, kind, key, text, at):
         i = self.issues.setdefault(key, {"level": level, "kind": kind, "text": text, "count": 0, "last": None})
@@ -128,6 +223,9 @@ def parse(path):
     out_tok = cache_read = cache_write = 0
     last_asst_ts, cache_ttl = None, 300
     pending = {}  # tool_use id -> step
+    skill_by_id = {}  # Skill tool_use id -> skill event
+    slash = None  # the /command that started the current turn, until its skill text arrives
+    restored = set()  # skills re-injected since the last compaction
     big = []
     for line in open(path, encoding="utf-8", errors="replace"):
         try:
@@ -154,17 +252,38 @@ def parse(path):
             elif at_ == "skill_listing":
                 g.skills_avail = int(a.get("skillCount") or len(a.get("names") or []))
                 g.skills_avail_tok = tok(a.get("content") or "")
+                g.skill_names |= {n for n in (a.get("names") or []) if isinstance(n, str)}
             elif at_ == "invoked_skills":
-                for s in a.get("skills") or []:
-                    u = g.skills_used.setdefault(s.get("name"), {"name": s.get("name"), "tokens": tok(s.get("content") or ""), "count": 0})
-                    u["count"] += 1
+                # Skills already loaded, put back into context after a compaction: not a new call (once per compaction).
+                for sk in a.get("skills") or []:
+                    if sk.get("name") in restored:
+                        continue
+                    restored.add(sk.get("name"))
+                    g.skill_events.append({"at": at, "name": sk.get("name"), "how": "restored", "tok": tok(sk.get("content") or ""), "ok": True,
+                                           "turn": len(turns) - 1, "prompt": cur["prompt"] if cur else ""})
             elif at_ == "mcp_instructions_delta":
                 for name, block in zip(a.get("addedNames") or [], a.get("addedBlocks") or []):
-                    g.mcp.setdefault(name, {"name": name, "instr_tok": 0, "calls": 0})["instr_tok"] = tok(block)
+                    g.srv(mcp_key(name), name)["instr_tok"] = tok(block)
             elif at_ == "deferred_tools_delta":
                 g.mcp_failed |= set(a.get("failedMcpServers") or [])
                 g.mcp_pending |= set(a.get("pendingMcpServers") or [])
                 g.deferred += len(a.get("addedNames") or []) - len(a.get("removedNames") or [])
+                for n in a.get("addedNames") or []:
+                    if isinstance(n, str) and n.startswith("mcp__"):
+                        g.srv(n.split("__")[1])["tools"].add(n.split("__", 2)[-1])
+                for n in a.get("removedNames") or []:
+                    if isinstance(n, str) and n.startswith("mcp__"):
+                        g.srv(n.split("__")[1])["tools"].discard(n.split("__", 2)[-1])
+                for d in a.get("surfacedDefinitions") or []:
+                    n = (d or {}).get("name") or ""
+                    if n.startswith("mcp__"):
+                        x = g.srv(n.split("__")[1]); x["surfaced"].add(n.split("__", 2)[-1]); x["def_tok"] += tok(d.get("definition") or {})
+            elif at_ == "deferred_tools_record":
+                # Schemas fetched on demand (ToolSearch): the tool is now usable.
+                for e in a.get("entries") or []:
+                    n = (e or {}).get("name") or ""
+                    if n.startswith("mcp__"):
+                        x = g.srv(n.split("__")[1]); x["loaded"].add(n.split("__", 2)[-1]); x["def_tok"] += tok(e)
             elif at_ == "agent_listing_delta":
                 g.agent_types = max(g.agent_types, len(a.get("addedTypes") or []))
             elif at_ in ("output_style",):
@@ -186,6 +305,7 @@ def parse(path):
             if st == "turn_duration" and cur is not None:
                 cur["ms"] = r.get("durationMs")
             elif st == "compact_boundary":
+                restored = set()
                 meta = r.get("compactMetadata") or {}
                 g.compactions.append({"at": at, "pre": meta.get("preTokens"), "trigger": meta.get("trigger")})
                 g.issue("info", "compact", ("compact",), f"Context compacted {len(g.compactions)}× (last from {meta.get('preTokens') or '?'} tokens, {meta.get('trigger')})", at)
@@ -196,14 +316,35 @@ def parse(path):
             c = m.get("content")
             if isinstance(c, list) and not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c):
                 c = " ".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
-            if isinstance(c, str) and not r.get("isMeta"):
+            if isinstance(c, str) and r.get("isMeta"):
+                # The skill's own instructions, injected right after it is invoked (by the Skill tool or a /command).
+                ev = skill_by_id.get(r.get("sourceToolUseID")) or (slash if slash and not r.get("sourceToolUseID") else None)
+                if ev is slash:
+                    slash = None  # only the first injected text right after the /command is its skill
+                if ev is not None and not ev.get("tok"):
+                    ev["tok"] = tok(c)
+                    if ev.get("step") is not None:
+                        ev["step"]["tok"] = ev["tok"]
+                continue
+            if isinstance(c, str):
                 text = human_text(c)
                 if not text or text.startswith("<local-command"):
                     continue
-                if text.startswith("<command-name>"):
-                    text = text.split("<command-name>")[1].split("</command-name>")[0]
-                cur = {"at": at, "prompt": red(text, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": []}
+                cmd = None
+                if text.startswith("<command-name>") or text.startswith("<command-message>"):
+                    cmd = text.split("<command-name>")[1].split("</command-name>")[0].lstrip("/") if "<command-name>" in text else None
+                    args = text.split("<command-args>")[1].split("</command-args>")[0] if "<command-args>" in text else ""
+                    text = "/" + cmd + (" " + args if args else "") if cmd else text
+                cur = {"at": at, "prompt": red(text, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": [],
+                       "skills": [], "in_skill": None, "mentions": mentions(text, g.skill_names) if not cmd else []}
                 turns.append(cur)
+                slash = None
+                if cmd and (cmd in g.skill_names or cmd not in BUILTIN_COMMANDS):  # skills and custom/plugin commands
+                    slash = {"at": at, "name": cmd, "how": "you", "tok": 0, "ok": True, "args": red(args, 80) if args else "",
+                             "turn": len(turns) - 1, "prompt": cur["prompt"]}
+                    slash["step"] = {"k": "skill", "name": cmd, "how": "you", "tok": None, "label": slash["args"]}
+                    cur["steps"].append(slash["step"]); cur["skills"].append(slash); cur["in_skill"] = cmd
+                    g.skill_events.append(slash)
             elif isinstance(c, list):
                 pd = r.get("permissionDecision") if isinstance(r.get("permissionDecision"), dict) else None
                 for b in c:
@@ -213,10 +354,20 @@ def parse(path):
                     text = cc if isinstance(cc, str) else " ".join(x.get("text", "") for x in (cc or []) if isinstance(x, dict))
                     n = len(text) // 4
                     step = pending.pop(b.get("tool_use_id"), None)
-                    name = step["name"] if step else "?"
+                    name = (step.get("tool") or step["name"]) if step else "?"
+                    ev = skill_by_id.get(b.get("tool_use_id"))
+                    if ev is not None:
+                        tur = r.get("toolUseResult") if isinstance(r.get("toolUseResult"), dict) else {}
+                        ev["allowed"] = [red(x, 40) for x in (tur.get("allowedTools") or [])][:6]
+                        if tur.get("status") or tur.get("agentId"):
+                            ev["forked"] = True
+                        if b.get("is_error") or tur.get("success") is False:
+                            ev["ok"] = False
+                            ev["error"] = red(text, 120)
+                            g.issue("warn", "skill", ("skill", ev["name"]), f"Skill {ev['name']} failed to load: {red(text, 100)}", at)
                     tool = g.tools.setdefault(name, {"name": name, "calls": 0, "result_tok": 0, "errors": 0, "ms": 0})
                     tool["result_tok"] += n
-                    if step:
+                    if step and ev is None:
                         step["tok"] = n
                         if step.get("at") and at:
                             step["ms"] = int((at - step["at"]) * 1000)
@@ -233,6 +384,8 @@ def parse(path):
                         g.issue("warn", "permission", ("perm", name, "auto"), f"{name} blocked by the auto-mode safety classifier: {red(text.split('Reason:')[-1], 90)}", at)
                     elif b.get("is_error"):
                         tool["errors"] += 1
+                        if name.startswith("mcp__"):
+                            g.srv(name.split("__")[1])["errors"] += 1
                         if step:
                             step["error"] = True
                         g.issue("warn", "tool", ("tool", name), f"{name} returned an error: {red(text, 140)}", at)
@@ -245,6 +398,7 @@ def parse(path):
                     cur["end"] = at
             continue
         if t == "assistant":
+            slash = None
             u = m.get("usage") or {}
             g.model = m.get("model") or g.model
             if u:
@@ -268,12 +422,22 @@ def parse(path):
                 name = b.get("name", "?")
                 g.tools.setdefault(name, {"name": name, "calls": 0, "result_tok": 0, "errors": 0, "ms": 0})["calls"] += 1
                 if name.startswith("mcp__"):
-                    srv = name.split("__")[1]
-                    g.mcp.setdefault(srv, {"name": srv, "instr_tok": 0, "calls": 0})["calls"] += 1
+                    g.srv(name.split("__")[1])["calls"][name.split("__", 2)[-1]] += 1
                 if name == "Skill":
-                    sk = (b.get("input") or {}).get("skill")
-                    g.skills_used.setdefault(sk, {"name": sk, "tokens": 0, "count": 0})
+                    inp = b.get("input") or {}
+                    sk = str(inp.get("skill") or "?")
+                    step = {"k": "skill", "tool": "Skill", "name": sk, "how": "model", "label": red(inp.get("args"), 90) if inp.get("args") else "", "at": at}
+                    ev = {"at": at, "name": sk, "how": "model", "tok": 0, "ok": True, "args": step["label"], "step": step,
+                          "turn": len(turns) - 1, "prompt": cur["prompt"] if cur else ""}
+                    skill_by_id[b.get("id")] = ev
+                    g.skill_events.append(ev)
+                    pending[b.get("id")] = step
+                    if cur is not None:
+                        cur["steps"].append(step); cur["skills"].append(ev); cur["in_skill"] = sk
+                    continue
                 step = {"k": "agent" if name in ("Agent", "Task") else "tool", "name": name, "label": label(name, b.get("input")), "at": at}
+                if cur is not None and cur.get("in_skill"):
+                    step["in"] = cur["in_skill"]
                 pending[b.get("id")] = step
                 if cur is not None:
                     cur["steps"].append(step)
@@ -301,11 +465,9 @@ def parse(path):
         "config": {
             "system_prompt_tok": (g.sys_chars or 0) // 4, "output_style": g.output_style, "permission_mode": g.perm_mode,
             "memory": memory, "memory_tok": sum(x["tokens"] for x in memory),
-            "skills": {"available": g.skills_avail, "available_tok": g.skills_avail_tok,
-                       "used": sorted(g.skills_used.values(), key=lambda s: -s["count"])},
+            "skills": skill_summary(g, turns),
             "hooks": hooks,
-            "mcp": {"servers": sorted(g.mcp.values(), key=lambda s: -s["instr_tok"]), "failed": sorted(g.mcp_failed),
-                    "pending": sorted(g.mcp_pending), "deferred_tools": max(0, g.deferred)},
+            "mcp": mcp_summary(g),
             "agent_types": g.agent_types,
         },
         "issues": issues,
@@ -314,7 +476,9 @@ def parse(path):
         "big": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb in big[:8]],
         "turns": [{"at": x["at"], "ms": x["ms"] or (int((x.get("end", x["at"]) - x["at"]) * 1000) if x["at"] else None),
                    "prompt": x["prompt"], "ctx_delta": (x["ctx1"] or 0) - (x["ctx0"] or x["ctx1"] or 0), "out": x["out"],
-                   "hooks": x["hooks"], "steps": x["steps"][-60:]} for x in turns[-15:]][::-1],
+                   "hooks": x["hooks"], "steps": x["steps"][-60:],
+                   "skills": [{"name": e["name"], "how": e["how"], "tok": e.get("tok"), "ok": e.get("ok", True)} for e in x["skills"]],
+                   "missed": [n for n in x["mentions"] if n not in {e["name"] for e in x["skills"]}]} for x in turns[-15:]][::-1],
     }
 
 
@@ -326,7 +490,7 @@ def subagents(path, sid):
         except Exception:
             continue
         jl = meta[: -len(".meta.json")] + ".jsonl"
-        out_tok, cx, tool_n = 0, 0, 0
+        out_tok, cx, tool_n, skills = 0, 0, 0, []
         try:
             for line in open(jl, encoding="utf-8", errors="replace"):
                 try:
@@ -337,11 +501,15 @@ def subagents(path, sid):
                     u = (r.get("message") or {}).get("usage") or {}
                     out_tok += u.get("output_tokens") or 0
                     cx = ctx_of(u) or cx
-                    tool_n += sum(1 for b in (r["message"].get("content") or []) if isinstance(b, dict) and b.get("type") == "tool_use")
+                    for b in r["message"].get("content") or []:
+                        if isinstance(b, dict) and b.get("type") == "tool_use":
+                            tool_n += 1
+                            if b.get("name") == "Skill":
+                                skills.append(str((b.get("input") or {}).get("skill") or "?"))
         except OSError:
             pass
         res.append({"desc": red(mj.get("description"), 60), "type": mj.get("agentType"), "finished": mj.get("finished"),
-                    "out": out_tok, "ctx": cx, "tools": tool_n})
+                    "out": out_tok, "ctx": cx, "tools": tool_n, "skills": sorted(set(skills))})
     return res
 
 

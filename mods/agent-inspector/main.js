@@ -1,7 +1,9 @@
-// Agent inspector for the focused Claude Code agent. Four tabs, one per question:
+// Agent inspector for the focused Claude Code / Codex agent. One tab per question:
 //   Health  - what went wrong (hook errors/timeouts, tool errors, permission blocks, MCP failures, compactions)
-//   Config  - what shapes it (memory/rules files, skills listed vs loaded, hooks, MCP servers, mode, style)
-//   Trace   - what it did (per turn: thinking, tool calls with duration/size/permission, hooks, subagents)
+//   Trace   - what it did (per turn: skills loaded, thinking, tool calls with duration/size/permission, hooks, subagents)
+//   Skills  - which skills were really loaded, by whom (model / you / subagent), when, how big; named but never loaded
+//   MCP     - every MCP server: status, tools, which were loaded / called, context they cost
+//   Config  - what shapes it (memory/rules files, hooks, mode, style)
 //   Cost    - where tokens went (context, cost, cache, per tool, per turn, subagents)
 // Data: ./inspect.py (local transcripts only).
 import { View, div } from "gpui-kit";
@@ -12,8 +14,9 @@ const k = (n) => (n == null ? "–" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n 
 const ms = (v) => (v == null ? "" : v < 1000 ? `${v}ms` : v < 60000 ? `${(v / 1000).toFixed(1)}s` : `${Math.floor(v / 60000)}m${String(Math.round((v % 60000) / 1000)).padStart(2, "0")}s`);
 const dur = (s) => ms(s == null ? null : Math.round(s * 1000));
 const clock = (t) => { if (!t) return ""; const d = new Date(t * 1000); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
-const TABS = ["health", "config", "trace", "cost"];
-const TAB_LABEL = { health: "Health", config: "Config", trace: "Trace", cost: "Cost" };
+const TABS = ["health", "trace", "skills", "mcp", "config", "cost"];
+const TAB_LABEL = { health: "Health", trace: "Trace", skills: "Skills", mcp: "MCP", config: "Config", cost: "Cost" };
+const HOW = { model: "by the model", you: "by you (/command)", subagent: "in a subagent", restored: "restored after compaction" };
 
 export default class AgentInspector extends View {
   init(_props, cx) {
@@ -21,6 +24,8 @@ export default class AgentInspector extends View {
     this.data = null;
     this.tab = localStorage.getItem("tab") ?? "health";
     this.open = new Set(); // expanded turns in Trace
+    this.openSrv = new Set(); // expanded servers in MCP
+    this.onlySkills = false; // Trace: only turns that loaded or named a skill
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
   }
@@ -77,10 +82,18 @@ export default class AgentInspector extends View {
     else if (d.pct >= 50) out.push({ level: "warn", kind: "context", text: `Context ${Math.round(d.pct)}% — every turn re-reads ${k(d.ctx)} tokens.` });
     if (left != null && left <= 0 && d.ctx > 100000) out.push({ level: "warn", kind: "cache", text: `Prompt cache expired — next turn re-writes ~${k(d.ctx)} tokens at full price.` });
     const c = d.config ?? {};
-    const unused = (c.skills?.available ?? 0) - (c.skills?.used?.length ?? 0);
-    if (c.skills?.available > 50 && unused > 0) out.push({ level: "info", kind: "skills", text: `${c.skills.available} skills listed (~${k(c.skills.available_tok)} tokens every turn), ${c.skills.used.length} used in this session.` });
-    const idleMcp = (c.mcp?.servers ?? []).filter((s) => !s.calls);
-    if (idleMcp.length) out.push({ level: "info", kind: "mcp", text: `${idleMcp.length} MCP servers loaded but unused here (${idleMcp.map((s) => s.name).slice(0, 3).join(", ")}${idleMcp.length > 3 ? "…" : ""}).` });
+    const used = (c.skills?.used ?? []).filter((u) => u.count > 0).length;
+    if (c.skills?.available > 50) out.push({ level: "info", kind: "skills", text: `${c.skills.available} skills listed (~${k(c.skills.available_tok)} tokens every turn), ${used} loaded in this session.` });
+    for (const m of c.skills?.missed ?? []) out.push({ level: "info", kind: "skills", text: `You named the skill ${m.name} in ${m.turns} prompt${m.turns > 1 ? "s" : ""}, but it was never loaded.` });
+    const big = (c.skills?.used ?? []).filter((u) => u.tok > 20000);
+    for (const u of big) out.push({ level: "warn", kind: "skills", text: `Skill ${u.name} put ~${k(u.tok)} tokens into context when it loaded.` });
+    const mt = c.mcp?.totals;
+    if (mt?.servers) {
+      const idle = (c.mcp.servers ?? []).filter((s) => s.status === "connected" && !s.calls);
+      if (idle.length) out.push({ level: "info", kind: "mcp", text: `${idle.length} of ${mt.connected} connected MCP servers unused here (~${k(idle.reduce((n, s) => n + s.instr_tok + s.list_tok + s.def_tok, 0))} tokens of context).` });
+      const auth = (c.mcp.servers ?? []).filter((s) => s.status === "needs auth");
+      if (auth.length) out.push({ level: "info", kind: "mcp", text: `${auth.length} MCP servers need sign-in: ${auth.map((s) => s.name).slice(0, 4).join(", ")}${auth.length > 4 ? "…" : ""}.` });
+    }
     return out;
   }
 
@@ -113,11 +126,7 @@ export default class AgentInspector extends View {
     out.push(this.h(t, "Memory & rules", c.memory?.length ? `~${k(c.memory_tok)} tok` : 0));
     if (!c.memory?.length) out.push(this.note(t, "No CLAUDE.md / AGENTS.md / rules loaded."));
     for (const [i, m] of (c.memory ?? []).entries()) out.push(this.row(t, `c-m-${i}`, m.type ?? "", m.path, `~${k(m.tokens)} · ${m.how}`));
-    const sk = c.skills ?? {};
-    out.push(this.h(t, "Skills", `${sk.used?.length ?? 0} loaded / ${sk.available ?? 0} listed`));
-    out.push(this.note(t, `Listing all ${sk.available ?? 0} skill descriptions costs ~${k(sk.available_tok)} tokens of context on every turn.`));
-    if (!sk.used?.length) out.push(this.note(t, "No skill was loaded in this session."));
-    for (const [i, s] of (sk.used ?? []).entries()) out.push(this.row(t, `c-s-${i}`, `${s.count}×`, s.name, s.tokens ? `~${k(s.tokens)} tok` : null, t.accent));
+    out.push(this.note(t, "Skills and MCP servers have their own tabs."));
     const hooks = c.hooks ?? [];
     if (d.agent === "codex") { out.push(this.note(t, "Codex sessions don't record hooks or MCP servers in their log.")); return out; }
     out.push(this.h(t, "Hooks that ran", hooks.length));
@@ -129,17 +138,25 @@ export default class AgentInspector extends View {
         .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.cmd))
         .child(div().flex_none().text_color(bad ? t.blocked : t.dim).child(`${x.runs}× · avg ${ms(x.avg_ms)}${x.errors ? ` · ${x.errors} err` : ""}${x.timeouts ? ` · ${x.timeouts} timeout` : ""}${x.injected ? ` · injected ${x.injected}` : ""}`)));
     }
-    const mcp = c.mcp ?? {};
-    out.push(this.h(t, "MCP servers", `${(mcp.servers ?? []).length}${mcp.deferred_tools ? ` · ${mcp.deferred_tools} deferred tools` : ""}`));
-    for (const [i, s] of (mcp.servers ?? []).entries()) out.push(this.row(t, `c-p-${i}`, s.calls ? `${s.calls} calls` : "unused", s.name, s.instr_tok ? `~${k(s.instr_tok)} tok instructions` : null, s.calls ? t.done : t.dim));
-    for (const [i, s] of (mcp.failed ?? []).entries()) out.push(this.row(t, `c-pf-${i}`, "failed", s, null, t.blocked));
     if (c.agent_types) out.push(this.note(t, `${c.agent_types} subagent types available.`));
     return out;
   }
 
+  chip(t, id, text, color, tip) {
+    const el = div().id(id).px(5).rounded(4).flex_none().text_size(10).text_color(color).border_1().border_color(color).child(text);
+    return tip ? el.tooltip(tip) : el;
+  }
+
   trace(t, d) {
-    const out = [this.h(t, "Turns", `${d.prompt_count} total`)];
+    const withSkills = (d.turns ?? []).filter((tu) => tu.skills?.length || tu.missed?.length).length;
+    const pill = (id, label, on, action) => div().id(id).px(8).py(2).rounded(10).text_size(10.5).cursor_pointer()
+      .text_color(on ? t.foreground : t.muted).when(on, (e) => e.bg(t.raised)).hover((x) => x.text_color(t.foreground)).on_click(action).child(label);
+    const out = [this.h(t, "Turns", `${d.prompt_count} total · last ${(d.turns ?? []).length}`),
+      h_flex().px(12).pb(4).gap(4)
+        .child(pill("tr-all", "All turns", !this.onlySkills, (_e, cx) => { this.onlySkills = false; cx.notify(); }))
+        .child(pill("tr-sk", `With skills (${withSkills})`, this.onlySkills, (_e, cx) => { this.onlySkills = true; cx.notify(); }))];
     for (const [i, tu] of (d.turns ?? []).entries()) {
+      if (this.onlySkills && !(tu.skills?.length || tu.missed?.length)) continue;
       const open = this.open.has(i);
       const tools = tu.steps.filter((s) => s.k === "tool" || s.k === "agent");
       const errs = tu.steps.filter((s) => s.error).length;
@@ -154,18 +171,93 @@ export default class AgentInspector extends View {
           .child(div().child(`${k(tu.out)} out`))
           .child(div().child(`${tools.length} tools`))
           .when(tu.hooks > 0, (el) => el.child(div().child(`${tu.hooks} hooks`)))
-          .when(errs > 0, (el) => el.child(div().text_color(t.blocked).child(`${errs} errors`)))));
+          .when(errs > 0, (el) => el.child(div().text_color(t.blocked).child(`${errs} errors`))))
+        .when(Boolean(tu.skills?.length || tu.missed?.length), (el) => el.child(h_flex().pl(14).pt(2).gap(4).flex_wrap()
+          .children((tu.skills ?? []).map((s, j) => this.chip(t, `tsk-${i}-${j}`, `⚡ ${s.how === "you" ? "/" : ""}${s.name}${s.tok ? ` ~${k(s.tok)}` : ""}`,
+            s.ok === false ? t.blocked : t.accent, `Skill ${s.name} loaded ${HOW[s.how] ?? s.how}${s.tok ? `, ~${k(s.tok)} tokens of instructions` : ""}${s.ok === false ? " — failed" : ""}`)))
+          .children((tu.missed ?? []).map((n, j) => this.chip(t, `tms-${i}-${j}`, `? ${n}`, t.working, `This prompt names ${n}, but the agent didn't load it this turn.`))))));
       if (open) for (const [j, s] of tu.steps.entries()) {
-        const color = s.error ? t.blocked : s.k === "think" ? t.dim : s.k === "agent" ? t.accent : s.k === "hook" ? t.working : s.k === "compact" ? t.working : t.muted;
-        const icon = { think: "◌", tool: "▸", agent: "◆", hook: "⚑", compact: "⇣" }[s.k] ?? "·";
-        out.push(h_flex().id(`st-${i}-${j}`).pl(34).pr(14).py(1).gap(6).items_center().text_size(10.5)
-          .child(div().flex_none().text_color(color).child(`${icon} ${s.name}`))
-          .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(s.label ?? ""))
+        const skill = s.k === "skill";
+        const color = s.error ? t.blocked : skill ? t.accent : s.k === "think" ? t.dim : s.k === "agent" ? t.accent : s.k === "hook" ? t.working : s.k === "compact" ? t.working : t.muted;
+        const icon = { think: "◌", tool: "▸", agent: "◆", hook: "⚑", compact: "⇣", skill: "⚡" }[s.k] ?? "·";
+        out.push(h_flex().id(`st-${i}-${j}`).pl(s.in ? 28 : 34).pr(14).py(1).gap(6).items_center().text_size(10.5)
+          .when(Boolean(s.in), (el) => el.child(div().w(2).h(13).flex_none().rounded(1).bg(t.accent).opacity(0.45)).tooltip(`While following the ${s.in} skill`))
+          .child(div().flex_none().text_color(color).when(skill, (e) => e.font_medium()).child(skill ? `${icon} Skill ${s.name}` : `${icon} ${s.name}`))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(skill ? `${HOW[s.how] ?? ""}${s.label ? ` · ${s.label}` : ""}` : (s.label ?? "")))
           .when(Boolean(s.perm) && !String(s.perm).startsWith("accept:config"), (el) => el.child(div().flex_none().text_color(String(s.perm).startsWith("reject") ? t.blocked : t.dim).child(s.perm)))
-          .when(s.tok != null, (el) => el.child(div().flex_none().text_color(s.tok > 5000 ? t.working : t.dim).child(`~${k(s.tok)}`)))
+          .when(s.tok != null, (el) => el.child(div().flex_none().text_color(s.tok > 5000 ? t.working : t.dim).child(skill ? `~${k(s.tok)} loaded` : `~${k(s.tok)}`)))
           .child(div().flex_none().w(44).text_right().text_color(t.dim).child(ms(s.ms))));
       }
     }
+    return out;
+  }
+
+  skills(t, d) {
+    const sk = d.config?.skills ?? {};
+    const used = (sk.used ?? []).filter((u) => u.count > 0 || u.restored > 0);
+    const out = [];
+    out.push(v_flex().px(14).pt(12).gap(2)
+      .child(div().text_size(12).text_color(t.foreground).child(`${used.filter((u) => u.count > 0).length} skills loaded in this session`))
+      .child(div().text_size(10.5).text_color(t.dim).child(`${sk.available ?? 0} listed — their descriptions cost ~${k(sk.available_tok)} tokens on every turn; a skill's full instructions enter context only when it loads.`)));
+    out.push(this.h(t, "Loaded", used.length || "none"));
+    if (!used.length) out.push(this.note(t, "No skill was loaded. The agent only saw the list of names and descriptions."));
+    for (const [i, u] of used.entries()) out.push(h_flex().id(`sk-u-${i}`).px(14).py(4).gap(8).items_center().text_size(11)
+      .child(div().flex_none().text_color(u.failed ? t.blocked : t.accent).child("⚡"))
+      .child(v_flex().flex_1().min_w(0).gap(1)
+        .child(div().truncate().text_color(t.foreground).child(u.name))
+        .child(div().truncate().text_size(10).text_color(t.dim).child([u.count ? `${u.count}× ${u.how.map((h) => HOW[h] ?? h).join(", ")}` : "", u.restored ? `restored ${u.restored}× after compaction` : "", u.failed ? `${u.failed} failed` : "", u.last ? `last ${clock(u.last)}` : ""].filter(Boolean).join(" · "))))
+      .child(div().flex_none().text_color(u.tok > 20000 ? t.working : t.dim).tooltip("Size of the skill's instructions when loaded (characters ÷ 4)").child(u.tok ? `~${k(u.tok)}` : "–")));
+    out.push(this.h(t, "Timeline", (sk.events ?? []).length ? "newest first" : null));
+    if (!(sk.events ?? []).length) out.push(this.note(t, "Nothing yet."));
+    for (const [i, e] of (sk.events ?? []).entries()) out.push(h_flex().id(`sk-e-${i}`).px(14).py(3).gap(8).items_center().text_size(10.5)
+      .tooltip(`${e.name} — ${HOW[e.how] ?? e.how}${e.args ? `\nargs: ${e.args}` : ""}${e.allowed?.length ? `\nallowed tools: ${e.allowed.join(", ")}` : ""}${e.error ? `\nerror: ${e.error}` : ""}\nprompt: ${e.prompt ?? ""}`)
+      .child(div().flex_none().w(36).text_color(t.dim).child(clock(e.at)))
+      .child(div().flex_none().max_w(150).truncate().text_color(e.ok === false ? t.blocked : t.accent).child(`${e.how === "you" ? "/" : ""}${e.name}`))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(e.prompt ? `“${e.prompt}”` : ""))
+      .child(div().flex_none().text_color(t.dim).child(e.ok === false ? "failed" : e.tok ? `~${k(e.tok)}` : "")));
+    if ((sk.missed ?? []).length) {
+      out.push(this.h(t, "Named but never loaded", sk.missed.length));
+      out.push(this.note(t, "These skills appear in your prompts (as /name, or by name next to “skill”), but the agent didn't load them in that turn."));
+      for (const [i, m] of sk.missed.entries()) out.push(this.row(t, `sk-m-${i}`, "?", m.name, `${m.turns} prompt${m.turns > 1 ? "s" : ""}`, t.working));
+    }
+    const subs = (d.subagents ?? []).filter((s) => s.skills?.length);
+    if (subs.length) {
+      out.push(this.h(t, "In subagents", subs.length));
+      for (const [i, s] of subs.entries()) out.push(this.row(t, `sk-s-${i}`, "◆", s.desc || s.type || "agent", s.skills.join(", "), t.accent));
+    }
+    return out;
+  }
+
+  mcp(t, d) {
+    const m = d.config?.mcp ?? {};
+    if (d.agent === "codex") return [this.note(t, "Codex sessions don't record MCP servers in their log.")];
+    const tot = m.totals ?? {};
+    const out = [v_flex().px(14).pt(12).gap(2)
+      .child(div().text_size(12).text_color(t.foreground).child(`${tot.servers ?? 0} MCP servers · ${tot.connected ?? 0} connected · ${tot.tools ?? 0} tools`))
+      .child(div().text_size(10.5).text_color(t.dim).child(`${tot.loaded ?? 0} tools loaded with full schemas, ${tot.called ?? 0} used (${tot.calls ?? 0} calls). ~${k(tot.context_tok)} tokens of context: instructions + tool names + loaded schemas.`))];
+    const color = (s) => s.status === "failed" ? t.blocked : s.status === "needs auth" || s.status === "pending" ? t.working : s.calls ? t.done : t.dim;
+    out.push(this.h(t, "Servers", "tools · loaded · calls"));
+    for (const [i, s] of (m.servers ?? []).entries()) {
+      const open = this.openSrv.has(s.key);
+      const ctx = s.instr_tok + s.list_tok + s.def_tok;
+      out.push(h_flex().id(`mc-${i}`).px(14).py(4).gap(8).items_center().text_size(11).cursor_pointer().hover((x) => x.bg(t.hover))
+        .on_click((_e, cx) => { open ? this.openSrv.delete(s.key) : this.openSrv.add(s.key); cx.notify(); })
+        .child(div().w(7).h(7).rounded(4).flex_none().bg(color(s)))
+        .child(v_flex().flex_1().min_w(0).gap(1)
+          .child(div().truncate().text_color(t.foreground).child(s.name))
+          .child(div().truncate().text_size(10).text_color(s.status === "connected" ? t.dim : color(s)).child(s.status === "connected" ? (s.calls ? "used" : "connected, not used") : s.status)))
+        .child(div().flex_none().text_color(t.muted).child(`${s.tools} · ${s.loaded} · ${s.calls}`))
+        .child(div().flex_none().w(44).text_right().text_color(ctx > 2000 ? t.working : t.dim).tooltip("Context this server costs (approx.)").child(`~${k(ctx)}`)));
+      if (open) {
+        const sub = (txt) => div().pl(36).pr(14).py(1).text_size(10.5).text_color(t.muted).child(txt);
+        out.push(sub(`Context: ~${k(s.instr_tok)} instructions · ~${k(s.list_tok)} tool names · ~${k(s.def_tok)} schemas`));
+        out.push(sub(`Tools: ${s.tools} available, ${s.upfront} loaded up front, ${s.loaded - s.upfront} loaded on demand, ${s.called} called${s.errors ? `, ${s.errors} errors` : ""}`));
+        for (const x of s.top ?? []) out.push(sub(`▸ ${x.tool}  ${x.n}×`));
+        if (s.status === "needs auth") out.push(sub("Only its sign-in tools are present: sign in (/mcp) to get the real tools."));
+      }
+    }
+    for (const [i, s] of (m.pending ?? []).entries()) out.push(this.row(t, `mc-p-${i}`, "pending", s, null, t.working));
+    out.push(this.note(t, "Most MCP tools are deferred: only their names sit in context until the agent loads a schema (ToolSearch). Click a server for details."));
     return out;
   }
 
@@ -215,7 +307,7 @@ export default class AgentInspector extends View {
           : this.stat(t, "Cache", left == null ? "–" : left > 0 ? dur(left) : "expired", left != null && left <= 0 ? t.working : t.done, `Prompt cache TTL ${(d.cache_ttl ?? 300) / 60} min after the last reply`)),
       h_flex().px(10).pt(10).gap(2).border_b(1).border_color(t.border).children(TABS.map((id) => {
         const on = id === this.tab;
-        return div().id(`tab-${id}`).px(10).py(5).text_size(11.5).cursor_pointer()
+        return div().id(`tab-${id}`).px(7).py(5).text_size(11.5).cursor_pointer()
           .text_color(on ? t.foreground : t.muted).when(on, (el) => el.border_b(2).border_color(t.accent).font_medium())
           .hover((s) => s.text_color(t.foreground))
           .on_click((_e, cx) => { this.tab = id; localStorage.setItem("tab", id); cx.notify(); })
