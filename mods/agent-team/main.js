@@ -206,73 +206,86 @@ export default class AgentTeam extends View {
     if (!this.addr) return root.child(note("Focus an agent, then open the map."));
     if (!d) return root.child(note("Reading…"));
     if (!d.ok) return root.child(note(`Unavailable: ${d.error}`));
-    const cols = this.columns(d);
-    if (this.sel && !cols.some((c) => c.key === this.sel)) this.sel = null;
-    const DRAWER = this.sel ? 330 : 0;
-    const GUT = 46, PAD = 12, ROW = 40;
-    const colW = Math.max(110, (this.w - DRAWER - GUT - PAD * 2) / cols.length);
-    const cx = (i) => GUT + PAD + colW * i + colW / 2;
-    const idx = (who) => { const i = cols.findIndex((c) => c.ids.includes(who)); return i >= 0 ? i : cols.findIndex((c) => c.others); };
-    const evs = [...(d.events ?? [])].filter((e) => idx(e.who) >= 0).slice(0, 36).reverse();
-    const H = Math.max(evs.length * ROW + 24, 120);
-    const body = div().relative().w(GUT + PAD * 2 + colW * cols.length).h(H);
-    cols.forEach((c, i) => body.child(div().absolute().left(cx(i)).top(0).w(1).h(H).bg(t.border)));
-    let lastDay = null;
+    const rows = this.members(d);
+    if (!rows.some((c) => c.key === this.sel)) this.sel = (rows.find((c) => !c.lead && c.state !== "finished") ?? rows[rows.length - 1])?.key ?? null;
+    const now = Date.now() / 1000;
+    const evs = d.events ?? [];
+    const times = [...rows.map((c) => c.start).filter(Boolean), ...evs.map((e) => e.at).filter(Boolean)];
+    const t0 = times.length ? Math.min(...times) : now - 600;
+    const live = rows.some((c) => !c.lead && c.state !== "finished");
+    const t1 = Math.max(live ? now : Math.max(...rows.map((c) => c.end ?? c.start ?? t0), ...evs.map((e) => e.at ?? t0)), t0 + 60);
+    const RIGHT = 380, NAME = 190, DUR = 44, PADX = SPACE.dialog;
+    const trackW = Math.max(120, this.w - RIGHT - PADX * 2 - 18 - NAME - DUR - 24);
+    const xOf = (at) => Math.max(0, Math.min(trackW, ((at - t0) / (t1 - t0)) * trackW));
     const hm = (at) => { const x = new Date(at * 1000); return `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}`; };
-    evs.forEach((e, r) => {
-      const y = r * ROW + 8;
-      const m = idx(e.who);
-      const day = e.at ? new Date(e.at * 1000).toDateString() : null;
-      if (day && day !== lastDay && day !== new Date().toDateString()) {
-        const x = new Date(e.at * 1000);
-        body.child(div().absolute().left(6).top(y).text_size(TS.tiny).text_color(t.muted).child(`${x.getMonth() + 1}/${x.getDate()}`));
-      }
-      lastDay = day;
-      body.child(div().absolute().left(6).top(y + 12).w(GUT - 6).text_size(TS.tiny).text_color(t.dim).child(e.at ? hm(e.at) : ""));
-      if (m < 0) return;
-      const tip = `${clock(e.at)} ${e.name ?? e.who ?? ""}${e.times ? ` ×${e.times}` : ""}\n${e.text}`;
-      const selIdx = this.sel ? cols.findIndex((c) => c.key === this.sel) : -1;
-      const faded = selIdx > 0 && m !== selIdx;
-      if (e.k === "note") {
-        const done = e.status === "completed";
-        body.child(div().id(`mn-${r}`).absolute().left(cx(m) - 60).when(faded, (x) => x.opacity(0.25)).top(y + 8).w(120).h(20).flex().items_center().justify_center().rounded(10).border_1()
-          .border_color(done ? t.done : t.border).bg(t.surface).text_size(TS.tiny).text_color(done ? t.done : t.muted).tooltip(tip)
-          .child(`${done ? "✓ finished" : "● " + (e.text.includes("waiting") ? "waiting" : e.status || "notice")}${e.times ? ` ×${e.times}` : ""}`));
-        return;
-      }
-      const fromLead = e.k !== "from";
-      const a = fromLead ? 0 : m, b = fromLead ? m : 0;
-      if (a === b) return;
-      const x1 = Math.min(cx(a), cx(b)) + 3, x2 = Math.max(cx(a), cx(b)) - 3, right = cx(b) > cx(a);
-      const spawn = e.k === "spawn" || e.k === "hc-run";
-      const color = spawn ? t.working : fromLead ? t.muted : t.accent;
-      const label = spawn ? `✦ start${e.agent ? ` ${e.agent}` : ""}: ${e.text}` : e.verdict ? `${e.verdict === "APPROVE" ? "✓ APPROVED" : "✗ CHANGES"} · ${e.text}` : e.text;
-      const vColor = e.verdict === "APPROVE" ? t.done : e.verdict === "CHANGES" ? t.blocked : null;
-      const fade = (el) => (faded ? el.opacity(0.2) : el);
-      body.child(fade(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(TS.small)
-        .text_color(spawn ? t.working : vColor ?? t.foreground).when(Boolean(vColor), (x) => x.font_semibold()).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`)));
-      if (spawn) for (let x = x1; x < x2 - 4; x += 9) body.child(fade(div().absolute().left(x).top(y + 22).w(Math.min(5, x2 - x)).h(2).rounded(1).bg(color)));
-      else body.child(fade(div().absolute().left(x1).top(y + 22).w(x2 - x1).h(2).rounded(1).bg(color)));
-      body.child(fade(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(TS.meta).text_color(color).child(right ? "▶" : "◀")));
-    });
-    const cards = h_flex().pl(GUT + PAD).pr(PAD).pt(10).pb(8).flex_none().children(cols.map((c, i) => div().w(colW).flex_none().px(4).child(this.card(t, c, i, colW - 8))));
-    const diagram = v_flex().flex_1().min_w(0).h_full()
-      .child(cards)
-      .child(evs.length ? v_flex().id("mp-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body) : note("No messages yet. Arrows appear as the lead starts agents and they report back."));
-    const selCol = cols.find((c) => c.key === this.sel);
-    const waiting = cols.filter((c) => !c.others && c.state !== "finished" && (c.status === "blocked" || c.status === "error"));
-    const banner = waiting.length ? h_flex().px(SPACE.dialog).py(8).gap(10).items_center().flex_none().bg(t.blocked).opacity(0.92)
+    const waiting = rows.filter((c) => c.state !== "finished" && (c.status === "blocked" || c.status === "error"));
+    const banner = waiting.length ? h_flex().px(PADX).py(8).gap(10).items_center().flex_none().bg(t.blocked).opacity(0.92)
       .child(div().text_size(TS.body).font_semibold().text_color("#fff").child(`⚠ ${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color("#fff").child(waiting[0].doing || "a permission prompt or a question is waiting"))
-      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(4).rounded(6).bg("#ffffff33").text_size(TS.meta).text_color("#fff").cursor_pointer()
+      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(3).rounded(6).bg("#ffffff33").text_size(TS.meta).text_color("#fff").cursor_pointer()
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: waiting[0].addr })).child("Go to agent")))
       : null;
+    const mark = (c) => c.state === "finished" ? svg("mods/workspace-chrome/circle-check.svg").size(12).text_color(t.dim)
+      : c.status === "working" ? svg("mods/workspace-chrome/spinner.svg").size(12).text_color(t.working).spin(900)
+      : c.status === "blocked" || c.status === "error" ? div().size(12).rounded(6).bg(t.blocked).flex().items_center().justify_center().text_size(TS.tiny).font_bold().text_color("#fff").child("!")
+      : div().size(8).rounded(4).border_1().border_color(t.dim);
+    const lane = (c, i) => {
+      const sel = c.key === this.sel;
+      const a = c.start ?? t0, b = c.state === "finished" ? (c.end ?? a) : now;
+      const color = c.status === "blocked" || c.status === "error" ? t.blocked : c.state === "finished" ? t.dim : c.lead ? t.accent : t.working;
+      const mine = evs.filter((e) => !c.lead && c.ids.includes(e.who));
+      const track = div().relative().w(trackW).h(16).flex_none()
+        .child(div().absolute().left(0).right(0).top(7).h(2).rounded(1).bg(t.border).opacity(0.5))
+        .child(div().absolute().left(xOf(a)).top(4).w(Math.max(4, xOf(b) - xOf(a))).h(8).rounded(4).bg(color).opacity(c.state === "finished" ? 0.55 : 0.9)
+          .when(c.state !== "finished" && c.status === "working", (x) => x.loop("opacity", { from: 0.55, to: 0.95, period: 1600 })))
+        .children(mine.slice(0, 40).map((e, k) => div().absolute().left(Math.max(0, xOf(e.at) - 2)).top(1).size(4).rounded(2)
+          .bg(e.k === "from" ? t.accent : e.k === "note" ? t.done : t.foreground).opacity(0.85)));
+      const dur = c.start ? (b - a < 60 ? "<1m" : b - a < 3600 ? `${Math.round((b - a) / 60)}m` : `${(Math.round((b - a) / 360) / 10)}h`) : "";
+      return h_flex().id(`ln-${i}`).h(34).px(PADX).gap(8).items_center().cursor_pointer().flex_none()
+        .when(sel, (x) => x.bg(t.selected)).when(!sel, (x) => x.hover((h) => h.bg(t.hover)))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { this.sel = c.key; cx.notify(); })
+        .child(div().w(18).flex_none().flex().justify_center().child(mark(c)))
+        .child(v_flex().w(NAME).flex_none().min_w(0)
+          .child(div().truncate().text_size(TS.body).text_color(sel || c.state !== "finished" ? t.foreground : t.muted).when(c.lead, (x) => x.font_semibold()).child(c.name))
+          .child(div().truncate().text_size(TS.small).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor)))
+        .child(track)
+        .child(div().w(DUR).flex_none().text_right().text_size(TS.meta).text_color(t.dim).child(dur));
+    };
+    const axis = h_flex().h(22).px(PADX).gap(8).items_center().flex_none().text_size(TS.small).text_color(t.dim).border_b(1).border_color(t.border)
+      .child(div().w(18 + NAME + 8).flex_none().child(`${rows.length - 1} member${rows.length === 2 ? "" : "s"}`))
+      .child(h_flex().w(trackW).flex_none().justify_between().child(div().child(hm(t0))).child(div().child(live ? "now" : hm(t1))))
+      .child(div().w(DUR).flex_none());
+    const left = v_flex().flex_1().min_w(0).h_full()
+      .child(axis)
+      .child(v_flex().id("mp-lanes").flex_1().min_h(0).overflow_y_scrollbar().children(rows.map(lane)));
+    const selCol = rows.find((c) => c.key === this.sel);
     return root
       .when(Boolean(banner), (e) => e.child(banner))
-      .child(h_flex().flex_1().min_h(0).child(diagram).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
-      .child(h_flex().h(28).px(SPACE.dialog).gap(14).items_center().border_t(1).border_color(t.border).text_size(TS.tiny).text_color(t.dim).flex_none()
-        .child(div().child("── lead → member")).child(div().text_color(t.accent).child("── reply")).child(div().text_color(t.working).child("╌╌ started"))
-        .child(div().child("✓ finished")).child(div().flex_1()).child(div().child("Hover for full text · click a card for details")));
+      .child(h_flex().flex_1().min_h(0).child(left).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
+      .child(h_flex().h(26).px(PADX).gap(14).items_center().border_t(1).border_color(t.border).text_size(TS.small).text_color(t.dim).flex_none()
+        .child(div().child("bar: when it ran")).child(div().text_color(t.foreground).child("• lead → it")).child(div().text_color(t.accent).child("• its reply"))
+        .child(div().text_color(t.done).child("• finished")).child(div().flex_1()).child(div().child("Click a row for its conversation")));
+  }
+
+  // Every teammate (no cap), lead first, then by start time: what the timeline and its drawer show.
+  members(d) {
+    const cols = [{ key: "lead", ids: [d.lead?.id, "lead"], name: agentName(agents().find((x) => x.address === d.lead?.id)) || d.lead?.name || this.addr,
+      vendor: AGENT[d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent] ?? d.lead?.agent ?? "", status: d.lead?.status?.state ?? "idle", state: "live",
+      doing: d.lead?.status?.msg ?? "", lead: true, addr: d.lead?.id, start: null, end: null }];
+    const byName = new Map();
+    for (const m of d.herdr ?? []) { const o = byName.get(m.name); if (!o || (m.started ?? 0) > (o.started ?? 0)) byName.set(m.name, m); }
+    const pool = [...byName.values(), ...(d.subs ?? []),
+      ...(d.sessions ?? []).map((s) => ({ id: s.id, name: s.name, agent: "session", state: "live", status: "idle", kind: "session", addr: s.addr }))];
+    pool.sort((a, b) => (a.started ?? 9e12) - (b.started ?? 9e12));
+    for (const m of pool) cols.push({ key: m.id, ids: [m.id, m.name], name: m.name,
+      vendor: m.kind === "session" ? "Claude session" : m.kind === "sub" ? `subagent · ${m.type ?? ""}` : `${AGENT[m.agent] ?? m.agent ?? ""}${m.role ? ` · ${m.role}` : ""}`,
+      status: m.status, state: m.state, doing: m.state === "finished" ? (m.role ? `${m.role} · finished` : "finished") : this.doing(m),
+      addr: m.kind === "herdr" && m.state === "live" ? m.id : m.kind === "session" ? m.addr : null, out: m.out, ctx: m.ctx, m,
+      start: m.started ?? null, end: m.ended ?? m.last ?? null });
+    const first = Math.min(...cols.map((c) => c.start ?? Infinity), ...(d.events ?? []).map((e) => e.at ?? Infinity));
+    cols[0].start = Number.isFinite(first) ? first : null;
+    return cols;
   }
 
   drawer(t, d, c) {
@@ -294,16 +307,21 @@ export default class AgentTeam extends View {
     if (spawn?.prompt && !c.lead) { out.push(sec("Task it was given")); out.push(para(spawn.prompt)); }
     if ((m.steps ?? []).length) { out.push(sec("Recent steps")); for (const [i, st] of [...m.steps].reverse().entries()) out.push(div().id(`dr-st-${i}`).truncate().text_size(TS.small).text_color(t.muted).child(`▸ ${st.tool}${st.target ? ` · ${st.target}` : ""}`)); }
     if ((m.screen ?? []).length) { out.push(sec("Screen")); out.push(v_flex().p(6).rounded(6).bg(t.surface).children(m.screen.map((l, i) => div().id(`dr-sc-${i}`).truncate().text_size(TS.tiny).text_color(t.muted).font_family("Menlo").child(l)))); }
-    const msgs = evs.filter((e) => e.k !== "spawn" && e.k !== "hc-run").slice(0, c.lead ? 12 : 30);
-    out.push(sec(c.lead ? "Latest messages" : `Messages with the lead (${msgs.length})`));
+    // The conversation, oldest first like a chat: the lead's messages on the left, the member's replies on the right.
+    const msgs = evs.filter((e) => e.k !== "spawn" && e.k !== "hc-run").slice(0, c.lead ? 12 : 30).reverse();
+    out.push(sec(c.lead ? "Latest messages" : `Conversation (${msgs.length})`));
     if (!msgs.length) out.push(para("None yet."));
     for (const [i, e] of msgs.entries()) {
-      const dir = e.k === "from" ? `← ${c.lead ? e.name ?? e.who : "to lead"}` : e.k === "note" ? "✓ notice" : `→ ${c.lead ? e.name ?? e.who : "from lead"}`;
-      out.push(v_flex().id(`dr-m-${i}`).mt(4).p(6).rounded(6).bg(t.surface).gap(2)
-        .child(h_flex().gap(6).text_size(TS.tiny).child(div().text_color(e.k === "from" ? t.accent : t.dim).child(dir)).child(div().flex_1()).child(div().text_color(t.dim).child(clock(e.at))))
-        .child(div().text_size(TS.small).text_color(t.foreground).child((e.full || e.text || "").slice(0, 500))));
+      const reply = e.k === "from", notice = e.k === "note";
+      const who = notice ? "notice" : reply ? (c.lead ? e.name ?? e.who : c.name) : (c.lead ? `→ ${e.name ?? e.who}` : "lead");
+      out.push(h_flex().id(`dr-m-${i}`).mt(6).when(reply, (x) => x.justify_end())
+        .child(v_flex().max_w(300).p(8).rounded(10).gap(2)
+          .bg(reply ? t.accent + "22" : notice ? (t.popover ?? t.chrome) : t.surface).when(notice, (x) => x.border_1().border_color(t.border))
+          .child(h_flex().gap(6).text_size(TS.small).child(div().text_color(reply ? t.accent : t.dim).child(who)).child(div().text_color(t.dim).child(clock(e.at)))
+            .when(Boolean(e.verdict), (x) => x.child(div().font_semibold().text_color(e.verdict === "APPROVE" ? t.done : t.blocked).child(e.verdict === "APPROVE" ? "✓ APPROVED" : "✗ CHANGES"))))
+          .child(div().text_size(TS.body).text_color(t.foreground).child((e.full || e.text || "").slice(0, 600)))));
     }
-    return v_flex().id("mp-drawer").w(330).h_full().flex_none().border_l(1).border_color(t.border).bg(t.chrome)
+    return v_flex().id("mp-drawer").w(380).h_full().flex_none().border_l(1).border_color(t.border).bg(t.chrome)
       .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(SPACE.dialog).py(12).overflow_y_scrollbar().children(out));
   }
 
