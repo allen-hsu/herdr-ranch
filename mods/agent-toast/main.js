@@ -6,7 +6,18 @@
 // Herdr's icon, click focuses the agent), else osascript.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, agents, spaces, window, exec, home } from "herdr";
+import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile } from "herdr";
+
+// "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
+// path. name: what a macOS notification can play (a file in a Sounds folder); path: what afplay plays.
+async function soundFile(v) {
+  if (typeof v !== "string" || !v.trim() || v.includes("..")) return null;
+  if (v.startsWith("/") || v.startsWith("~")) return { path: v.replace(/^~/, home()), name: null };
+  const file = /\.\w+$/.test(v) ? v : `${v}.aiff`;
+  const mine = `${home()}/Library/Sounds/${file}`;
+  const have = (await exec("test", ["-f", mine]).catch(() => null))?.code === 0;
+  return { path: have ? mine : `/System/Library/Sounds/${file}`, name: file };
+}
 
 const DOT = { error: "blocked", warning: "working", success: "done", info: "accent" };
 
@@ -15,20 +26,34 @@ export default class AgentToast extends View {
     const p = props() ?? {};
     const addr = p.action?.name === "agent.focus" ? p.action.args?.terminal : null;
     this.agent = addr ? agents().find((a) => a.address === addr) ?? null : null;
-    // Herdr isn't in front: tell macOS instead (Notification Center, via the built-in osascript).
-    if (window()?.platform === "macos" && !window()?.active) {
+    const kind = this.agent ? (this.agent.status === "blocked" || /needs you|waiting/i.test(`${p.title} ${p.body ?? ""}`) ? "blocked" : "done") : null;
+    const background = window()?.platform === "macos" && !window()?.active;
+    // Optional sounds (~/.config/herdr-app/agent-toast.json: {"sounds": {"done": "Glass", "blocked": "Submarine"}}):
+    // a macOS sound name (/System/Library/Sounds, ~/Library/Sounds) or a file path. Set them and turn Herdr's
+    // own alert sound off, so each alert plays once: on the system notification in the background, afplay here.
+    if (!kind && !background) return;
+    cx.spawn(async () => {
+      let conf = null;
+      try { conf = JSON.parse((await readTextFile(`${home()}/.config/herdr-app/agent-toast.json`)) ?? "null"); } catch {}
+      const sound = kind ? await soundFile(conf?.sounds?.[kind]) : null;
+      if (!background) {
+        if (sound && window()?.platform === "macos") exec("afplay", [sound.path], { timeout: 15000 }).catch(() => null);
+        return;
+      }
+      // Herdr isn't in front: tell macOS instead. Herdr Notify.app (built by herdr-ranch's install.sh) shows
+      // Herdr's icon and focuses the agent on click; osascript is the fallback.
       const { title, subtitle } = this.lines(p);
-      cx.spawn(async () => {
-        // Herdr Notify.app (built by herdr-ranch's install.sh): Herdr's icon, click goes to the agent.
-        const helper = `${home()}/Applications/Herdr Notify.app/Contents/MacOS/herdr-notify`;
-        const args = ["--title", title, "--subtitle", subtitle, "--body", p.body || ""];
-        if (addr && /^[A-Za-z0-9_-]+$/.test(addr)) args.push("--terminal", addr);
-        const r = await exec(helper, args, { timeout: 15000 }).catch(() => null);
-        if (r?.code === 0) { closeOverlay(p.overlay); return; }
+      const helper = `${home()}/Applications/Herdr Notify.app/Contents/MacOS/herdr-notify`;
+      const args = ["--title", title, "--subtitle", subtitle, "--body", p.body || ""];
+      if (addr && /^[A-Za-z0-9_-]+$/.test(addr)) args.push("--terminal", addr);
+      if (sound?.name) args.push("--sound", sound.name);
+      const r = await exec(helper, args, { timeout: 15000 }).catch(() => null);
+      if (r?.code !== 0) {
         await exec("osascript", ["-e", "on run a\ndisplay notification (item 3 of a) with title (item 1 of a) subtitle (item 2 of a)\nend run", title, subtitle, p.body || ""], { timeout: 5000 }).catch(() => null);
-        closeOverlay(p.overlay);
-      });
-    }
+        if (sound) exec("afplay", [sound.path], { timeout: 15000 }).catch(() => null);
+      }
+      closeOverlay(p.overlay);
+    });
   }
 
   // Plain-text version for the system notification.

@@ -32,6 +32,7 @@ them. Edit here, then re-run `./install.sh`; don't edit the copies in `~/.config
 Personal config stays in `~/.config/herdr-app` and is never committed — start from `config.example/`:
 - `pr-panel.json` — review-request buttons on PR cards (pluggable `command` requesters)
 - `slack-review.json` — channel / bot ids for `integrations/requesters/slack-post.py`
+- `agent-toast.json` — alert sounds for done / needs-you (macOS sound names like Glass, or file paths); set them and turn off Herdr's own alert sound (Settings > Alerts) so each alert plays once
 
 ## What's in it
 

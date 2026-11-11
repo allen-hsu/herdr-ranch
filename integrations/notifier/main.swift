@@ -1,5 +1,5 @@
 // Herdr Notify: posts a macOS notification for Herdr (Herdr's icon), and on click brings Herdr to the agent.
-//   "Herdr Notify.app/Contents/MacOS/herdr-notify" --title T [--subtitle S] [--body B] [--terminal t8] [--sound 1]
+//   "Herdr Notify.app/Contents/MacOS/herdr-notify" --title T [--subtitle S] [--body B] [--terminal t8] [--sound 1 | Glass.aiff]
 // A click relaunches this app with no arguments; the delegate runs `herdr-app do agent.focus --terminal <t>`
 // and activates Herdr. Built and installed by herdr-ranch/install.sh (swiftc, ad-hoc signed).
 import AppKit
@@ -22,7 +22,11 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             c.title = title
             c.subtitle = self.args["subtitle"] ?? ""
             c.body = self.args["body"] ?? ""
-            if self.args["sound"] == "1" { c.sound = .default }  // off by default: Herdr plays its own alert sound
+            // Off by default (Herdr plays its own alert). "1" = the system default; a name = a sound in
+            // ~/Library/Sounds or /System/Library/Sounds (e.g. "Glass", "Submarine"), file name with extension.
+            if let snd = self.args["sound"], !snd.isEmpty {
+                c.sound = snd == "1" ? .default : UNNotificationSound(named: UNNotificationSoundName(snd))
+            }
             if let t = self.args["terminal"] { c.userInfo = ["terminal": t]; c.threadIdentifier = "herdr-\(t)" }
             let id = "herdr-\(self.args["terminal"] ?? UUID().uuidString)"
             center.add(UNNotificationRequest(identifier: id, content: c, trigger: nil)) { err in
