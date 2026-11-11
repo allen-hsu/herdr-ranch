@@ -16,7 +16,6 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
-import { agentName } from "./agentname.js";
 import { TS } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30; // the right-hand column every row shares // The mod that owns worktree dialogs
@@ -778,46 +777,7 @@ export default class Spaces extends View {
       });
   }
 
-  // A space with its agents, Orca-style: the current space is a card (its row, its branch, every agent in it);
-  // another space with agents shows "N agents ›" and opens the same list in place.
-  row(r, t) {
-    const { w, g, tree, folder, nested } = r;
-    const mine = agents().filter((a) => a.space === w.id && !a.address.includes("/"));
-    const open = w.active || this.expanded?.has(w.id);
-    const head = this.rowHead(r, t);
-    if (!w.active && !(open && mine.length)) return head;
-    const name0 = indent(folder, nested) + (tree ? 22 : 27); // where the row's name starts
-    const branch = g ? (g.linked ? `${g.branch ?? "detached"} · worktree` : `${g.branch ?? "detached"} · primary`) : null;
-    const list = v_flex().pb(4)
-      .when(w.active && Boolean(branch), (el) => el.child(div().pl(name0).pr(8).h(16).text_size(TS.small).font_family("Menlo").text_color(t.dim).truncate().child(branch)))
-      .children(mine.map((a) => this.agentLine(t, a, name0)));
-    if (!w.active) return v_flex().child(head).child(list);
-    return v_flex().id(`card-${w.id}`).mx(2).my(2).rounded(10).border_1().border_color(t.border).bg(t.selected)
-      .child(head).child(list);
-  }
-
-  // One agent inside its space: status, name (as the agents list names it), time since it last changed.
-  agentLine(t, a, pad) {
-    const tab = spaces().flatMap((s) => s.tabs ?? []).find((x) => x.id === a.tab);
-    const since = tab?.changed_at ? Date.now() - tab.changed_at : null;
-    const ago = since == null ? "" : since < 60000 ? "<1m" : since < 3600000 ? `${Math.round(since / 60000)}m` : since < 86400000 ? `${Math.round(since / 3600000)}h` : `${Math.round(since / 86400000)}d`;
-    const st = a.status;
-    const mark = st === "working" ? svg("mods/workspace-chrome/spinner.svg").size(11).text_color(t.working).spin(900)
-      : st === "blocked" ? div().size(7).rounded(4).bg(t.blocked)
-      : st === "done" ? div().size(7).rounded(4).bg(t.done)
-      : div().size(7).rounded(4).border_1().border_color(t.dim);
-    return h_flex().id(`al-${a.address}`).h(24).pl(pad).pr(8).gap(6).items_center().rounded(6).cursor_pointer()
-      .when(a.focused, (el) => el.bg(t.hover)).hover((s) => s.bg(t.hover))
-      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); run("pane.focus", { pane: a.pane }); })
-      .child(div().w(12).flex_none().flex().justify_center().child(mark))
-      .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(a.focused || st === "blocked" ? t.foreground : t.muted).child(agentName(a) || a.program?.name || a.address))
-      .when(st === "blocked", (el) => el.child(div().flex_none().text_size(TS.meta).text_color(t.blocked).child("needs you")))
-      .child(div().w(26).flex_none().text_right().text_size(TS.meta).text_color(t.dim).child(ago))
-      .child(this.trail());
-  }
-
-  rowHead({ w, i, g, tree, folder, nested }, t) {
+  row({ w, i, g, tree, folder, nested }, t) {
     const on = w.active;
     // The most urgent agent here sets a dot; one that finished unseen makes the name bold.
     const mine = agents().filter((a) => a.space === w.id);
@@ -836,6 +796,7 @@ export default class Spaces extends View {
       .flex_none()
       .justify_center()
       .rounded(8)
+      .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
@@ -877,11 +838,6 @@ export default class Spaces extends View {
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
           .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
-          .when(!on && mine.length > 0 && this.hovered !== w.id, (el) => el.child(div().id(`agents-${w.id}`).flex_none().h(18).px(5).rounded(5).flex().items_center()
-            .text_size(TS.meta).text_color(t.dim).hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(this.expanded?.has(w.id) ? "Hide its agents" : "Show its agents")
-            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
-            .on_click((_e, cx) => { cx.stop_propagation(); this.expanded ??= new Set(); this.expanded.has(w.id) ? this.expanded.delete(w.id) : this.expanded.add(w.id); cx.notify(); })
-            .child(`${mine.length} agent${mine.length === 1 ? "" : "s"} ${this.expanded?.has(w.id) ? "⌄" : "›"}`)))
           .when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))
           .child(this.trail().child(dot ? div().size(7).rounded(4).bg(dot).when(top === "working", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })) : div())),
       );

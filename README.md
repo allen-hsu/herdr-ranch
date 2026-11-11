@@ -9,7 +9,7 @@ Two layouts, switched from the top-right or with ⌃⌘1 / ⌃⌘2:
 | Layout | Left | Center | Right panel (one panel, ⌃⌘G / ▣ toggles) |
 |---|---|---|---|
 | **Overview** | spaces in folders | **agent board**: Needs you → Idle → Working → Done | Files · Changes · Git graph · Pull requests · Agent inspector |
-| **Focus** | one tree: folders → spaces → their agents (the current space is a card) | the active tab | same panel, Agent inspector first |
+| **Focus** | spaces + agent list (context %) | the active tab | same panel, Agent inspector first |
 
 Bottom bar: worktree resource manager pill, then Claude / Codex / Grok / Cursor plan usage with reset times.
 
@@ -42,7 +42,7 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 | `agent-inspector` | For the focused agent: **Skills** (which skills really loaded, by the model or by your /command, when, how many tokens; skills you named that never loaded; per-turn ⚡ chips in Trace), **MCP** (every server: connected / needs sign-in / failed, tools available · loaded · called, context cost), **Health** (hook errors and timeouts, tool errors, permission blocks incl. auto-mode classifier, MCP failures, compactions, cache drops), **Config** (memory/rules files, skills listed vs loaded, hooks that ran, MCP servers, mode, model), **Trace** (per turn: thinking, tool calls with duration / size / who approved), **Cost** (context added per tool and turn, subagents). Claude Code and Codex. |
 | `pr-panel` + `pr-diff` | Mine / To review / Space / Issues. PRs grouped by whose move it is. Buttons start an agent in a worktree: Fix CI, Fix comments, AI review, Ask Claude (with the diff beside it), Diff, plus configurable requesters (e.g. Slack). Fork PRs are never checked out. |
 | `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |
-| `agents-ctx` | Herdr's agent list (cloned) + context badge, team chip, background subagents. Not in the layouts any more (agents live inside their space in the sidebar); kept for anyone who wants the separate list. |
+| `agents-ctx` | Herdr's agent list (cloned) + context badge, team chip, background subagents. |
 | `tabs-plus` | Herdr's tab bar (cloned): a tab shows its agent's name, as the sidebar does, unless you renamed it. |
 | `changes-plus` | Herdr's shipped Changes panel (0.1.14) with GitHub-like colored diffs. A frozen clone: re-clone and re-apply `diffRow` when Herdr updates `changes`. |
 | `agent-team` | **Team map** window (⌃⌘T, or the hover button on an agent in the sidebar): a sequence diagram of the agent's team — one column per teammate (Herdr agents started with `hc run`: Claude Code / Codex / Grok / Cursor / Gemini; Claude subagents; sessions it messaged) with a live status card, each message an arrow, starts dashed, completions marked. |
