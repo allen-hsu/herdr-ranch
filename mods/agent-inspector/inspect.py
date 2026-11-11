@@ -18,7 +18,46 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 12
+VERSION = 14
+# $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
+# From the Claude API reference, 2026-11. Unknown models: no cost shown.
+PRICES = {
+    "claude-fable-5-2": (8, 40, 0.20), "claude-mythos-5-2": (8, 40, 0.20),
+    "claude-fable-5-1": (10, 50, 0.25), "claude-mythos-5-1": (10, 50, 0.25), "claude-fable-5": (10, 50, 1.0),
+    "claude-opus-5-5": (4, 20, 0.20), "claude-opus-5": (5, 25, 0.50), "claude-opus-4-8": (5, 25, 0.50),
+    "claude-opus-4-7": (5, 25, 0.50), "claude-opus-4-6": (5, 25, 0.50),
+    "claude-sonnet-5-5": (2, 10, 0.10), "claude-sonnet-5": (2, 10, 0.20), "claude-sonnet-4-6": (3, 15, 0.30),
+    "claude-haiku-5-5": (0.10, 0.50, 0.01), "claude-haiku-4-5": (1, 5, 0.10),
+}
+
+
+def price_of(model):
+    m = re.sub(r"\[.*?\]|-\d{8}$", "", str(model or ""))
+    return PRICES.get(m)
+
+
+def call_cost(model, u):
+    p = price_of(model)
+    if not p:
+        return None
+    cc = u.get("cache_creation") or {}
+    w1h = cc.get("ephemeral_1h_input_tokens") or 0
+    w5m = (u.get("cache_creation_input_tokens") or 0) - w1h
+    return ((u.get("input_tokens") or 0) * p[0] + w5m * p[0] * 1.25 + w1h * p[0] * 2
+            + (u.get("cache_read_input_tokens") or 0) * p[2] + (u.get("output_tokens") or 0) * p[1]) / 1e6
+
+
+def union_len(iv):
+    """Total length covered by a list of (start, end) intervals."""
+    tot, cur = 0.0, None
+    for a, b in sorted(iv):
+        if cur is None or a > cur[1]:
+            if cur:
+                tot += cur[1] - cur[0]
+            cur = [a, b]
+        else:
+            cur[1] = max(cur[1], b)
+    return tot + (cur[1] - cur[0] if cur else 0)
 SECRET = re.compile(r"(xox[abpr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w+|sk-[\w-]{16,}|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[\w.~+/=-]{12,}|(?i:(?:token|secret|password|api[_-]?key)=)\S+)")
 
 
@@ -126,7 +165,8 @@ def mcp_summary(g):
             "name": x["name"], "key": x["key"], "status": status, "tools": len(tools),
             "upfront": len(x["surfaced"]), "loaded": len(x["loaded"] | x["surfaced"]), "called": len(x["calls"]),
             "calls": sum(x["calls"].values()), "errors": x["errors"],
-            "top": [{"tool": t, "n": n} for t, n in x["calls"].most_common(4)],
+            "top": [{"tool": t, "n": n, "avg_ms": (g.tools.get(f"mcp__{x['key']}__{t}") or {}).get("avg_ms"),
+                     "errors": (g.tools.get(f"mcp__{x['key']}__{t}") or {}).get("errors", 0)} for t, n in x["calls"].most_common(8)],
             "instr_tok": x["instr_tok"], "def_tok": x["def_tok"],
             # Every deferred tool's name sits in the prompt: roughly its name in tokens.
             "list_tok": sum(len(f"mcp__{x['key']}__{t}") // 4 + 1 for t in tools),
@@ -230,7 +270,7 @@ def parse(path):
     restored = set()  # skills re-injected since the last compaction
     big = []
     # Per API call (Claude Code records each request: api-request + api-request-blob; responses carry requestRef).
-    reqs, blobs, calls, id2tool = {}, {}, {}, {}
+    reqs, blobs, calls, id2tool, shapes = {}, {}, {}, {}, {}
     for line in open(path, encoding="utf-8", errors="replace"):
         try:
             r = json.loads(line)
@@ -240,11 +280,17 @@ def parse(path):
             continue
         t = r.get("type")
         at = ts(r.get("timestamp") or "")
+        if t == "api-request-shape":
+            sh = r.get("shape") or {}
+            sysl = sh.get("system") or []
+            shapes[r.get("shapeHash")] = {"system": sum(len(x.get("text") or "") for x in sysl if isinstance(x, dict)) // 4,
+                                          "tools": len(json.dumps(sh.get("tools") or [], ensure_ascii=False)) // 4, "n_tools": len(sh.get("tools") or [])}
+            continue
         if t == "api-request":
             pr = r.get("params") or {}
             ttl = next(((c.get("value") or {}).get("ttl") for c in r.get("cacheControl") or [] if (c.get("path") or [None])[0] == "messages"), None)
             reqs[r.get("id")] = {"at": at, "model": pr.get("model"), "effort": (pr.get("output_config") or {}).get("effort"),
-                                 "thinking": (pr.get("thinking") or {}).get("type"), "tail": r.get("tail") or [], "ttl": ttl, "src": r.get("querySource")}
+                                 "thinking": (pr.get("thinking") or {}).get("type"), "tail": r.get("tail") or [], "ttl": ttl, "src": r.get("querySource"), "shape": r.get("shapeHash")}
             continue
         if t == "api-request-blob":
             msg = r.get("message") or {}
@@ -324,6 +370,13 @@ def parse(path):
                 g.cache_drops += 1
             elif at_ and at_.startswith("hook_"):
                 g.hook(a, at)
+                try:
+                    hms = int(a.get("durationMs") or 0)
+                except (TypeError, ValueError):
+                    hms = 0
+                if cur is not None and at and hms >= 50:
+                    cur["spans"].append({"k": "hook", "name": f"{a.get('hookEvent') or 'hook'} · {a.get('hookName') or ''}".strip(" ·"),
+                                         "t0": at - hms / 1000, "t1": at, "err": at_ in ("hook_non_blocking_error", "hook_cancelled", "hook_blocking_error")})
                 if cur is not None and at_ in ("hook_non_blocking_error", "hook_cancelled", "hook_blocking_error"):
                     cur["steps"].append({"k": "hook", "name": a.get("hookName"), "error": True, "ms": int(a.get("durationMs") or 0)})
                 if cur is not None:
@@ -364,7 +417,7 @@ def parse(path):
                     cmd = text.split("<command-name>")[1].split("</command-name>")[0].lstrip("/") if "<command-name>" in text else None
                     args = text.split("<command-args>")[1].split("</command-args>")[0] if "<command-args>" in text else ""
                     text = "/" + cmd + (" " + args if args else "") if cmd else text
-                cur = {"at": at, "prompt": red(text, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": [],
+                cur = {"at": at, "prompt": red(text, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": [], "spans": [],
                        "skills": [], "in_skill": None, "mentions": mentions(text, g.skill_names) if not cmd else []}
                 turns.append(cur)
                 slash = None
@@ -396,12 +449,14 @@ def parse(path):
                             g.issue("warn", "skill", ("skill", ev["name"]), f"Skill {ev['name']} failed to load: {red(text, 100)}", at)
                     tool = g.tools.setdefault(name, {"name": name, "calls": 0, "result_tok": 0, "errors": 0, "ms": 0})
                     tool["result_tok"] += n
+                    if step is not None and at:
+                        step["t0"] = step.pop("at", None) or step.get("t0")
+                        step["t1"] = at
                     if step and ev is None:
                         step["tok"] = n
-                        if step.get("at") and at:
-                            step["ms"] = int((at - step["at"]) * 1000)
+                        if step.get("t0") and at:
+                            step["ms"] = int((at - step["t0"]) * 1000)
                             tool["ms"] += step["ms"]
-                        step.pop("at", None)
                         big.append((n, name, step.get("label", "")))
                     if b.get("is_error") and text.startswith("The user doesn't want to proceed"):
                         if step:
@@ -488,7 +543,8 @@ def parse(path):
                 if cur is not None:
                     cur["steps"].append(step)
     for s in pending.values():
-        s.pop("at", None)
+        if s.get("at"):
+            s["t0"] = s.pop("at")
     if g.mcp_failed:
         g.issue("error", "mcp", ("mcpfail",), "MCP servers failed to connect: " + ", ".join(sorted(g.mcp_failed)), None)
     if g.cache_drops:
@@ -497,6 +553,7 @@ def parse(path):
     lvl = {"error": 0, "warn": 1, "info": 2}
     issues = sorted(g.issues.values(), key=lambda i: (lvl.get(i["level"], 3), -(i["last"] or 0)))
     memory = sorted(g.memory.values(), key=lambda x: -x["tokens"])
+    mem_tok = sum(x["tokens"] for x in memory if x.get("how") == "startup")
     hooks = sorted(g.hooks.values(), key=lambda h: (-(h["errors"] + h["timeouts"]), -h["runs"]))
     for h in hooks:
         h["avg_ms"] = h["ms"] // max(1, h["runs"])
@@ -520,15 +577,68 @@ def parse(path):
         "tools": sorted(g.tools.values(), key=lambda x: -x["result_tok"]),
         "compactions": g.compactions,
         "big": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb in big[:8]],
-        "turns": [{"at": x["at"], "ms": x["ms"] or (int((x.get("end", x["at"]) - x["at"]) * 1000) if x["at"] else None),
-                   "prompt": x["prompt"], "ctx_delta": (x["ctx1"] or 0) - (x["ctx0"] or x["ctx1"] or 0), "out": x["out"],
-                   "hooks": x["hooks"], "steps": x["steps"][-60:], "calls": call_rows(x.get("calls", [])[-30:], reqs, calls, blobs, id2tool),
-                   "skills": [{"name": e["name"], "how": e["how"], "tok": e.get("tok"), "ok": e.get("ok", True)} for e in x["skills"]],
-                   "missed": [n for n in x["mentions"] if n not in {e["name"] for e in x["skills"]}]} for x in turns[-15:]][::-1],
+        "turns": [turn_row(x, reqs, calls, blobs, id2tool, shapes, mem_tok) for x in turns[-15:]][::-1],
     }
 
 
-def call_rows(refs, reqs, calls, blobs, id2tool):
+ASKS_USER = {"AskUserQuestion", "ExitPlanMode"}  # time spent here is the agent waiting for you
+
+
+def turn_row(x, reqs, calls, blobs, id2tool, shapes, mem_tok):
+    """One turn: summary numbers, the time split (model / tools / other), and a waterfall of spans
+    (LLM calls, tools, hooks) as offsets in seconds from the prompt."""
+    t0 = x["at"]
+    rows = call_rows(x.get("calls", [])[-30:], reqs, calls, blobs, id2tool, shapes, mem_tok)
+    steps = x["steps"][-60:]
+    spans = []
+    if t0:
+        for j, c in enumerate(rows):
+            if c.get("at") and c.get("ms") is not None:
+                tools = [g["name"] for g in c["got"] if g["k"] == "tool"]
+                think = any(g["k"] in ("thinking", "redacted_thinking") for g in c["got"])
+                what = " → ".join(filter(None, ["thinking" if think else "", "reply" if any(g["k"] == "text" for g in c["got"]) else "", ", ".join(tools[:3]) + ("…" if len(tools) > 3 else "")]))
+                spans.append({"k": "llm", "name": f"LLM #{j + 1}", "label": what, "s": c["at"] - t0, "e": c["at"] - t0 + c["ms"] / 1000, "call": j})
+        for j, st in enumerate(steps):
+            if st.get("t0") and st["k"] in ("tool", "agent", "skill"):
+                end = st.get("t1")
+                asks = st["name"] in ASKS_USER or ":user" in str(st.get("perm") or "")
+                spans.append({"k": "wait" if asks else "agent" if st["k"] == "agent" else "skill" if st["k"] == "skill" else "tool", "name": st["name"], "label": st.get("label") or "",
+                              "s": st["t0"] - t0, "e": (end - t0) if end else None, "step": j, "err": bool(st.get("error")),
+                              "perm": st.get("perm"), "tok": st.get("tok")})
+        for h in x.get("spans", []):
+            spans.append({"k": "hook", "name": h["name"], "label": "", "s": h["t0"] - t0, "e": h["t1"] - t0, "err": h["err"]})
+    for st in steps:
+        st.pop("t0", None); st.pop("t1", None)
+    total = (x["ms"] or (int((x.get("end", t0) - t0) * 1000) if t0 else 0)) / 1000
+    total = max([total] + [sp["e"] for sp in spans if sp["e"] is not None])
+    for sp in spans:
+        if sp["e"] is None:  # still running
+            sp["e"] = total
+            sp["open"] = True
+        sp["s"] = max(0.0, round(sp["s"], 3)); sp["e"] = round(max(sp["e"], sp["s"]), 3)
+    spans.sort(key=lambda sp: (sp["s"], sp["k"] != "llm"))
+    llm = [(sp["s"], sp["e"]) for sp in spans if sp["k"] == "llm"]
+    wait = [(sp["s"], sp["e"]) for sp in spans if sp["k"] == "wait"]
+    work = [(sp["s"], sp["e"]) for sp in spans if sp["k"] not in ("llm", "wait")]
+    model_s = union_len(llm)
+    busy0 = union_len(llm + work)
+    busy = union_len(llm + work + wait)
+    costs = [c["cost"] for c in rows if c.get("cost") is not None]
+    inn = sum(c["new"] + c["cache_write"] for c in rows)
+    cached = sum(c["cache_read"] for c in rows)
+    return {"at": t0, "ms": int(total * 1000) if t0 else x["ms"],
+            "prompt": x["prompt"], "ctx_delta": (x["ctx1"] or 0) - (x["ctx0"] or x["ctx1"] or 0), "out": x["out"],
+            "hooks": x["hooks"], "steps": steps, "calls": rows, "spans": spans[:120],
+            "split": {"model": round(model_s, 2), "tools": round(busy0 - model_s, 2), "you": round(busy - busy0, 2), "other": round(max(0.0, total - busy), 2)} if spans else None,
+            "sum": {"calls": len(rows), "tools": sum(1 for s in steps if s["k"] in ("tool", "agent")), "in_new": inn, "in_cached": cached,
+                    "hit": round(cached / (inn + cached) * 100, 1) if inn + cached else None, "out": sum(c["out"] for c in rows),
+                    "think": sum(c["think"] for c in rows), "cost": round(sum(costs), 4) if costs else None,
+                    "errors": sum(1 for s in steps if s.get("error")), "misses": sum(1 for c in rows if c["miss"])},
+            "skills": [{"name": e["name"], "how": e["how"], "tok": e.get("tok"), "ok": e.get("ok", True)} for e in x["skills"]],
+            "missed": [n for n in x["mentions"] if n not in {e["name"] for e in x["skills"]}]}
+
+
+def call_rows(refs, reqs, calls, blobs, id2tool, shapes=None, mem_tok=0):
     """Each API call of a turn: when, how long, what it sent that was new, the input split
     (new / cache write / cache read), the output (and thinking), and what came back."""
     out, prev_read = [], None
@@ -552,7 +662,17 @@ def call_rows(refs, reqs, calls, blobs, id2tool):
                 else:
                     sent.append({"k": p["k"], "tok": p["chars"] // 4})
         total = new + cw + cr
-        out.append({"at": start, "ms": int((c["last"] - start) * 1000) if c.get("last") and start else None,
+        sh = (shapes or {}).get(q.get("shape")) or {}
+        new_tok = sum(x["tok"] for x in sent)
+        comp = None
+        if total and sh:
+            fixed = [("system", sh["system"]), ("tools", sh["tools"]), ("memory", mem_tok), ("new", new_tok)]
+            used = sum(v for _, v in fixed)
+            f = min(1.0, total / used) if used else 1.0  # estimates (chars/4) can overshoot: scale down to fit
+            comp = {k: int(v * f) for k, v in fixed}
+            comp["history"] = max(0, total - sum(comp.values()))
+            comp["n_tools"] = sh["n_tools"]
+        out.append({"cost": call_cost(q.get("model"), u), "total": total, "comp": comp,"at": start, "ms": int((c["last"] - start) * 1000) if c.get("last") and start else None,
                     "model": q.get("model"), "effort": q.get("effort"), "ttl": q.get("ttl"),
                     "new": new, "cache_write": cw, "cache_read": cr, "hit": round(cr / total * 100, 1) if total else None,
                     "miss": bool(prev_read and cr < prev_read * 0.5),
