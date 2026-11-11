@@ -17,12 +17,12 @@ import live  # noqa: E402  (shared lib, copied in by install.sh)
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
-VERSION = 3
+VERSION = 4
 red = live.clean
 TAG = re.compile(r"<(agent-message|hc|cross-session-message)\b([^>]*)>(.*?)</\1>", re.S)
 NOTE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
 ATTR = re.compile(r'([\w-]+)="([^"]*)"')
-HC_CMD = re.compile(r"(?:^|[;&|(]\s*)hc\s+(run|send)\s+(?!-h\b|--help)([^\n;&|]*)", re.M)
+HC_CMD = re.compile(r"(?:^|[;&|]\s*)hc\s+(run|send)\s+(?!-h\b|--help)([^\n;&|]*)", re.M)
 
 
 def out(**kw):
