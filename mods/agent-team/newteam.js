@@ -107,7 +107,11 @@ export class NewTeam {
       reviewer: reviewer ?? "(none)", researcher: tpl("researcher", this.pick.researcher), review_step: reviewStep };
     play = play.replace(/\{\{review_step\}\}/g, vars.review_step).replace(/\{\{(\w+)\}\}/g, (m, k) => vars[k] ?? m);
     // The task goes first: --allowedTools takes several values and would swallow it.
-    const argv = ["claude", play, "--permission-mode", "auto", "--allowedTools", "Bash(hc:*),Bash(git:*)"];
+    // Pre-approve only the hc subcommands a lead uses to run its team. Everything else (git included: `git -c`
+    // or aliases can run programs) goes through auto mode's safety classifier as usual. `hc keys` is left out on
+    // purpose: answering members' dialogs should be seen by the classifier (or the person).
+    const HC_OK = ["hc run --bg", "hc send", "hc wait", "hc read", "hc get", "hc ls", "hc templates", "hc kill", "hc interrupt"];
+    const argv = ["claude", play, "--permission-mode", "auto", "--allowedTools", HC_OK.map((c) => `Bash(${c}:*)`).join(",")];
     // run() returns nothing: give the lead a unique terminal name, then look its address up through hc.
     const name = `team-${slug}`.slice(0, 26) + "-" + Math.random().toString(36).slice(2, 6);
     run("terminal.open", { argv, folder: root, place: "tab", name });
