@@ -1,0 +1,6 @@
+{
+  "name": "herdr-ranch",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node tests/git-graph/graph.test.mjs" }
+}

@@ -20,10 +20,10 @@ function checkCommit(commit) {
   }
 }
 
-// herdr-extensions: `view` (a full ref name such as refs/heads/feature or refs/remotes/origin/main)
+// `view` (a full ref name such as refs/heads/feature or refs/remotes/origin/main)
 // graphs that one branch's history only.
 export const isRefName = (r) => typeof r === "string" && /^refs\/(heads|remotes)\/[^\s~^:?*\[\\]+$/.test(r) && !r.includes("..");
-// herdr-extensions: `compare` = { base, head } (full refs) graphs the commits in head that base lacks
+// `compare` = { base, head } (full refs) graphs the commits in head that base lacks
 // (what a PR from head into base would contain): `git log head ^base`.
 export function logArgs({ all, remotes, limit, view, compare }) {
   // All branches walks local branches, tags, remote branches (with Remotes) and HEAD, as other Git tools do.
@@ -238,7 +238,7 @@ export function dialogFor(action, ctx) {
     case "checkoutRemote": return { title: "Checkout remote branch", detail: `Create a local branch that tracks ${a.name}, and check it out.`
         + (a.dirty ? ` You have ${a.dirty} uncommitted change${a.dirty === 1 ? "" : "s"}.` : ""),
       inputs: [{ id: "name", label: "Local branch name", value: a.branch }], ...(a.dirty ? { checks: [{ id: "stash", label: "Stash them first (git stash push --include-untracked)", value: true }] } : {}), confirm: "Checkout" };
-    // herdr-extensions: checking out with uncommitted changes asks first (git would carry them along silently).
+    // Checking out with uncommitted changes asks first (git would carry them along silently).
     case "checkoutDirty": return { title: `Checkout ${a.name}`,
       detail: `You have ${a.dirty} uncommitted change${a.dirty === 1 ? "" : "s"}. Without stashing, Git carries them to ${a.name} when they don't conflict, and refuses when they do.`,
       checks: [{ id: "stash", label: "Stash them first (git stash push --include-untracked)", value: true }], confirm: "Checkout" };
@@ -309,7 +309,7 @@ export function validate(action, v, ctx) {
   return null;
 }
 
-// herdr-extensions: the stash made before a checkout, labelled so `git stash list` says why it exists.
+// The stash made before a checkout, labelled so `git stash list` says why it exists.
 const stashBefore = (target) => ["stash", "push", "--include-untracked", "-m", `herdr git-graph: before checkout ${target}`];
 
 // The git commands an action runs, in order.

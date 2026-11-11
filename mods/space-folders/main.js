@@ -16,7 +16,7 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
-const WORKTREES_MOD = "worktrees"; // herdr-extensions: the mod that owns worktree dialogs
+const WORKTREES_MOD = "worktrees"; // The mod that owns worktree dialogs
 const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
@@ -749,7 +749,7 @@ export default class Spaces extends View {
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)))
-      // herdr-extensions: uncommitted changes and the branch's open PR (colored by CI; click reveals it).
+      // Uncommitted changes and the branch's open PR (colored by CI; click reveals it).
       .when(g.dirty > 0, (el) => el.child(h_flex().flex_none().gap(3).items_center().text_color(t.blocked)
         .child(div().size(5).rounded(3).bg(t.blocked)).child(String(g.dirty))))
       .when(Boolean(pr), (el) => {
@@ -763,7 +763,7 @@ export default class Spaces extends View {
 
   row({ w, i, g, tree, folder, nested }, t) {
     const on = w.active;
-    // herdr-extensions: the most urgent agent here sets a dot; one that finished unseen makes the name bold.
+    // The most urgent agent here sets a dot; one that finished unseen makes the name bold.
     const mine = agents().filter((a) => a.space === w.id);
     const top = mine.reduce((m, a) => ((STATUS_RANK[a.status] ?? 0) > (STATUS_RANK[m] ?? 0) ? a.status : m), null);
     const unread = mine.some((a) => a.status === "done");
@@ -827,7 +827,7 @@ export default class Spaces extends View {
       );
   }
 
-  // herdr-extensions: hover actions. A repo's own row: new worktree, clean up; a worktree's row: delete it.
+  // Hover actions. A repo's own row: new worktree, clean up; a worktree's row: delete it.
   // They open the separate "worktrees" mod's dialogs (props contract: { wt, root, path?, on }); no worktree code here.
   worktreeActions(w, g, t) {
     const [on, common] = JSON.parse(g.repo);

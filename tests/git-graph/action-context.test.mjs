@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { executeAction } from "../mods/git-graph/execute.js";
+import { executeAction } from "../../mods/git-graph/execute.js";
 
 const repo = mkdtempSync(join(tmpdir(), "graph-action-context-"));
 const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",

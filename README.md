@@ -23,7 +23,7 @@ cd ~/Documents/personal/herdr-ranch
 ./install.sh --statusline   # also wire the Claude Code status-line snapshot (context %, cost)
 ```
 
-The installer builds every mod in `mods/` and `forks/*/mods/` (adding the `lib/` files it lists), copies
+The installer builds every mod in `mods/` (adding the `lib/` files it lists), copies
 `layouts/` into `~/.config/herdr-app`, fetches any pinned mods in `vendor.json`, puts integration scripts in `~/.config/herdr-app/ranch/`,
 merges `config.example/keys.json` into your `keys.json` (your existing keys always win), and runs
 `herdr-app check` on every mod. New mod folders are moved in atomically so Herdr never auto-docks
@@ -50,13 +50,11 @@ tabs in the same panel instead of a second column.
 
 | `worktrees` | Git worktrees, Orca-style. Status-bar pill (count · disk · cleanable) → **Resource Manager**: CPU / memory per repo → worktree → terminal with sparklines, disk use, and a clean-up list (select all cleanable, guarded delete; 🗑 pre-selects everything safe). Dialogs for New worktree (base / existing branch / PR; copies `.worktreeinclude`, links orca.yaml `worktree.sharedDirectories`), Delete, Clean up — opened by any mod via `openOverlay({ mod: "worktrees", props: { wt, root, ... } })`. |
 
-Forked third-party mods live in `forks/` (git subtree, history kept; see `forks/README.md`), reviewed in
-`docs/security-reviews.md`:
-- `space-folders` (jankeesvw/herdr-space-folders): adds an agent status dot / unread bold / dirty count / PR badge
-  on space rows, and hover actions that open the `worktrees` dialogs (repo row: New, Clean up; worktree row: Delete).
-- `git-graph` (rabeeh-ta/herdr-git-graph): adds a branch picker (graph any local/remote branch), checkout from the
-  picker with a stash prompt, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state on
-  branch labels (click reveals the PR in the PR panel), GitHub-like diff colors, and an untracked-diff fix.
+| `space-folders` | Sidebar: spaces grouped into folders; per space an agent status dot (bold when finished unseen), dirty count and PR badge; hover a repo row for New worktree / Clean up, a worktree row for Delete (opens the `worktrees` dialogs). |
+| `git-graph` | Commit graph: branch picker (any local/remote branch), checkout with a stash prompt, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state (click reveals the PR), GitHub-like diff colors; the Uncommitted row opens Changes. Tests: `npm test`. |
+
+`space-folders` and `git-graph` started from open-source mods and are now our own code; origins and
+licenses in `licenses/`.
 
 ## Data and credentials
 
@@ -78,7 +76,6 @@ snippets, owner-only (0700/0600).
 
 ```
 mods/              our mods (one folder per mod, copied into ~/.config/herdr-app/mods)
-forks/<name>/      third-party mods we changed, as git subtrees (mods/<name>/ inside is what gets installed)
 lib/               code shared by several mods: prs.js (GitHub PR badges), folders.js (space-folders
                    state), codexlog.py (Codex sessions). A mod lists what it needs in lib.json; the
                    installer copies those files into the installed mod (Herdr mods can't import across mods)
@@ -87,15 +84,16 @@ vendor.json        third-party mods installed unchanged at a pinned commit (none
 integrations/      claude-statusline snapshot helper; review requesters (Slack) + Slack app manifest
 config.example/    pr-panel.json, slack-review.json, keys.json (merged by install.sh)
 scripts/dev.sh     install one mod now while developing: scripts/dev.sh <name>
-docs/              security reviews of third-party code, notes
+tests/             node tests (npm test)
+licenses/          origins and licenses of code that started elsewhere
+docs/              security reviews, notes
 ```
 
 Rules that keep it maintainable:
 - One concern per mod; mods talk through overlay props and `shared` keys, never by importing each other.
   Contracts: `worktrees` dialogs (`{ wt, root, path?, on? }`), `pr-panel.reveal` / `pr-panel.listening`.
 - Code needed by two mods goes in `lib/`, never copied by hand.
-- Changes to third-party mods stay in `forks/`, marked `herdr-extensions:`, as small as possible so
-  upstream updates merge cleanly; anything that can stand alone becomes its own mod in `mods/`.
+- A feature that can stand alone becomes its own mod rather than growing an existing one.
 - UI labels in English; no personal ids or paths in code (they go in `~/.config/herdr-app/*.json`).
 
 Known gaps: conversation full-text search, one prompt → several agents, Code layout, multiple

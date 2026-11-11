@@ -60,8 +60,8 @@ install_mod() {
 
 echo "herdr-ranch -> $APP"
 
-echo "Mods (mods/: ours; forks/*/mods/: third-party mods we forked, kept here with git subtree)"
-for d in "$HERE"/mods/*/ "$HERE"/forks/*/mods/*/; do [ -d "$d" ] && install_mod "${d%/}" "$(basename "$d")"; done
+echo "Mods"
+for d in "$HERE"/mods/*/; do [ -d "$d" ] && install_mod "${d%/}" "$(basename "$d")"; done
 
 echo "Pinned third-party mods (vendor.json)"
 python3 - "$HERE/vendor.json" <<'PY' > "$CACHE.vendor.tsv.tmp" 2>/dev/null || true
@@ -147,7 +147,7 @@ if [ "$DRY" = 0 ] && [ "$HAVE_HERDR" = 1 ]; then
   fail=0
   for d in "$APP"/mods/*/; do
     n="$(basename "$d")"
-    [ -d "$HERE/mods/$n" ] || compgen -G "$HERE/forks/*/mods/$n" >/dev/null || grep -q "\"name\": \"$n\"" "$HERE/vendor.json" || continue
+    [ -d "$HERE/mods/$n" ] || grep -q "\"name\": \"$n\"" "$HERE/vendor.json" || continue
     if herdr-app check "$d" >/dev/null 2>&1; then say "ok   $n"; else say "FAIL $n"; fail=1; fi
   done
   [ "$fail" = 0 ] || { echo "Some mods failed herdr-app check; see: herdr-app check <mod folder>" >&2; exit 1; }

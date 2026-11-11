@@ -1,6 +1,0 @@
-{
-  "name": "herdr-git-graph",
-  "private": true,
-  "type": "module",
-  "scripts": { "test": "node tests/graph.test.mjs" }
-}

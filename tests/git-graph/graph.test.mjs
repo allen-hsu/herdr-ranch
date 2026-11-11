@@ -1,10 +1,10 @@
 // Tests the mod's git logic against real throwaway repos (a bare "remote"
 // included): parsing, labels and where they sit, lanes, menus, validation,
-// and every action the menus run. Run: node tests/graph.test.mjs
-import * as G from "../mods/git-graph/git.js";
-import { layoutLanes } from "../mods/git-graph/lanes.js";
-import * as R from "../mods/git-graph/repos.js";
-import { executeAction } from "../mods/git-graph/execute.js";
+// and every action the menus run. Run: npm test
+import * as G from "../../mods/git-graph/git.js";
+import { layoutLanes } from "../../mods/git-graph/lanes.js";
+import * as R from "../../mods/git-graph/repos.js";
+import { executeAction } from "../../mods/git-graph/execute.js";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, statSync, symlinkSync } from "node:fs";

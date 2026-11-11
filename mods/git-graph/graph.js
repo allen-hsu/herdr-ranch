@@ -66,7 +66,7 @@ const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const sameFiles = (a, b) => a.length === b.length && a.every((f, i) => f.path === b[i].path && f.status === b[i].status);
 const scopeOf = ({ all, remotes, view, compare }) => `${all} ${remotes} ${view ?? ""} ${compare ? `${compare.base}..${compare.head}` : ""}`;
 const shortRef = (r) => String(r ?? "").replace(/^refs\/(heads|remotes)\//, "");
-// herdr-extensions: the branch picker's rows, newest commit first; remote HEAD aliases left out.
+// The branch picker's rows, newest commit first; remote HEAD aliases left out.
 const REF_LIST = ["for-each-ref", "--sort=-committerdate", "--format=%(refname)%09%(refname:short)%09%(committerdate:relative)%09%(upstream:track)", "refs/heads", "refs/remotes"];
 const parseRefList = (text) => text.split("\n").filter(Boolean).map((l) => { const [ref, name, when, track] = l.split("\t"); return { ref, name, when, track: track ?? "" }; })
   .filter((r) => r.ref && !/^refs\/remotes\/[^/]+\/HEAD$/.test(r.ref));
@@ -138,7 +138,7 @@ export class Graph {
     this.listId = `graph-rows-${Math.random().toString(36).slice(2)}`;
     this.diffId = `${this.listId}-diff`;
     this.all = true; this.remotes = true; this.wide = false; this.graphMax = 160; this.scale = null;
-    // herdr-extensions: branch picker state. view = the one ref graphed (null: All branches / Current).
+    // Branch picker state. view = the one ref graphed (null: All branches / Current).
     this.view = null; this.branchPicking = false; this.refList = null;
     this.compare = null; this.pickMode = "view"; this.compareCount = null;
     this.prs = { root: null, at: 0, byBranch: new Map(), loading: false };
@@ -418,7 +418,7 @@ export class Graph {
   loadMore(cx) { this.limit += PAGE; this.refresh(cx); cx.notify(); }
   setScope(all, cx) { if (this.all !== all || this.view || this.compare) { this.all = all; this.view = null; this.compare = null; this.limit = PAGE; this.refresh(cx); } cx.notify(); }
 
-  // herdr-extensions: open PRs of the shown repository, by head branch (see prs.js). Every 2 minutes at most.
+  // Open PRs of the shown repository, by head branch (see prs.js). Every 2 minutes at most.
   maybeLoadPRs(cx) {
     const root = this.root, on = this.on, p = this.prs;
     if (!root || p.loading || (p.root === root && Date.now() - p.at < PR_TTL)) return;
@@ -441,7 +441,7 @@ export class Graph {
       .child(b.text).when(Boolean(b.glyph), (e) => e.child(b.glyph)).when(Boolean(b.review), (e) => e.child(div().text_color(t.dim).child(b.review)));
   }
 
-  // herdr-extensions: graph one branch (a full ref), or null for the All branches / Current scope.
+  // Graph one branch (a full ref), or null for the All branches / Current scope.
   setView(ref, cx) {
     this.view = ref; this.compare = null; this.branchPicking = false; this.limit = PAGE; this.selected = null; this.details = null;
     this.refresh(cx); cx.notify();
@@ -463,7 +463,7 @@ export class Graph {
     cx.notify();
   }
 
-  // herdr-extensions: compare head against base (commits head has that base lacks). Base defaults to the
+  // Compare head against base (commits head has that base lacks). Base defaults to the
   // remote's default branch (origin/HEAD), else main / master.
   async defaultBase() {
     const git = (args) => exec("git", [...READ, ...args], { cwd: this.root, on: this.on });
@@ -646,7 +646,7 @@ export class Graph {
       if (hit) this.checkout(hit.part, cx);
       return;
     }
-    // herdr-extensions: the Uncommitted row opens Herdr's Changes panel (stage, diff, commit) instead of a
+    // The Uncommitted row opens Herdr's Changes panel (stage, diff, commit) instead of a
     // second file list here — when the graph shows the focused terminal's repository, as Changes does.
     if (commit.uncommitted && !this.opened && !this.folder) { showChanges(); return; }
     this.pick(commit, cx);
@@ -657,7 +657,7 @@ export class Graph {
     else if (part.kind === "remote") this.checkoutBranch(null, part.name, cx);
   }
 
-  // herdr-extensions: one path for every checkout (label double-click, branch picker). A remote branch with
+  // One path for every checkout (label double-click, branch picker). A remote branch with
   // a local twin checks the local one out. Uncommitted changes ask first, offering to stash them.
   checkoutBranch(local, remote, cx) {
     const ctx = this.ctx;
@@ -1080,7 +1080,7 @@ export class Graph {
       .when(d.more > 0, (e) => e.child(div().text_size(11).text_color(t.dim).child(`and ${d.more} more`))));
   }
 
-  // herdr-extensions: GitHub-like rows — tinted background, stronger gutter, +/− marker, accent hunk headers.
+  // GitHub-like rows — tinted background, stronger gutter, +/− marker, accent hunk headers.
   diffRow({ kind, number, text }, t) {
     if (kind === "@") return h_flex().w_full().h(DIFF_ROW).flex_none().px(12).items_center().bg(t.accent + "1a").text_color(t.accent)
       .child(div().min_w(0).truncate().child(text));
