@@ -292,7 +292,8 @@ export default class AgentInspector extends View {
     const note = (s) => [div().p(16).text_size(TS.body).text_color(t.dim).child(s)];
     if (!this.addr) return note("Select an agent to inspect it.");
     if (!d) return note("Reading the session…");
-    if (!d.ok) return note(d.error === "unsupported agent" ? `Inspector reads Claude Code and Codex sessions. This agent runs ${d.program || "something else"}.` : `Unavailable: ${d.error}`);
+    if (!d.ok) return note(d.error === "unsupported agent" ? `Inspector reads Claude Code and Codex sessions. This agent runs ${d.program || "something else"}.`
+      : /transcript not found|session file not found/i.test(d.error ?? "") ? "Waiting for this agent's first prompt…" : `Unavailable: ${d.error}`);
     const pct = d.pct ?? (d.window ? (d.ctx / d.window) * 100 : null);
     const pctColor = pct >= 80 ? t.blocked : pct >= 60 ? t.working : t.foreground;
     const left = d.cache_until ? d.cache_until - d.now : null;
@@ -307,10 +308,11 @@ export default class AgentInspector extends View {
         .child(d.agent === "codex"
           ? this.stat(t, "Cached in", k(d.cache_read), null, "Input tokens served from cache across the session")
           : this.stat(t, "Cache", left == null ? "–" : left > 0 ? dur(left) : "expired", left != null && left <= 0 ? t.working : t.done, `Prompt cache TTL ${(d.cache_ttl ?? 300) / 60} min after the last reply`)),
-      h_flex().px(SPACE.panel - 7).pt(10).gap(2).border_b(1).border_color(t.border).children(TABS.map((id) => {
+      // Sub-navigation inside the panel: one step quieter than the panel's own tabs (Files / Git / … at TS.body).
+      h_flex().px(SPACE.panel - 6).pt(8).border_b(1).border_color(t.border).children(TABS.map((id) => {
         const on = id === this.tab;
-        return div().id(`tab-${id}`).px(7).py(6).text_size(TS.body).cursor_pointer()
-          .text_color(on ? t.foreground : t.muted).when(on, (el) => el.border_b(2).border_color(t.accent).font_medium())
+        return div().id(`tab-${id}`).px(6).py(5).text_size(TS.meta).cursor_pointer()
+          .text_color(on ? t.foreground : t.dim).when(on, (el) => el.border_b(2).border_color(t.accent))
           .hover((s) => s.text_color(t.foreground))
           .on_click((_e, cx) => { this.tab = id; localStorage.setItem("tab", id); cx.notify(); })
           .child(id === "health" && problems ? `${TAB_LABEL[id]} · ${problems}` : TAB_LABEL[id]);

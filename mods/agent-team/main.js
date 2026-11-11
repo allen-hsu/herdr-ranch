@@ -51,7 +51,7 @@ export default class AgentTeam extends View {
     cx.spawn(async (cx) => {
       try {
         const r = await exec("python3", [appHome() + "/mods/agent-team/team.py", addr], { timeout: 30000 });
-        const d = JSON.parse(r.stdout || "{}");
+        const d = r.stdout ? JSON.parse(r.stdout) : { ok: false, error: (r.stderr || "no output").trim().split("\n").pop() };
         if (addr === this.addr) this.data = d;
       } catch (e) { if (addr === this.addr) this.data = { ok: false, error: String(e.message ?? e) }; }
       this.busy = false;

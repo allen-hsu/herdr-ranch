@@ -48,6 +48,13 @@ PY
       cp "$HERE/lib/$f" "$out/$f"
     done
   fi
+  # A mod's Python that imports a lib/ module must list it in lib.json (else it fails only at run time).
+  for py in "$out"/*.py; do
+    [ -f "$py" ] || continue
+    for m in $(grep -hoE '^[[:space:]]*import [a-z_]+' "$py" | awk '{print $2}' | sort -u); do
+      if [ -f "$HERE/lib/$m.py" ] && [ ! -f "$out/$m.py" ]; then echo "$(basename "$src")/$(basename "$py") imports $m: add \"$m.py\" to $src/lib.json" >&2; exit 1; fi
+    done
+  done
 }
 install_mod() {
   local src="$1" name="$2" dst="$APP/mods/$2" stage="$APP/.ranch-staging-$2"
