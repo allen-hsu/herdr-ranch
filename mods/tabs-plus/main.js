@@ -15,7 +15,12 @@ function find(node, id) {
 }
 
 export default class Tabs extends View {
-  init() {
+  init(_props, cx) {
+    // ranch: a tab whose agent finishes (or needs you) while you look elsewhere pulses: finished for a few
+    // seconds, needs-you until you open it.
+    this.prev = {};
+    this.flash = {};
+    cx?.timer?.every(500, (cx) => { if (Object.keys(this.flash).length) cx.notify(); });
     this.pressed = null;
     this.scroll = ScrollHandle.new();
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
@@ -69,10 +74,19 @@ export default class Tabs extends View {
       const lead = agents().find((a) => a.tab === c.id && a.focused) ?? agents().find((a) => a.tab === c.id);
       const mineNamed = c.named && c.name !== program?.name && !/^tb\d+$/.test(c.name);
       const name = mineNamed ? c.name : (lead && agentName(lead)) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
+      const now = Date.now();
+      if (this.prev[c.id] !== c.status) {
+        if ((c.status === "done" || c.status === "blocked") && !c.active) this.flash[c.id] = { kind: c.status, until: c.status === "blocked" ? Infinity : now + 4000 };
+        this.prev[c.id] = c.status;
+      }
+      if (c.active || (this.flash[c.id] && this.flash[c.id].until < now) || (this.flash[c.id]?.kind === "blocked" && c.status !== "blocked")) delete this.flash[c.id];
+      const fl = this.flash[c.id];
+      const flashColor = fl ? (fl.kind === "blocked" ? t.blocked : t.done ?? t.accent) : null;
       return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(TS.item)
         // A rename or status dot on this or an earlier tab can push the active one out.
         .when(i <= active, el => el.on_size_change((_size, cx) => { this.scroll.scroll_to_item(active); cx.notify(); }))
         .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+        .when(Boolean(fl), (el) => el.bg(flashColor + "2e").border_color(flashColor + "99").text_color(t.foreground).loop("opacity", { from: 0.55, to: 1, period: 900 }))
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {
