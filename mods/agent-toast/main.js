@@ -6,6 +6,7 @@
 // Herdr's icon, click focuses the agent), else osascript.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
+import { agentName } from "./agentname.js";
 import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals } from "herdr";
 
 // "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
@@ -65,7 +66,7 @@ export default class AgentToast extends View {
     const lead = me?.parent ? agents().find((x) => x.address === me.parent) : null;
     const role = me?.template ? me.template.replace(/-(claude|codex|grok|cursor|gemini)$/, "") : null;
     if (kids.length) return `team of ${kids.length}`;
-    if (lead) return `${role ?? "member"} for ${lead.title && lead.title !== lead.program?.name ? lead.title : lead.space_name}`;
+    if (lead) return `${role ?? "member"} for ${agentName(lead)}`;
     return null;
   }
 
@@ -75,8 +76,8 @@ export default class AgentToast extends View {
     if (!a) return { title: p.title ?? "Herdr", subtitle: "" };
     const blocked = a.status === "blocked" || /needs you|waiting/i.test(`${p.title} ${p.body ?? ""}`);
     const sp = spaces().find((s) => s.id === a.space);
-    const name = a.title && a.title !== a.program?.name ? a.title : a.program?.name ?? "Agent";
-    const tab = a.tab_name && a.tab_name !== String(a.tab_index) ? a.tab_name : null;
+    const name = agentName(a) || a.program?.name || "Agent";
+    const tab = a.tab_name && a.tab_name !== String(a.tab_index) && a.tab_name !== a.program?.name ? a.tab_name : null;
     const team = this.team(a);
     return { title: name, subtitle: [blocked ? "Needs you" : team?.startsWith("team of") ? "Team finished" : "Finished", team, a.space_name, sp?.branch, tab].filter(Boolean).join(" · ") };
   }
@@ -91,8 +92,8 @@ export default class AgentToast extends View {
     const blocked = a.status === "blocked" || /needs you|waiting/i.test(`${p.title} ${p.body ?? ""}`);
     const color = blocked ? t.blocked : t.done;
     const sp = spaces().find((s) => s.id === a.space);
-    const name = a.title && a.title !== a.program?.name ? a.title : a.program?.name ?? "Agent";
-    const tab = a.tab_name && a.tab_name !== String(a.tab_index) ? a.tab_name : null;
+    const name = agentName(a) || a.program?.name || "Agent";
+    const tab = a.tab_name && a.tab_name !== String(a.tab_index) && a.tab_name !== a.program?.name ? a.tab_name : null;
     const team = this.team(a);
     const where = [team, a.space_name, sp?.branch, tab].filter(Boolean).join(" · ");
     return [

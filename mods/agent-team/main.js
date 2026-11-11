@@ -11,6 +11,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
 import { NewTeam } from "./newteam.js";
+import { agentName } from "./agentname.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -151,7 +152,8 @@ export default class AgentTeam extends View {
 
   // ---------- Team Map (sequence diagram) ----------
   columns(d) {
-    const cols = [{ key: "lead", ids: [d.lead?.id, "lead"], name: d.lead?.name ?? this.addr, vendor: AGENT[d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent] ?? d.lead?.agent ?? "",
+    const leadAgent = agents().find((x) => x.address === d.lead?.id);
+    const cols = [{ key: "lead", ids: [d.lead?.id, "lead"], name: (leadAgent && agentName(leadAgent)) || d.lead?.name || this.addr, vendor: AGENT[d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent] ?? d.lead?.agent ?? "",
       status: d.lead?.status?.state ?? "idle", state: "live", doing: d.lead?.status?.msg ?? "", lead: true, addr: d.lead?.id }];
     // A member restarted under the same name (e.g. a checker) is one column: keep the newest.
     const byName = new Map();
@@ -189,7 +191,7 @@ export default class AgentTeam extends View {
     const note = (s) => div().p(20).text_size(12).text_color(t.dim).child(s);
     const head = h_flex().h(40).px(14).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
       .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Team map"))
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d?.lead?.name ? `· ${d.lead.name}` : ""))
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d?.lead ? `· ${agentName(agents().find((x) => x.address === d.lead.id)) || d.lead.name}` : ""))
       .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(10.5).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click(() => openOverlay({ mod: "agent-team", kind: "dialog", width: 620, height: 640, props: { view: "new" } })).child("New team…"))
