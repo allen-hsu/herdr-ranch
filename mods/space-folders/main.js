@@ -826,7 +826,8 @@ export default class Spaces extends View {
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
+          // Hovered with actions to show: they take the right side and the git details step aside (no squeeze).
+          .child(g && !(this.hovered === w.id && this.worktreeActions(w, g, t).length) ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
           .when(this.hovered === w.id && Boolean(g), (el) => el.children(this.worktreeActions(w, g, t)))
           .when(Boolean(dot), (el) => el.child(div().flex_none().size(7).rounded(4).bg(dot)
             .when(top === "working", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })))),
