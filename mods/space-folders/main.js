@@ -895,9 +895,9 @@ export default class Spaces extends View {
       .flex_none()
       .justify_center()
       .rounded(8)
-      .when(on, (el) => el.bg(t.selected))
+      // The current space's card marks it (see draw); the row itself stays plain inside the card.
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(on, (el) => el.child(div().absolute().left(0).top(7).bottom(7).w(2).rounded(1).bg(t.accent)))
+      .when(on, (el) => el)
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
