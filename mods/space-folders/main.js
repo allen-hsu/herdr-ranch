@@ -178,6 +178,14 @@ export default class Spaces extends View {
     // "By space" view: each space lists its agents (lib/agentrows.js), the same rows the "by status" view shows.
     this.adata = new AgentData();
     try { this.agentsFold = new Set(JSON.parse(localStorage.getItem("agents-fold") ?? "[]")); } catch { this.agentsFold = new Set(); }
+    // Orca's "N hidden worktrees": per repo root, its linked worktrees (path, branch, last commit), refreshed each minute.
+    this.trees = {};
+    this.treesOpen = new Set();
+    if (!props()?.overlay) {
+      const refreshTrees = (cx) => cx.spawn(async (cx) => { await this.loadTrees().catch(() => null); cx.notify(); });
+      refreshTrees(cx);
+      cx.timer.every(60000, (cx) => refreshTrees(cx));
+    }
     this.adata.mod = "space-folders";
     if (!props()?.overlay) this.adata.start(cx);
     if (!props()?.overlay) {
@@ -559,7 +567,7 @@ export default class Spaces extends View {
       seen.push({ id: r.w.id, shown: !away, folder: r.folder });
       if (away) return [];
       if (collapsed) return [this.compact(r, t)];
-      const below = this.agentsOf(r, t);
+      const below = [...this.agentsOf(r, t), ...this.hiddenTrees(r, t)];
       // Orca-style: the current space and its agents sit on one faint card.
       if (r.w.active) return [v_flex().id(`card-${r.w.id}`).my(2).rounded(10).border_1().border_color(t.border).bg(t.raised + "66").pb(below.length ? 4 : 0)
         .child(this.row(r, t)).children(below)];
@@ -585,6 +593,61 @@ export default class Spaces extends View {
       }),
       ...placed.filter((r) => !r.folder).flatMap((r) => draw(r, hidden)),
     ];
+  }
+
+  // Linked worktrees of each repo behind a space (main checkouts only; local machine).
+  async loadTrees() {
+    const roots = new Set();
+    for (const g of Object.values(this.git ?? {})) {
+      try { const [on, common] = JSON.parse(g?.repo ?? "[]"); if (!on && common?.endsWith("/.git")) roots.add(common.slice(0, -5)); } catch {}
+    }
+    const out = {};
+    for (const root of roots) {
+      const r = await exec("git", ["-C", root, "worktree", "list", "--porcelain"], { timeout: 8000 }).catch(() => null);
+      const list = []; let cur = null;
+      for (const line of (r?.code === 0 ? r.stdout : "").split("\n")) {
+        if (line.startsWith("worktree ")) { cur = { path: line.slice(9), branch: null, prunable: false }; list.push(cur); }
+        else if (cur && line.startsWith("branch ")) cur.branch = line.slice(7).replace(/^refs\/heads\//, "");
+        else if (cur && line.startsWith("prunable")) cur.prunable = true;
+      }
+      const linked = list.slice(1).filter((w) => !w.prunable);
+      for (const w of linked) {
+        const l = await exec("git", ["-C", w.path, "log", "-1", "--format=%ct"], { timeout: 4000 }).catch(() => null);
+        w.last = Number(l?.stdout?.trim()) || null;
+      }
+      out[root] = linked;
+    }
+    this.trees = out;
+  }
+
+  // Under a repo's own row: its worktrees that have no space open, folded behind one row; a click opens one.
+  hiddenTrees(r, t) {
+    const g = r.g;
+    if (!g || g.linked || r.tree || r.w.machine) return [];
+    let root = null;
+    try { const [, common] = JSON.parse(g.repo ?? "[]"); if (common?.endsWith("/.git")) root = common.slice(0, -5); } catch {}
+    const ps = panes();
+    const opened = spaces().filter((x) => !x.machine).map((x) => place(x, ps)).filter(Boolean);
+    const hidden = (this.trees[root] ?? []).filter((w) => !opened.some((d) => d === w.path || d.startsWith(w.path + "/")));
+    if (!hidden.length) return [];
+    const pad = indent(r.folder, r.nested) + 8;
+    const open = this.treesOpen.has(root);
+    const ago = (s) => { if (!s) return ""; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
+    const head = h_flex().id(`htree-${r.w.id}`).h(22).pl(pad).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
+      .text_size(TS.meta).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.muted))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); open ? this.treesOpen.delete(root) : this.treesOpen.add(root); cx.notify(); })
+      .child(div().flex_1().child(`${hidden.length} other worktree${hidden.length === 1 ? "" : "s"}`))
+      .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).text_color(t.dim)));
+    if (!open) return [head];
+    return [head, ...hidden.map((w, k) => h_flex().id(`htree-${r.w.id}-${k}`).h(24).pl(pad).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
+      .hover((s) => s.bg(t.hover)).tooltip(`${w.path.replace(home(), "~")} — click to open a space here`)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", { name: w.branch ?? w.path.split("/").pop(), folder: w.path }); })
+      .child(div().w(14).flex_none().flex().justify_center().child(svg("mods/workspace-chrome/branch.svg").size(12).text_color(t.dim)))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(t.muted).child(w.branch ?? "(detached)"))
+      .child(div().flex_none().w(26).text_right().text_size(TS.meta).text_color(t.dim).child(ago(w.last)))
+      .child(div().w(TRAIL_W - 26 > 0 ? 4 : 0).flex_none()))];
   }
 
   // The agents working in a space, each followed by its sub-agents; agents another agent started are drawn
