@@ -598,7 +598,7 @@ export default class Spaces extends View {
       .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 196, props: { folderMenu: f.id, machine } }));
     // Built like a space's avatar: a filled 18px tile in the folder's color, its mark in white.
     const tile = h_flex().size(18).flex_none().rounded(5).items_center().justify_center().bg(f.color ? (MARK[f.color] ?? f.color) : t.dim)
-      .child(svg("mods/workspace-chrome/folder.svg").size(13).text_color("#ffffff"));
+      .child(svg("mods/workspace-chrome/folder.svg").size(12).mt(1).ml(1).text_color("#ffffff")); // Lucide's folder sits high-left
     if (collapsed) return head.justify_center().child(tile);
     return head
       .child(tile)
@@ -847,10 +847,9 @@ export default class Spaces extends View {
   rowMenu(w, g) {
     let root = null, on = null;
     try { const [o, common] = JSON.parse(g?.repo ?? "[]"); on = o; if (common?.endsWith("/.git")) root = common.slice(0, -5); } catch {}
-    if (!root) return this.menu(w);
-    const items = g.linked ? 3 : 4;
+    const items = (root ? (g.linked ? 2 : 3) : 0) + 2;
     openOverlay({ mod: "space-folders", kind: "popup", width: 220, height: 12 + items * 31 + 9,
-      props: { spaceMenu: w.id, root, on, linked: Boolean(g.linked), top: g.top ?? null } });
+      props: { spaceMenu: w.id, root, on, linked: Boolean(g?.linked), top: g?.top ?? null } });
   }
 
   spaceMenuView(t) {
@@ -861,16 +860,18 @@ export default class Spaces extends View {
       .child(div().w(14).flex_none().flex().justify_center().child(svg(icon.includes("/") ? icon : `mods/workspace-chrome/${icon}.svg`).size(13).text_color(danger ? t.blocked : t.muted)))
       .child(div().flex_1().child(label));
     const team = () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { repo: linked && top ? top : root } });
-    const rows = linked
+    const rows = !root ? [] : linked
       ? [item("sm-team", "mods/space-folders/team.svg", "Start an agent team…", team),
          item("sm-del", "x", "Delete this worktree…", () => wt({ wt: "remove", path: top }, 280), true)]
       : [item("sm-new", "plus", "New worktree…", () => wt({ wt: "new" }, 400)),
          item("sm-team", "mods/space-folders/team.svg", "Start an agent team…", team),
          item("sm-clean", "archive", "Clean up worktrees…", () => wt({ wt: "clean" }, 420))];
+    // Herdr's own space actions, same look as ours (its menu mod would draw a different one).
     return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_size(12.5)
       .children(rows)
-      .child(div().mx(6).my(3).h(1).bg(t.border))
-      .child(item("sm-more", "settings", "Space options…", () => openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id } } })));
+      .when(rows.length > 0, (el) => el.child(div().mx(6).my(3).h(1).bg(t.border)))
+      .child(item("sm-rename", "square-pen", "Rename", () => run("space.rename", { id })))
+      .child(item("sm-close", "x", "Close", () => run("space.close", { id })));
   }
 
   compact({ w, i }, t) {
