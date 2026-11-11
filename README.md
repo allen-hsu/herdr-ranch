@@ -43,6 +43,7 @@ Personal config stays in `~/.config/herdr-app` and is never committed — start 
 | `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |
 | `agents-ctx` | Herdr's agent list (cloned) + a context-used badge per Claude agent. |
 | `changes-plus` | Herdr's shipped Changes panel (0.1.14) with GitHub-like colored diffs. A frozen clone: re-clone and re-apply `diffRow` when Herdr updates `changes`. |
+| `agent-toast` | Replaces Herdr's notification look (layout root `"toast"`). Agent toasts say which agent: Finished / Needs you, its session name, space · branch · tab, what you last asked, and its last reply or the question / tool it is waiting on. Other notifications look as before. |
 | `layout-switch`, `stack-tabs`, `title-strip` | Top-right layout switcher + panel toggle; tab strip for stack nodes (`sync_panels` registers its tabs in Herdr's per-space panel memory); plain title strip. |
 
 The right panel *is* Herdr's own `panel` / `panel-body`, so the tab bar's Files and Changes buttons open
@@ -77,7 +78,7 @@ snippets, owner-only (0700/0600).
 ```
 mods/              our mods (one folder per mod, copied into ~/.config/herdr-app/mods)
 lib/               code shared by several mods: prs.js (GitHub PR badges), folders.js (space-folders
-                   state), codexlog.py (Codex sessions). A mod lists what it needs in lib.json; the
+                   state), codexlog.py (Codex sessions), live.py (what each agent is doing now). A mod lists what it needs in lib.json; the
                    installer copies those files into the installed mod (Herdr mods can't import across mods)
 layouts/           overview.json, focus.json
 vendor.json        third-party mods installed unchanged at a pinned commit (none right now)
