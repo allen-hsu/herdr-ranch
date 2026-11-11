@@ -150,23 +150,28 @@ export default class AgentTeam extends View {
   // ---------- Team Map (sequence diagram) ----------
   columns(d) {
     const cols = [{ key: "lead", ids: [d.lead?.id, "lead"], name: d.lead?.name ?? this.addr, vendor: AGENT[d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent] ?? d.lead?.agent ?? "",
-      status: d.lead?.status?.state ?? "idle", state: "live", doing: d.lead?.status?.msg ?? "", lead: true }];
+      status: d.lead?.status?.state ?? "idle", state: "live", doing: d.lead?.status?.msg ?? "", lead: true, addr: d.lead?.id }];
     const herdr = [...(d.herdr ?? [])].sort((a, b) => (a.state === "live" ? 0 : 1) - (b.state === "live" ? 0 : 1));
     const subs = [...(d.subs ?? [])].sort((a, b) => (a.state === "finished" ? 1 : 0) - (b.state === "finished" ? 1 : 0) || (b.last ?? 0) - (a.last ?? 0));
     const recent = new Set((d.events ?? []).slice(0, 40).map((e) => e.who));
     const pool = [...herdr, ...subs.filter((s) => s.state !== "finished" || recent.has(s.id)),
-      ...(d.sessions ?? []).map((s) => ({ id: s.id, name: s.name, agent: "session", state: "live", status: "idle", kind: "session" }))];
+      ...(d.sessions ?? []).map((s) => ({ id: s.id, name: s.name, agent: "session", state: "live", status: "idle", kind: "session", addr: s.addr }))];
     for (const m of pool.slice(0, 7)) cols.push({ key: m.id, ids: [m.id, m.name], name: m.name, vendor: m.kind === "session" ? "Claude session" : m.kind === "sub" ? `subagent · ${m.type ?? ""}` : `${AGENT[m.agent] ?? m.agent ?? ""}${m.template ? ` · ${m.template}` : ""}`,
-      status: m.status, state: m.state, doing: this.doing(m), addr: m.kind === "herdr" && m.state === "live" ? m.id : null, out: m.out, ctx: m.ctx });
+      status: m.status, state: m.state, doing: this.doing(m), addr: m.kind === "herdr" && m.state === "live" ? m.id : m.kind === "session" ? m.addr : null,
+      out: m.out, ctx: m.ctx, m });
     if (pool.length > 7) cols.push({ key: "others", ids: [], name: `${pool.length - 7} more`, vendor: "", status: "idle", state: "finished", doing: "", others: true });
     return cols;
   }
 
   card(t, c, i, w) {
     const dotC = c.state === "finished" ? t.dim : c.status === "blocked" || c.status === "error" ? t.blocked : c.status === "working" ? t.working : t.done;
+    const sel = this.sel === c.key;
     return v_flex().id(`mc-${i}`).w(w).h(84).flex_none().px(8).py(6).gap(1).rounded(8).border_1()
-      .border_color(c.lead ? t.accent : t.border).bg(t.surface)
-      .when(Boolean(c.addr), (e) => e.cursor_pointer().hover((x) => x.bg(t.hover)).tooltip("Go to this agent").on_click(() => run("agent.focus", { terminal: c.addr })))
+      .border_color(sel ? t.accent : t.border).bg(sel ? t.selected ?? t.raised : t.surface).cursor_pointer().hover((x) => x.bg(t.hover))
+      .when(c.lead && !sel, (e) => e.border_dashed())
+      .tooltip(sel ? "Click again to close details" : "Details")
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { this.sel = sel ? null : c.key; cx.notify(); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(7).h(7).rounded(4).flex_none().bg(dotC).when(c.status === "working" && c.state !== "finished", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })))
         .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_semibold().text_color(t.foreground).child(c.name)))
@@ -190,8 +195,10 @@ export default class AgentTeam extends View {
     if (!d) return root.child(note("Reading…"));
     if (!d.ok) return root.child(note(`Unavailable: ${d.error}`));
     const cols = this.columns(d);
+    if (this.sel && !cols.some((c) => c.key === this.sel)) this.sel = null;
+    const DRAWER = this.sel ? 330 : 0;
     const GUT = 46, PAD = 12, ROW = 40;
-    const colW = Math.max(110, (this.w - GUT - PAD * 2) / cols.length);
+    const colW = Math.max(110, (this.w - DRAWER - GUT - PAD * 2) / cols.length);
     const cx = (i) => GUT + PAD + colW * i + colW / 2;
     const idx = (who) => { const i = cols.findIndex((c) => c.ids.includes(who)); return i >= 0 ? i : cols.findIndex((c) => c.others); };
     const evs = [...(d.events ?? [])].slice(0, 36).reverse();
@@ -211,11 +218,12 @@ export default class AgentTeam extends View {
       lastDay = day;
       body.child(div().absolute().left(6).top(y + 12).w(GUT - 6).text_size(10).text_color(t.dim).child(e.at ? hm(e.at) : ""));
       if (m < 0) return;
-      const tip = `${clock(e.at)} ${e.name ?? e.who ?? ""}${e.times ? ` ×${e.times}` : ""}
-${e.text}`;
+      const tip = `${clock(e.at)} ${e.name ?? e.who ?? ""}${e.times ? ` ×${e.times}` : ""}\n${e.text}`;
+      const selIdx = this.sel ? cols.findIndex((c) => c.key === this.sel) : -1;
+      const faded = selIdx > 0 && m !== selIdx;
       if (e.k === "note") {
         const done = e.status === "completed";
-        body.child(div().id(`mn-${r}`).absolute().left(cx(m) - 60).top(y + 8).w(120).h(20).flex().items_center().justify_center().rounded(10).border_1()
+        body.child(div().id(`mn-${r}`).absolute().left(cx(m) - 60).when(faded, (x) => x.opacity(0.25)).top(y + 8).w(120).h(20).flex().items_center().justify_center().rounded(10).border_1()
           .border_color(done ? t.done : t.border).bg(t.surface).text_size(10).text_color(done ? t.done : t.muted).tooltip(tip)
           .child(`${done ? "✓ finished" : "● " + (e.text.includes("waiting") ? "waiting" : e.status || "notice")}${e.times ? ` ×${e.times}` : ""}`));
         return;
@@ -227,19 +235,55 @@ ${e.text}`;
       const spawn = e.k === "spawn" || e.k === "hc-run";
       const color = spawn ? t.working : fromLead ? t.muted : t.accent;
       const label = spawn ? `✦ start${e.agent ? ` ${e.agent}` : ""}: ${e.text}` : e.text;
-      body.child(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(10.5)
-        .text_color(spawn ? t.working : t.foreground).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`));
-      if (spawn) for (let x = x1; x < x2 - 4; x += 9) body.child(div().absolute().left(x).top(y + 22).w(Math.min(5, x2 - x)).h(2).rounded(1).bg(color));
-      else body.child(div().absolute().left(x1).top(y + 22).w(x2 - x1).h(2).rounded(1).bg(color));
-      body.child(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(11).text_color(color).child(right ? "▶" : "◀"));
+      const fade = (el) => (faded ? el.opacity(0.2) : el);
+      body.child(fade(div().id(`ml-${r}`).absolute().left(x1 + 6).top(y + 2).w(x2 - x1 - 12).truncate().text_size(10.5)
+        .text_color(spawn ? t.working : t.foreground).tooltip(tip).child(`${label}${e.times ? ` ×${e.times}` : ""}`)));
+      if (spawn) for (let x = x1; x < x2 - 4; x += 9) body.child(fade(div().absolute().left(x).top(y + 22).w(Math.min(5, x2 - x)).h(2).rounded(1).bg(color)));
+      else body.child(fade(div().absolute().left(x1).top(y + 22).w(x2 - x1).h(2).rounded(1).bg(color)));
+      body.child(fade(div().absolute().left(right ? x2 - 7 : x1 - 1).top(y + 15).text_size(11).text_color(color).child(right ? "▶" : "◀")));
     });
     const cards = h_flex().pl(GUT + PAD).pr(PAD).pt(10).pb(8).flex_none().children(cols.map((c, i) => div().w(colW).flex_none().px(4).child(this.card(t, c, i, colW - 8))));
-    return root
+    const diagram = v_flex().flex_1().min_w(0).h_full()
       .child(cards)
-      .child(evs.length ? v_flex().id("mp-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body) : note("No messages yet. Arrows appear as the lead starts agents and they report back."))
+      .child(evs.length ? v_flex().id("mp-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body) : note("No messages yet. Arrows appear as the lead starts agents and they report back."));
+    const selCol = cols.find((c) => c.key === this.sel);
+    return root
+      .child(h_flex().flex_1().min_h(0).child(diagram).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
       .child(h_flex().h(28).px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim).flex_none()
         .child(div().child("── lead → member")).child(div().text_color(t.accent).child("── reply")).child(div().text_color(t.working).child("╌╌ started"))
-        .child(div().child("✓ finished")).child(div().flex_1()).child(div().child("Hover for full text · click a card to jump")));
+        .child(div().child("✓ finished")).child(div().flex_1()).child(div().child("Hover for full text · click a card for details")));
+  }
+
+  drawer(t, d, c) {
+    const m = c.m ?? {};
+    const mine = (e) => c.lead ? true : c.ids.includes(e.who);
+    const evs = (d.events ?? []).filter(mine);
+    const spawn = evs.find((e) => e.k === "spawn" || e.k === "hc-run");
+    const sec = (title) => div().pt(12).pb(4).text_size(10).font_medium().text_color(t.dim).child(title.toUpperCase());
+    const para = (txt, color) => div().text_size(11).text_color(color ?? t.muted).child(txt);
+    const out = [];
+    out.push(h_flex().gap(8).items_center()
+      .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(c.name))
+      .child(div().id("dr-x").size(22).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.sel = null; cx.notify(); }).child("×")));
+    out.push(div().text_size(10.5).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.state === "finished" ? "finished" : m.status, m.out ? `${k(m.out)} tokens out` : "", m.ctx != null ? `context ${Math.round(m.ctx)}%` : "", m.started ? `started ${since(m.started)} ago` : ""].filter(Boolean).join(" · ")));
+    if (c.addr) out.push(div().id("dr-go").mt(8).h(28).px(10).flex().items_center().justify_center().rounded(7).bg(t.accent).text_size(11.5).text_color(t.accent_foreground ?? "#fff")
+      .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: c.addr })).child("Go to agent"));
+    if (c.doing) { out.push(sec("Now")); out.push(para(c.doing, t.foreground)); }
+    if (spawn?.prompt && !c.lead) { out.push(sec("Task it was given")); out.push(para(spawn.prompt)); }
+    if ((m.steps ?? []).length) { out.push(sec("Recent steps")); for (const [i, st] of [...m.steps].reverse().entries()) out.push(div().id(`dr-st-${i}`).truncate().text_size(10.5).text_color(t.muted).child(`▸ ${st.tool}${st.target ? ` · ${st.target}` : ""}`)); }
+    if ((m.screen ?? []).length) { out.push(sec("Screen")); out.push(v_flex().p(6).rounded(6).bg(t.surface).children(m.screen.map((l, i) => div().id(`dr-sc-${i}`).truncate().text_size(10).text_color(t.muted).font_family("Menlo").child(l)))); }
+    const msgs = evs.filter((e) => e.k !== "spawn" && e.k !== "hc-run").slice(0, c.lead ? 12 : 30);
+    out.push(sec(c.lead ? "Latest messages" : `Messages with the lead (${msgs.length})`));
+    if (!msgs.length) out.push(para("None yet."));
+    for (const [i, e] of msgs.entries()) {
+      const dir = e.k === "from" ? `← ${c.lead ? e.name ?? e.who : "to lead"}` : e.k === "note" ? "✓ notice" : `→ ${c.lead ? e.name ?? e.who : "from lead"}`;
+      out.push(v_flex().id(`dr-m-${i}`).mt(4).p(6).rounded(6).bg(t.surface).gap(2)
+        .child(h_flex().gap(6).text_size(10).child(div().text_color(e.k === "from" ? t.accent : t.dim).child(dir)).child(div().flex_1()).child(div().text_color(t.dim).child(clock(e.at))))
+        .child(div().text_size(10.5).text_color(t.foreground).child((e.full || e.text || "").slice(0, 500))));
+    }
+    return v_flex().id("mp-drawer").w(330).h_full().flex_none().border_l(1).border_color(t.border).bg(t.chrome)
+      .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(14).py(12).overflow_y_scrollbar().children(out));
   }
 
   render() {

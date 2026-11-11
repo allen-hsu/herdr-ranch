@@ -17,7 +17,7 @@ import live  # noqa: E402  (shared lib, copied in by install.sh)
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
-VERSION = 5
+VERSION = 6
 red = live.clean
 TAG = re.compile(r"<(agent-message|hc|cross-session-message)\b([^>]*)>(.*?)</\1>", re.S)
 NOTE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
@@ -90,6 +90,8 @@ def herdr_members(lead):
             if t.get("state") == "live":
                 info = live.info_for(t["address"])
                 m.update({k: info.get(k) for k in ("task", "tool", "text", "ctx", "cost", "model", "program")})
+                if not info.get("session"):
+                    m["screen"] = screen_tail(t["address"])
             res.append(m)
             if depth < 2:
                 add(t["address"], depth + 1)
@@ -106,6 +108,29 @@ def lead_session(lead):
         return g, None, None
     paths = glob.glob(os.path.join(HOME, ".claude", "projects", "*", "%s.jsonl" % sess.get("sessionId")))
     return g, sess, (paths[0] if paths else None)
+
+
+def recent_steps(records, n=8):
+    """The last n tool calls (name + target) in a Claude transcript tail."""
+    steps = []
+    for r in records:
+        if r.get("type") != "assistant":
+            continue
+        for b in (r.get("message") or {}).get("content") or []:
+            if isinstance(b, dict) and b.get("type") == "tool_use":
+                nm = b.get("name", "?")
+                steps.append({"tool": nm.split("__")[-1] if nm.startswith("mcp__") else nm, "target": red(live.target(nm, b.get("input")), 90)})
+    return steps[-n:]
+
+
+def screen_tail(addr, n=12):
+    """Last lines of a terminal's screen, for agents whose transcripts we can't read (Codex, Grok, ...)."""
+    try:
+        r = subprocess.run(["hc", "read", "--lines", "0", addr], capture_output=True, text=True, timeout=4)
+    except Exception:
+        return []
+    lines = [red(l.strip(" │╭╮╰╯─"), 140) for l in r.stdout.splitlines()]
+    return [l for l in lines if l][-n:]
 
 
 def subagents(path):
@@ -148,7 +173,9 @@ def subagents(path):
             m["started"] = ts(json.loads(first).get("timestamp") or "") if first else None
             m.update({k: v for k, v in live.claude_live(jl).items() if k in ("tool", "text")})
             outs = 0
-            for line in live.tail_records(jl, 1 << 22):
+            recs = live.tail_records(jl, 1 << 22)
+            m["steps"] = recent_steps(recs)
+            for line in recs:
                 u = ((line.get("message") or {}).get("usage") or {}) if line.get("type") == "assistant" else {}
                 outs += u.get("output_tokens") or 0
             m["out"] = outs
@@ -196,12 +223,14 @@ def timeline(path, names):
                 n, i = b.get("name"), b.get("input") or {}
                 if n in ("Agent", "Task"):
                     ev.append({"at": at, "k": "spawn", "who": None, "tool": b.get("id"), "agent": i.get("subagent_type") or "general-purpose",
-                               "text": red(i.get("description") or "", 80), "bg": bool(i.get("run_in_background"))})
+                               "text": red(i.get("description") or "", 80), "bg": bool(i.get("run_in_background")),
+                               "prompt": red(i.get("prompt") or "", 900)})
                 elif n == "SendMessage":
                     to = str(i.get("to") or i.get("recipient") or "")
                     who = to.split("/")[-1].replace(".sock", "") if to.startswith("uds:") else to
                     kind = "session" if to.startswith("uds:") else "sub"
-                    ev.append({"at": at, "k": "to", "who": who, "via": kind, "text": red(i.get("summary") or i.get("message") or "", 140)})
+                    ev.append({"at": at, "k": "to", "who": who, "via": kind, "text": red(i.get("summary") or i.get("message") or "", 140),
+                               "full": red(i.get("message") or i.get("summary") or "", 1200)})
                     bump(who, "to")
                 elif n == "Bash":
                     cmd = str(i.get("command") or "")
@@ -211,7 +240,7 @@ def timeline(path, names):
                         name = re.search(r"--name[ =](\S+)", rest)
                         tgt = name.group(1) if name else (rest.split()[0] if mm.group(1) == "send" and rest else first_program(rest))
                         ev.append({"at": at, "k": "hc-" + mm.group(1), "who": tgt, "via": "herdr",
-                                   "text": red(i.get("description") or rest, 140)})
+                                   "text": red(i.get("description") or rest, 140), "prompt": red(rest, 900)})
                         if tgt:
                             bump(tgt, "to")
         elif r.get("type") == "user":
@@ -234,7 +263,7 @@ def timeline(path, names):
                 else:
                     who, via = a.get("from", "?").split("/")[-1].replace(".sock", ""), "session"
                     names.setdefault(who, a.get("from-name") or who)
-                ev.append({"at": at, "k": "from", "who": who, "via": via, "text": red(body, 160)})
+                ev.append({"at": at, "k": "from", "who": who, "via": via, "text": red(body, 160), "full": red(body, 1200)})
                 bump(who, "from")
             for body in NOTE.findall(s):
                 tid = re.search(r"<task-id>(.*?)</task-id>", body)
@@ -258,7 +287,18 @@ def timeline(path, names):
             p["at"] = e["at"]
         else:
             merged.append(e)
-    return merged[-80:][::-1], counts
+    return merged[-150:][::-1], counts
+
+
+def terminal_of_pid():
+    """pid -> live terminal address (Claude sessions are keyed by their pid)."""
+    res = {}
+    for t in (hc_json("ls") or {}).get("terminals") or []:
+        g = hc_json("get", t["address"]) or {}
+        pid = (g.get("foreground") or {}).get("pid")
+        if pid:
+            res[str(pid)] = t["address"]
+    return res
 
 
 def sessions_by_pid():
@@ -309,10 +349,11 @@ def main():
         c = counts.get(m["id"]) or counts.get(m["name"]) or {}
         m["msgs_to"], m["msgs_from"] = c.get("to", 0), c.get("from", 0)
     sessions = sorted({e["who"] for e in events if e.get("via") == "session" and e.get("who")})
+    tp = terminal_of_pid() if sessions else {}
     out(ok=True, lead={"id": lead, "name": (sess or {}).get("name") or g.get("title") or lead, "agent": (g.get("foreground") or {}).get("argv", [""])[0],
                        "status": g.get("status"), "claude": bool(path)},
         herdr=members, subs=subs, events=events,
-        sessions=[{"id": s, "name": sessions_by_pid().get(s, s)} for s in sessions])
+        sessions=[{"id": s, "name": sessions_by_pid().get(s, s), "addr": tp.get(s)} for s in sessions])
 
 
 if __name__ == "__main__":
