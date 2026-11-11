@@ -8,7 +8,7 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, spaces, panes, agents, run, openOverlay, notify, home, shared, setShared } from "herdr";
 import { mainRoot, list, inspect, remove, prune, repoName } from "./wt.js";
-import { TS } from "./ui.js";
+import { TS, SPACE } from "./ui.js";
 
 const CACHE = "worktrees.scan"; // shared: { at, repos: [...], orphans: [...] } so pill and window agree
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
@@ -94,7 +94,7 @@ export class ResourcesPill {
   render(t) {
     const s = totals(shared(CACHE));
     return h_flex().id("wt-pill").size_full().px(8).gap(6).items_center().justify_end().text_size(TS.meta).text_color(t.dim)
-      .child(h_flex().id("wt-pill-btn").h(20).px(7).gap(5).items_center().rounded(5).cursor_pointer().hover((st) => st.bg(t.hover).text_color(t.foreground))
+      .child(h_flex().id("wt-pill-btn").h(20).px(7).gap(6).items_center().rounded(5).cursor_pointer().hover((st) => st.bg(t.hover).text_color(t.foreground))
         .tooltip("Worktrees across your repos: state, size, what can be cleaned")
         .on_click(() => openOverlay({ mod: "worktrees", kind: "window", key: "worktree-resources", width: 560, height: 680, props: { view: "window" } }))
         .child(svg("mods/workspace-chrome/git-branch.svg").size(12))
@@ -274,7 +274,7 @@ export class ResourcesWindow {
     });
     if (!rows.length) rows.push(div().p(14).text_size(TS.body).text_color(t.dim).child("No terminals open."));
     return v_flex().size_full()
-      .child(h_flex().px(14).py(10).gap(8).items_center().border_b(1).border_color(t.border)
+      .child(h_flex().px(SPACE.dialog).py(10).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().text_size(TS.title).font_semibold().text_color(t.foreground).child(`${tot.cpu.toFixed(1)}%`))
         .child(div().text_size(TS.meta).text_color(t.dim).child("CPU"))
         .child(div().text_color(t.dim).child("·"))
@@ -283,12 +283,12 @@ export class ResourcesWindow {
       .child(h_flex().h(26).px(10).gap(6).items_center().text_size(TS.small).text_color(t.dim).border_b(1).border_color(t.border)
         .child(div().flex_1().pl(18).child("Name")).child(div().w(80)).child(div().w(60).text_right().child("CPU")).child(div().w(76).text_right().child("Memory")))
       .child(v_flex().id("rm-tree").flex_1().min_h(0).overflow_y_scrollbar().children(rows))
-      .child(div().px(10).pt(8).child(h_flex().id("rm-clean").h(36).px(14).items_center().rounded(8).border_1().border_color(t.border).cursor_pointer()
+      .child(div().px(10).pt(8).child(h_flex().id("rm-clean").h(36).px(SPACE.dialog).items_center().rounded(8).border_1().border_color(t.border).cursor_pointer()
         .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.view = "cleanup"; cx.notify(); })
         .child(div().flex_1().text_size(TS.item).text_color(t.foreground).child("Clean up worktrees"))
         .when(cleanable > 0, (e) => e.child(div().mr(8).text_size(TS.meta).text_color(t.working).child(`${cleanable} cleanable`)))
         .child(div().text_color(t.dim).child("›"))))
-      .child(h_flex().px(14).py(10).gap(10).items_center().text_size(TS.body)
+      .child(h_flex().px(SPACE.dialog).py(10).gap(10).items_center().text_size(TS.body)
         .child(div().text_color(t.foreground).font_medium().child("Disk"))
         .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${size(s.kb)} in ${s.count} linked worktree${s.count === 1 ? "" : "s"} · updated ${this.scannedAt ? ago(this.scannedAt / 1000) + " ago" : "now"}`))
         .child(this.iconBtn(t, "rm-disk-refresh", this.scanning ? "…" : "↻", "Rescan worktrees and sizes", (_e, cx) => this.refresh(cx)))
@@ -330,12 +330,12 @@ export class ResourcesWindow {
       .border_1().border_color(t.border).hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(action).child(label);
     return v_flex().size_full()
       .child(v_flex().id("res-list").flex_1().min_h(0).overflow_y_scrollbar().pb(8).children(body))
-      .child(div().px(14).pt(6).text_size(TS.small).text_color(t.dim).child("Can be selected: stale, or merged with nothing uncommitted / unpushed and no agent working. Deleting removes the folder and the branch (kept if unmerged)."))
-      .child(h_flex().h(50).px(14).gap(8).items_center().flex_none()
+      .child(div().px(SPACE.dialog).pt(6).text_size(TS.small).text_color(t.dim).child("Can be selected: stale, or merged with nothing uncommitted / unpushed and no agent working. Deleting removes the folder and the branch (kept if unmerged)."))
+      .child(h_flex().h(50).px(SPACE.dialog).gap(8).items_center().flex_none()
         .child(small("res-all", `Select all cleanable (${cleanable.length})`, (_e, cx) => { for (const w of cleanable) this.picked.add(w.path); cx.notify(); }))
         .child(small("res-none", "Clear", (_e, cx) => { this.picked.clear(); cx.notify(); }))
         .child(div().flex_1())
-        .child(div().id("res-clean").flex_none().h(30).px(14).flex().items_center().rounded(7).text_size(TS.body)
+        .child(div().id("res-clean").flex_none().h(30).px(SPACE.dialog).flex().items_center().rounded(7).text_size(TS.body)
           .bg(n && !this.busy ? t.blocked : t.raised).text_color(n && !this.busy ? (t.solid_foreground ?? "#fff") : t.dim)
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .when(n > 0 && !this.busy, (e) => e.cursor_pointer().on_click((_e, cx) => cx.spawn(async (cx) => this.clean(cx))))

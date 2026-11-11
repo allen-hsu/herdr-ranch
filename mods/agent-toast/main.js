@@ -136,7 +136,7 @@ export default class AgentToast extends View {
         .when(!login && Boolean(p.body), (el) => el.child(div().truncate().text_size(TS.body).text_color(t.muted).child(p.body ?? "")))
         .when(Boolean(login), (el) => el.child(h_flex().gap(8).items_center()
           .child(div().flex_1().min_w(0).truncate().tooltip(command).text_size(TS.body).text_color(t.muted).child(command))
-          .child(div().id("toast-login-copy").flex_none().px(6).py(3).rounded(4).bg(t.raised).text_size(TS.body).text_color(t.foreground).cursor_pointer()
+          .child(div().id("toast-login-copy").flex_none().px(6).py(4).rounded(4).bg(t.raised).text_size(TS.body).text_color(t.foreground).cursor_pointer()
             .hover((s) => s.bg(t.hover)).on_click((_e, cx) => { cx.stop_propagation(); cx.write_to_clipboard(command); this.copied = true; cx.notify(); })
             .child(this.copied ? "Copied" : "Copy"))))));
   }

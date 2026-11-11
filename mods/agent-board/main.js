@@ -29,8 +29,8 @@ const setFilter = (f) => setShared(FILTER, f);
 function statusDots(t, items) {
   const counts = {};
   for (const a of items) counts[norm(a.status)] = (counts[norm(a.status)] ?? 0) + 1;
-  return h_flex().gap(7).items_center().children(COLUMNS.map((c) => c.status).filter((s) => counts[s]).map((s) =>
-    h_flex().gap(3).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(counts[s])))));
+  return h_flex().gap(8).items_center().children(COLUMNS.map((c) => c.status).filter((s) => counts[s]).map((s) =>
+    h_flex().gap(4).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(counts[s])))));
 }
 
 export default class AgentBoard extends View {

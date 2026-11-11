@@ -28,7 +28,7 @@ export default class BoardPicker extends View {
     const c = {};
     for (const a of items) c[norm(a.status)] = (c[norm(a.status)] ?? 0) + 1;
     return h_flex().flex_none().gap(6).items_center().children(ORDER.filter((s) => c[s]).map((s) =>
-      h_flex().gap(3).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(c[s])))));
+      h_flex().gap(4).items_center().child(div().w(6).h(6).rounded(3).bg(t[s] ?? t.dim)).child(div().text_size(TS.small).text_color(t.dim).child(String(c[s])))));
   }
 
   render() {

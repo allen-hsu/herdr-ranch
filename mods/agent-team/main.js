@@ -12,7 +12,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
 import { NewTeam } from "./newteam.js";
 import { agentName } from "./agentname.js";
-import { TS } from "./ui.js";
+import { TS, SPACE } from "./ui.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -59,11 +59,11 @@ export default class AgentTeam extends View {
   }
 
   h(t, title, right) {
-    return h_flex().px(14).pt(14).pb(6).gap(6).items_center().text_size(TS.small).font_medium()
+    return h_flex().px(SPACE.dialog).pt(14).pb(6).gap(6).items_center().text_size(TS.small).font_medium()
       .child(div().text_color(t.dim).child(title.toUpperCase())).child(div().flex_1())
       .when(right != null, (el) => el.child(div().text_color(t.dim).child(String(right))));
   }
-  note(t, s) { return div().px(14).py(3).text_size(TS.small).text_color(t.dim).child(s); }
+  note(t, s) { return div().px(SPACE.dialog).py(4).text_size(TS.small).text_color(t.dim).child(s); }
   dot(t, m) {
     const c = m.state === "finished" ? t.dim : m.status === "blocked" ? t.blocked : m.status === "working" ? t.working : m.status === "error" ? t.blocked : t.done;
     return div().w(7).h(7).rounded(4).flex_none().bg(c).when(m.status === "working" && m.state !== "finished", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 }));
@@ -85,7 +85,7 @@ export default class AgentTeam extends View {
     const who = kind === "herdr" ? `${AGENT[m.agent] ?? m.agent ?? "program"}${m.template ? ` · ${m.template}` : ""}` : `${m.type ?? "subagent"}${m.background ? " · background" : ""}`;
     const right = [m.ctx != null ? `${Math.round(m.ctx)}%` : "", m.out ? `${k(m.out)} out` : ""].filter(Boolean).join(" · ");
     const jump = kind === "herdr" && m.state === "live";
-    return h_flex().id(`tm-${kind}-${i}`).px(14).py(5).gap(8).items_start().pl(14 + ((m.depth ?? 1) - 1) * 14)
+    return h_flex().id(`tm-${kind}-${i}`).px(SPACE.dialog).py(6).gap(8).items_start().pl(14 + ((m.depth ?? 1) - 1) * 14)
       .when(jump, (e) => e.cursor_pointer().hover((x) => x.bg(t.hover)).tooltip("Go to this agent").on_click(() => run("agent.focus", { terminal: m.id })))
       .child(div().mt(4).child(this.dot(t, m)))
       .child(v_flex().flex_1().min_w(0).gap(1)
@@ -102,7 +102,7 @@ export default class AgentTeam extends View {
     const color = e.k === "from" ? t.accent : e.k === "note" ? (e.status === "completed" ? t.done : t.dim) : e.k.startsWith("hc") || e.k === "spawn" ? t.working : t.muted;
     const via = e.via === "herdr" ? "Herdr" : e.via === "session" ? "session" : e.via === "sub" ? "subagent" : "";
     const what = e.k === "spawn" ? `started ${e.agent ?? "subagent"}${e.bg ? " (background)" : ""}` : e.k === "hc-run" ? "started in Herdr" : "";
-    return h_flex().id(`te-${i}`).px(14).py(3).gap(6).items_start().text_size(TS.small)
+    return h_flex().id(`te-${i}`).px(SPACE.dialog).py(4).gap(6).items_start().text_size(TS.small)
       .tooltip(`${clock(e.at)} ${glyph} ${e.name ?? e.who ?? ""} (${via})${e.times ? ` ×${e.times}` : ""}\n${e.text}`)
       .child(div().flex_none().w(34).text_color(t.dim).child(clock(e.at)))
       .child(div().flex_none().w(10).text_color(color).child(glyph))
@@ -121,7 +121,7 @@ export default class AgentTeam extends View {
     if (!d.ok) return note(`Unavailable: ${d.error}`);
     const herdr = d.herdr ?? [], subs = d.subs ?? [];
     const running = subs.filter((s) => s.state !== "finished");
-    const out = [v_flex().px(14).pt(12).gap(2)
+    const out = [v_flex().px(SPACE.dialog).pt(12).gap(2)
       .child(div().text_size(TS.item).font_semibold().text_color(t.foreground).truncate().child(d.lead?.name ?? this.addr))
       .child(div().text_size(TS.small).text_color(t.dim).child(`${herdr.length} Herdr agent${herdr.length === 1 ? "" : "s"} · ${subs.length} subagent${subs.length === 1 ? "" : "s"}${running.length ? ` (${running.length} running)` : ""} · ${(d.sessions ?? []).length} session${(d.sessions ?? []).length === 1 ? "" : "s"}`))];
     if (!herdr.length && !subs.length && !(d.events ?? []).length) {
@@ -137,12 +137,12 @@ export default class AgentTeam extends View {
       const shown = [...running].reverse().concat(this.showDone ? [...done].reverse() : [...done].reverse().slice(0, Math.max(0, 6 - running.length)));
       shown.forEach((m, i) => out.push(this.member(t, m, i, "sub")));
       const hidden = subs.length - shown.length;
-      if (hidden > 0 || this.showDone) out.push(div().id("tm-more").px(14).py(4).text_size(TS.small).text_color(t.accent).cursor_pointer()
+      if (hidden > 0 || this.showDone) out.push(div().id("tm-more").px(SPACE.dialog).py(4).text_size(TS.small).text_color(t.accent).cursor_pointer()
         .on_click((_e, cx) => { this.showDone = !this.showDone; cx.notify(); }).child(this.showDone ? "Show fewer" : `Show ${hidden} more finished`));
     }
     if ((d.sessions ?? []).length) {
       out.push(this.h(t, "Sessions", d.sessions.length));
-      d.sessions.forEach((s, i) => out.push(h_flex().id(`ts-${i}`).px(14).py(3).gap(8).text_size(TS.meta).child(div().text_color(t.accent).child("⇄")).child(div().truncate().text_color(t.foreground).child(s.name))));
+      d.sessions.forEach((s, i) => out.push(h_flex().id(`ts-${i}`).px(SPACE.dialog).py(4).gap(8).text_size(TS.meta).child(div().text_color(t.accent).child("⇄")).child(div().truncate().text_color(t.foreground).child(s.name))));
     }
     out.push(this.h(t, "Timeline", (d.events ?? []).length ? "newest first" : null));
     if (!(d.events ?? []).length) out.push(this.note(t, "No messages yet."));
@@ -190,7 +190,7 @@ export default class AgentTeam extends View {
   mapView(t) {
     const d = this.data;
     const note = (s) => div().p(20).text_size(TS.body).text_color(t.dim).child(s);
-    const head = h_flex().h(40).px(14).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
+    const head = h_flex().h(40).px(SPACE.dialog).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
       .child(div().text_size(TS.item).font_semibold().text_color(t.foreground).child("Team map"))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color(t.dim).child(d?.lead ? `· ${agentName(agents().find((x) => x.address === d.lead.id)) || d.lead.name}` : ""))
       .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
@@ -260,16 +260,16 @@ export default class AgentTeam extends View {
       .child(evs.length ? v_flex().id("mp-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body) : note("No messages yet. Arrows appear as the lead starts agents and they report back."));
     const selCol = cols.find((c) => c.key === this.sel);
     const waiting = cols.filter((c) => !c.others && c.state !== "finished" && (c.status === "blocked" || c.status === "error"));
-    const banner = waiting.length ? h_flex().px(14).py(8).gap(10).items_center().flex_none().bg(t.blocked).opacity(0.92)
+    const banner = waiting.length ? h_flex().px(SPACE.dialog).py(8).gap(10).items_center().flex_none().bg(t.blocked).opacity(0.92)
       .child(div().text_size(TS.body).font_semibold().text_color("#fff").child(`⚠ ${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color("#fff").child(waiting[0].doing || "a permission prompt or a question is waiting"))
-      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(3).rounded(6).bg("#ffffff33").text_size(TS.meta).text_color("#fff").cursor_pointer()
+      .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(4).rounded(6).bg("#ffffff33").text_size(TS.meta).text_color("#fff").cursor_pointer()
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: waiting[0].addr })).child("Go to agent")))
       : null;
     return root
       .when(Boolean(banner), (e) => e.child(banner))
       .child(h_flex().flex_1().min_h(0).child(diagram).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
-      .child(h_flex().h(28).px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(TS.tiny).text_color(t.dim).flex_none()
+      .child(h_flex().h(28).px(SPACE.dialog).gap(14).items_center().border_t(1).border_color(t.border).text_size(TS.tiny).text_color(t.dim).flex_none()
         .child(div().child("── lead → member")).child(div().text_color(t.accent).child("── reply")).child(div().text_color(t.working).child("╌╌ started"))
         .child(div().child("✓ finished")).child(div().flex_1()).child(div().child("Hover for full text · click a card for details")));
   }
@@ -303,7 +303,7 @@ export default class AgentTeam extends View {
         .child(div().text_size(TS.small).text_color(t.foreground).child((e.full || e.text || "").slice(0, 500))));
     }
     return v_flex().id("mp-drawer").w(330).h_full().flex_none().border_l(1).border_color(t.border).bg(t.chrome)
-      .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(14).py(12).overflow_y_scrollbar().children(out));
+      .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(SPACE.dialog).py(12).overflow_y_scrollbar().children(out));
   }
 
   render() {

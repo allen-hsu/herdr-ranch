@@ -33,7 +33,7 @@ export default class StackTabs extends View {
     return h_flex().id("stack-tabs").size_full().px(8).gap(2).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .children(kids.map((c) => {
         const on = c.id === active;
-        return div().id(`st-${c.id}`).px(9).py(3).rounded(6).text_size(TS.body).cursor_pointer()
+        return div().id(`st-${c.id}`).px(9).py(4).rounded(6).text_size(TS.body).cursor_pointer()
           .text_color(on ? t.foreground : t.muted).when(on, (el) => el.bg(t.selected).font_medium())
           .hover((s) => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("layout.select", { stack: p.stack, child: c.id }))
