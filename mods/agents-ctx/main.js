@@ -279,7 +279,7 @@ export default class Agents extends View {
       .pl(39)
       .pr(8)
       .rounded(8)
-      .h(26)
+      .h(24)
       .flex_none()
       .gap(0)
       .items_center()
@@ -298,7 +298,7 @@ export default class Agents extends View {
   // ranch: a running Claude Code background subagent under its agent; opens the Team map with it selected.
   bgRow(t, a, b, last) {
     const pic = icon(a.program, 14, t.dim);
-    return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(26).flex_none().items_center().text_size(TS.body)
+    return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(24).flex_none().items_center().text_size(TS.body)
       .hover((s) => s.bg(t.hover)).cursor_pointer().tooltip(`Background subagent${b.type ? ` (${b.type})` : ""} — open in the Team map`)
       .on_click(() => openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address, sel: b.id } }))
       .child(div().self_start().mt(-4).w(9).h(17).mr(4).flex_none().border_l(1.5).border_color(t.input).border_b(1.5).rounded_bl(6).when(!last, (el) => el))
@@ -471,13 +471,14 @@ export default class Agents extends View {
       const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       return h_flex()
         .id(`ag-${a.address}`)
+        .relative()
         .px(8)
-        .h(30)
+        .h(28)
         .flex_none()
         .rounded(8)
         .items_center()
         .gap(9)
-        .when(a.focused, (el) => el.bg(t.selected))
+        .when(a.focused, (el) => el.bg(t.selected).child(div().absolute().left(0).top(7).bottom(7).w(2).rounded(1).bg(t.accent)))
         .cursor_pointer()
         .hover((s) => s.bg(t.hover))
         .on_hover((on, cx) => {
@@ -521,11 +522,11 @@ export default class Agents extends View {
         .id(g.id)
         .px(8)
         .pt(8)
-        .h(30)
+        .h(28)
         .flex_none()
         .gap(6)
         .items_center()
-        .text_size(TS.meta)
+        .text_size(TS.small)
         .font_medium()
         .cursor_pointer()
         .hover((s) => s.text_color(t.foreground))

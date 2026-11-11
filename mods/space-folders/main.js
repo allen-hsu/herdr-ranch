@@ -132,7 +132,7 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
-const rowHeight = ({ tree }) => (tree ? 28 : 30);
+const rowHeight = ({ tree }) => (tree ? 26 : 28);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -575,7 +575,7 @@ export default class Spaces extends View {
     // A folder dragged over this one: a line where it would go, as for spaces.
     const moving = this.moving, aimed = moving && moving.id !== f.id && this.overMove === f.id;
     // As tall as a space's row, with an 18px tile where a space has its avatar.
-    const head = h_flex().relative().id(`folder-${f.id}`).h(30).flex_none().px(collapsed ? 2 : 8).when(!collapsed, (el) => el.pl(indent(null, nested))).gap(9).items_center().rounded(8)
+    const head = h_flex().relative().id(`folder-${f.id}`).h(28).flex_none().px(collapsed ? 2 : 8).when(!collapsed, (el) => el.pl(indent(null, nested))).gap(9).items_center().rounded(8)
       .text_color(t.foreground).cursor_pointer()
       .when(target, (el) => el.bg(t.selected).border_1().border_color(t.accent))
       .when(!target, (el) => el.hover((s) => s.bg(t.hover)))
@@ -785,8 +785,9 @@ export default class Spaces extends View {
     const unread = mine.some((a) => a.status === "done");
     const dot = top === "blocked" || top === "error" ? t.blocked : top === "working" ? t.working : top === "done" ? t.done : null;
     const colors = shared("space.colors") ?? {};
-    const color = colors[w.id] ?? "ansi6";
-    const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+    // Neutral unless the person picked a color for this space (Orca-like: status is the only default color).
+    const color = colors[w.id] ?? null;
+    const fill = !color ? t.raised : color.startsWith("#") ? color : (MARK[color] ?? t[color]);
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -798,6 +799,7 @@ export default class Spaces extends View {
       .rounded(8)
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .when(on, (el) => el.child(div().absolute().left(0).top(7).bottom(7).w(2).rounded(1).bg(t.accent)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
@@ -834,7 +836,7 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(TS.small).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(TS.small).font_bold().text_color(color ? "#ffffff" : t.muted).child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
           .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
