@@ -16,7 +16,8 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
-const WORKTREES_MOD = "worktrees"; // The mod that owns worktree dialogs
+const WORKTREES_MOD = "worktrees";
+const TRAIL_W = 30; // the right-hand column every row shares // The mod that owns worktree dialogs
 const STATUS_RANK = { blocked: 4, error: 4, working: 3, done: 2, idle: 1 };
 
 // A machine's folders live in a file in its home, so every screen showing its
@@ -167,6 +168,7 @@ export default class Spaces extends View {
     // As an overlay of the sidebar: a folder's menu, or the dialog editing one.
     const { folderMenu, edit, machine = null, fresh = false, overlay } = props() ?? {};
     if (folderMenu) { this.folderMenu = { id: folderMenu, machine, overlay }; return; }
+    if (props()?.spaceMenu) { this.spaceMenu = { ...props(), overlay }; return; }
     if (edit) {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
       this.editing = { id: edit, machine, fresh, overlay };
@@ -556,6 +558,16 @@ export default class Spaces extends View {
     ];
   }
 
+  // Every row ends the same way: a fixed-width column (a folder's count + chevron, a space's status dot), with the
+  // row's single ⋯ button right before it on hover — so buttons and badges line up down the whole list.
+  trail() { return h_flex().w(TRAIL_W).flex_none().justify_end().items_center(); }
+  more(t, id, tip, open) {
+    return div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim).text_size(14)
+      .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child("⋯");
+  }
+
   folderHead(f, n, machine, inside, t, collapsed, nested = false) {
     const status = URGENT.find((s) => inside.some((r) => r.w.status === s));
     const target = this.pressed !== null && this.overFolder === f.id;
@@ -583,7 +595,7 @@ export default class Spaces extends View {
       })
       .on_hover((h, cx) => { if (h) this.hoveredFolder = f.id; else if (this.hoveredFolder === f.id) this.hoveredFolder = null; cx.notify(); })
       .on_click(() => this.toggleFolder(machine, f.id))
-      .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 160, props: { folderMenu: f.id, machine } }));
+      .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 196, props: { folderMenu: f.id, machine } }));
     // Built like a space's avatar: a filled 18px tile in the folder's color, its mark in white.
     const tile = h_flex().size(18).flex_none().rounded(5).items_center().justify_center().bg(f.color ? (MARK[f.color] ?? f.color) : t.dim)
       .child(svg("mods/workspace-chrome/folder.svg").size(13).text_color("#ffffff"));
@@ -594,15 +606,11 @@ export default class Spaces extends View {
       // Folded, it still says when something in it is running or needs you.
       .when(f.folded && status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(f.folded && Boolean(status) && status !== "working", (el) => el.child(div().flex_none().text_color(tone(t, status)).child(glyph(status))))
-      .when(!machine && this.hoveredFolder === f.id, (el) => el.child(div().id(`folder-team-${f.id}`).flex_none().p(2).rounded(4).text_color(t.dim)
-        .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Start an agent team in a repo of this folder…")
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: f.id } }); })
-        .child(svg("mods/space-folders/team.svg").size(12))))
-      .child(div().id(`folder-add-${f.id}`).flex_none().px(4).rounded(4).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(machine, f.id); }).child("+"))
-      .child(div().flex_none().text_size(11.5).text_color(t.dim).child(String(inside.length)))
-      .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim));
+      .when(this.hoveredFolder === f.id, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
+        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 196, props: { folderMenu: f.id, machine } }))))
+      .child(this.trail().gap(4)
+        .child(div().text_size(11.5).text_color(t.dim).child(String(inside.length)))
+        .child(svg(`mods/workspace-chrome/chevron-${f.folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim)));
   }
 
   folderMenuView(t) {
@@ -616,6 +624,7 @@ export default class Spaces extends View {
     return v_flex().id("folder-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([null, ...Object.keys(MARK)].map(swatch)))
       .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
+      .when(!machine, (el) => el.child(item("folder-team", "Start an agent team…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: id } }))))
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
       .child(item("folder-delete", "Delete folder", () => {
         const f = folders(machine);
@@ -817,7 +826,7 @@ export default class Spaces extends View {
         else if (from === i) run("space.select", { id: w.id });
         cx.notify();
       })
-      .on_mouse_down("right", () => this.menu(w))
+      .on_mouse_down("right", () => this.rowMenu(w, g))
       .on_hover((h, cx) => { if (h) this.hovered = w.id; else if (this.hovered === w.id) this.hovered = null; cx.notify(); })
       .child(
         h_flex()
@@ -826,31 +835,42 @@ export default class Spaces extends View {
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(unread, (el) => el.font_bold()).child(w.name))
-          // Hovered with actions to show: they take the right side and the git details step aside (no squeeze).
-          .child(g && !(this.hovered === w.id && this.worktreeActions(w, g, t).length) ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
-          .when(this.hovered === w.id && Boolean(g), (el) => el.children(this.worktreeActions(w, g, t)))
-          .when(Boolean(dot), (el) => el.child(div().flex_none().size(7).rounded(4).bg(dot)
-            .when(top === "working", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })))),
+          // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
+          .child(g && this.hovered !== w.id ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
+          .when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))
+          .child(this.trail().child(dot ? div().size(7).rounded(4).bg(dot).when(top === "working", (d) => d.loop("opacity", { from: 0.35, to: 1, period: 1200 })) : div())),
       );
   }
 
-  // Hover actions. A repo's own row: new worktree, clean up; a worktree's row: delete it.
-  // They open the separate "worktrees" mod's dialogs (props contract: { wt, root, path?, on }); no worktree code here.
-  worktreeActions(w, g, t) {
-    const [on, common] = JSON.parse(g.repo);
-    if (!common?.endsWith("/.git")) return [];
-    const root = common.slice(0, -5);
-    const icon = (id, glyph, tip, open) => div().id(id).size(20).flex_none().flex().items_center().justify_center().rounded(5).text_color(t.dim)
-      .hover((s) => s.bg(t.raised).text_color(t.foreground)).tooltip(tip)
-      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); open(); }).child(svg(glyph.includes("/") ? glyph : `mods/workspace-chrome/${glyph}.svg`).size(12));
-    const dialog = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
-    if (g.linked) return [icon(`wt-del-${w.id}`, "x", "Delete this worktree (and its branch)…", () => dialog({ wt: "remove", path: g.top }, 280))];
-    return [
-      icon(`wt-new-${w.id}`, "plus", "New worktree…", () => dialog({ wt: "new" }, 400)),
-      icon(`wt-clean-${w.id}`, "archive", "Clean up worktrees…", () => dialog({ wt: "clean" }, 420)),
-      icon(`team-${w.id}`, "mods/space-folders/team.svg", "Start an agent team here…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { repo: root } })),
-    ];
+  // The row menu (⋯ and right-click): worktree and team actions for git spaces, then Herdr's own space menu.
+  // Worktree dialogs belong to the "worktrees" mod and teams to "team-launch" (props contracts, no shared code).
+  rowMenu(w, g) {
+    let root = null, on = null;
+    try { const [o, common] = JSON.parse(g?.repo ?? "[]"); on = o; if (common?.endsWith("/.git")) root = common.slice(0, -5); } catch {}
+    if (!root) return this.menu(w);
+    const items = g.linked ? 3 : 4;
+    openOverlay({ mod: "space-folders", kind: "popup", width: 220, height: 12 + items * 31 + 9,
+      props: { spaceMenu: w.id, root, on, linked: Boolean(g.linked), top: g.top ?? null } });
+  }
+
+  spaceMenuView(t) {
+    const { spaceMenu: id, root, on, linked, top, overlay } = this.spaceMenu;
+    const wt = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
+    const item = (key, icon, label, action, danger) => h_flex().id(key).h(30).px(8).gap(8).items_center().rounded(6).cursor_pointer()
+      .text_color(danger ? t.blocked : t.foreground).hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
+      .child(div().w(14).flex_none().flex().justify_center().child(svg(icon.includes("/") ? icon : `mods/workspace-chrome/${icon}.svg`).size(13).text_color(danger ? t.blocked : t.muted)))
+      .child(div().flex_1().child(label));
+    const team = () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { repo: linked && top ? top : root } });
+    const rows = linked
+      ? [item("sm-team", "mods/space-folders/team.svg", "Start an agent team…", team),
+         item("sm-del", "x", "Delete this worktree…", () => wt({ wt: "remove", path: top }, 280), true)]
+      : [item("sm-new", "plus", "New worktree…", () => wt({ wt: "new" }, 400)),
+         item("sm-team", "mods/space-folders/team.svg", "Start an agent team…", team),
+         item("sm-clean", "archive", "Clean up worktrees…", () => wt({ wt: "clean" }, 420))];
+    return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_size(12.5)
+      .children(rows)
+      .child(div().mx(6).my(3).h(1).bg(t.border))
+      .child(item("sm-more", "settings", "Space options…", () => openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id } } })));
   }
 
   compact({ w, i }, t) {
@@ -870,6 +890,7 @@ export default class Spaces extends View {
   render() {
     const t = theme();
     if (this.folderMenu) return this.folderMenuView(t);
+    if (this.spaceMenu) return this.spaceMenuView(t);
     if (this.editing) return this.editView(t);
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
