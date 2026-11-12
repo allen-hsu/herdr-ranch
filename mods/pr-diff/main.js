@@ -63,7 +63,7 @@ export default class PRDiff extends View {
         .child(div().flex_none().text_color(C(t).diff.del).child(`-${this.del}`)))
       .child(div().id("diff-open").flex_none().p(3).rounded(5).cursor_pointer().text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Open on GitHub")
-        .on_click(() => exec("open", [String(this.p.url)]))
+        .on_click(() => { if (/^https:\/\//.test(String(this.p.url))) exec("open", [String(this.p.url)]); })
         .child(icon("external-link", 14, t.dim)));
     let body;
     if (this.error) body = div().p(14).text_size(TS.body).text_color(t.blocked).child(`${this.error}`);

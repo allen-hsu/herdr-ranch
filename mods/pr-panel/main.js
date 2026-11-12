@@ -204,7 +204,7 @@ export default class PRPanel extends View {
             .child(this.pill(t, `df-${key}`, "Diff", () => openDiffBeside(pr), { tip: "Open the diff next to the focused pane" }))
             .children(this.requestPills(t, pr))
             .child(div().flex_1())
-            .child(this.pill(t, `op-${key}`, icon("external-link", 12, t.muted), () => exec("open", [pr.url]), { tip: "Open on GitHub" }));
+            .child(this.pill(t, `op-${key}`, icon("external-link", 12, t.muted), () => { if (/^https:\/\//.test(String(pr.url))) exec("open", [pr.url]); }, { tip: "Open on GitHub" }));
         }));
   }
 
@@ -224,7 +224,7 @@ export default class PRPanel extends View {
         .when(!busy, (el) => el
           .child(this.pill(t, `st-${key}`, "Start", (_e, cx) => this.launch(cx, key, is, "issue"), { tone: "accent", tip: "New worktree + agent: plan first, then implement" }))
           .child(div().flex_1())
-          .child(this.pill(t, `op-${key}`, icon("external-link", 12, t.muted), () => exec("open", [is.url]), { tip: "Open on GitHub" }))));
+          .child(this.pill(t, `op-${key}`, icon("external-link", 12, t.muted), () => { if (/^https:\/\//.test(String(is.url))) exec("open", [is.url]); }, { tip: "Open on GitHub" }))));
   }
 
   groupHeader(t, g, count, cx) {

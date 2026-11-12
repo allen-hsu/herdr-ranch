@@ -181,9 +181,9 @@
                             "icons": {
                               "files": "files",
                               "inspector": "gauge",
-                              "changes": "git-branch",
+                              "changes": "file-diff",
                               "prs": "git-pull-request",
-                              "git": "git-graph"
+                              "git": "history"
                             }
                           }
                         },
