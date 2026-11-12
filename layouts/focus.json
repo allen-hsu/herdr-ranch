@@ -19,7 +19,10 @@
               "id": "brand",
               "type": "block",
               "content": {
-                "mod": "workspace-chrome"
+                "mod": "sidebar-foot",
+                "props": {
+                  "brand": true
+                }
               },
               "size": {
                 "px": 46

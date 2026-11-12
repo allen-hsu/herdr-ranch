@@ -1,15 +1,28 @@
 // The bottom of the sidebar: "+ New agent" (opens the command bar at its New agent step), then Add machine and
 // Settings as two icon buttons. Replaces Herdr's two-row footer (Settings / Add machine).
 // Narrow sidebar: just the + button.
-import { View, div } from "gpui-kit";
+import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, theme, props } from "herdr";
+import { run, theme, props, window } from "herdr";
 import { TS, icon, openCommandBar, sidebarNarrow, toggleSidebar } from "./ui.js";
 
 export default class SidebarFoot extends View {
   render() {
     const t = theme();
     const slim = sidebarNarrow();
+    const btn = (id, ic, tip, act) => div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer().text_color(t.muted)
+      .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click(act).child(icon(ic, 14));
+    // props.brand: the top row (logo, name, sidebar toggle) without Herdr's extra search icon: the search row
+    // right under it is the one way to search. On macOS the traffic lights sit to the left of the logo.
+    if (props()?.brand) {
+      const mac = window()?.platform === "macos", lights = mac && !window()?.fullscreen;
+      if (slim) return h_flex().size_full().bg(t.chrome).justify_center().items_center()
+        .when(!mac, (el) => el.child(btn("sb-toggle", "panel-left", "Show the full sidebar", () => toggleSidebar())));
+      return h_flex().size_full().bg(t.chrome).pl(lights ? 76 : 14).pr(8).gap(8).items_center().text_size(13.5)
+        .child(image("frame/welcome/herdr.png").size(20).rounded(5).flex_none())
+        .child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child("Herdr"))
+        .child(btn("sb-toggle", "panel-left", "Collapse the sidebar", () => toggleSidebar()));
+    }
     // props.search: the same mod draws the "Search or run a command" row under the brand.
     if (props()?.search) {
       if (slim) return div().size_full().bg(t.chrome);
@@ -21,8 +34,6 @@ export default class SidebarFoot extends View {
           .child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim).child("⌘K")));
     }
     const newAgent = () => openCommandBar({});
-    const btn = (id, ic, tip, act) => div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer().text_color(t.muted)
-      .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click(act).child(icon(ic, 14));
     const link = (id, ic, label, act) => h_flex().id(id).h(26).px(6).gap(6).items_center().rounded(6).cursor_pointer().text_size(TS.body).text_color(t.muted)
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(act).child(icon(ic, 13)).child(label);
     // The narrow rail: the way back to the full sidebar, and New agent.
