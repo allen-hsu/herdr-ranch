@@ -1,5 +1,6 @@
-// Board: every space as a card in Todo / In progress / In review / Done, Orca-style, as an overlay over the window
-// (⌃⌘B or the Board button; Esc or × closes, nothing underneath changes).
+// Board: every space as a card in Todo / In progress / In review / Done, Orca-style. In the layout it is a full
+// page in place of the terminals (props.page; ⌃⌘B or the sidebar's Board button toggles it; picking a card, a tab
+// or anything in the sidebar goes back to the terminals). Opened with mod.open it is still a dialog.
 // By space: a card goes where you drag it (kept in shared "board.columns"); until then it is placed automatically:
 // an agent working or needing you -> In progress; an open PR -> In review; agents finished and not looked at yet ->
 // Done; everything idle, or no agent -> Todo. Pin a card (hover → pin) to keep it on top. Click a card to go there;
@@ -7,8 +8,8 @@
 // By agent: one card per agent, in Needs you / Working / Finished / Idle (not draggable: the agent's state decides).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Popover } from "gpui-base";
-import { spaces, agents, panes, run, theme, props, shared, setShared, closeOverlay, exec } from "herdr";
-import { TS, C, dialogTitle, escChip, icon, statusMark, statusOf, spaceName, openCommandBar } from "./ui.js";
+import { spaces, agents, panes, focused, run, theme, props, shared, setShared, closeOverlay, exec } from "herdr";
+import { TS, C, dialogTitle, escChip, icon, statusMark, statusOf, spaceName, openCommandBar, pageActive, closePage, focusKey } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { PRCache, prColor, prTip, repoSlug } from "./prs.js";
 import { place, loadFolders, folderOf } from "./folders.js";
@@ -32,6 +33,14 @@ const ago = (ms) => { const s = ms / 1000; return s < 3600 ? `${Math.max(1, Math
 export default class Board extends View {
   init(_p, cx) {
     this.overlay = props()?.overlay;
+    this.page = Boolean(props()?.page);
+    // As a page: looking somewhere else (a tab, a space, an agent) closes it; while hidden it asks for nothing.
+    if (this.page) cx.timer.every(300, (cx) => {
+      const on = pageActive() === "board", k = focusKey(focused());
+      if (on && this.wasOn && k !== this.fkey) closePage();
+      if (on && !this.wasOn) { this.refreshTimes(cx); this.refreshSlugs(cx); cx.notify(); }
+      this.wasOn = on; this.fkey = k;
+    });
     this.only = null; // space picked in the dropdown (null: all spaces)
     this.pickOpen = false;
     this.drag = null; this.over = null; this.moved = false;
@@ -49,7 +58,11 @@ export default class Board extends View {
   }
 
   // When each agent's status last changed: herdr-core knows (status_ms); the app's agent list doesn't carry it.
+  close() { this.page ? closePage() : closeOverlay(this.overlay); }
+  hidden() { return this.page && pageActive() !== "board"; }
+
   refreshTimes(cx) {
+    if (this.hidden()) return;
     cx.spawn(async (cx) => {
       const list = agents().filter((a) => !a.address.includes("/")).slice(0, 40);
       const got = await Promise.all(list.map((a) => exec("hc", ["get", a.address, "--json"], { timeout: 4000 }).then((r) => [a.address, JSON.parse(r.stdout || "{}").status_ms]).catch(() => [a.address, null])));
@@ -60,6 +73,7 @@ export default class Board extends View {
 
   // GitHub owner/name per space folder, for its PR (one git call per folder, cached).
   refreshSlugs(cx) {
+    if (this.hidden()) return;
     cx.spawn(async (cx) => {
       const ps = panes();
       for (const s of spaces().filter((x) => !x.machine)) {
@@ -129,7 +143,7 @@ export default class Board extends View {
       .when(c.need, (x) => x.child(div().absolute().left(0).top(10).bottom(10).w(2).rounded(1).bg(C(t).status.blocked)))
       .when(dragging && this.moved, (x) => x.opacity(0.35))
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.drag = { id: s.id, from: c.col }; this.moved = false; })
-      .on_click(() => { if (this.moved) return; run("space.select", { id: s.id }); closeOverlay(this.overlay); })
+      .on_click(() => { if (this.moved) return; run("space.select", { id: s.id }); this.close(); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(16).flex_none().flex().justify_center().child(this.mark(t, c.mine)))
         .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(name))
@@ -140,7 +154,7 @@ export default class Board extends View {
         .when(hovered, (x) => x.child(div().id(`add-${s.id}`).flex_none().size(18).flex().items_center().justify_center().rounded(4)
           .hover((h) => h.bg(t.raised)).tooltip(`New agent in ${name}`)
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-          .on_click((_e, cx) => { cx.stop_propagation(); closeOverlay(this.overlay); openCommandBar({ folder: { space: s.id, name } }); })
+          .on_click((_e, cx) => { cx.stop_propagation(); this.close(); openCommandBar({ folder: { space: s.id, name } }); })
           .child(icon("plus", 12, t.muted))))
         .when(c.pinned || hovered, (x) => x.child(div().id(`pin-${s.id}`).flex_none().size(18).flex().items_center().justify_center().rounded(4)
           .hover((h) => h.bg(t.raised)).tooltip(c.pinned ? "Unpin" : "Pin to the top of its column")
@@ -166,7 +180,7 @@ export default class Board extends View {
     return v_flex().id(`acard-${a.address}`).relative().w_full().px(12).py(9).gap(3).rounded(8).cursor_pointer().flex_none()
       .bg(a.focused ? t.selected : t.surface).hover((x) => x.bg(t.hover))
       .when(a.status === "blocked" || a.status === "error", (x) => x.child(div().absolute().left(0).top(9).bottom(9).w(2).rounded(1).bg(C(t).status.blocked)))
-      .on_click(() => { run("pane.focus", { pane: a.pane }); closeOverlay(this.overlay); })
+      .on_click(() => { run("pane.focus", { pane: a.pane }); this.close(); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(16).flex_none().flex().justify_center().child(programIcon(a.program, 13, t.muted) ?? statusMark(t, a.status)))
         .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(agentName(a) || a.program?.name || a.address))
@@ -224,12 +238,15 @@ export default class Board extends View {
           .text_color(this.mode === id ? t.foreground : t.muted).when(this.mode === id, (e) => e.bg(t.selected).font_medium())
           .on_click((_e, cx) => { this.mode = id; localStorage.setItem("mode", id); cx.notify(); }).child(label))))
       .child(div().flex_1())
-      .child(escChip(t, "bd-esc", () => closeOverlay(this.overlay)));
+      .child(this.page
+        ? div().id("bd-back").flex_none().size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
+            .hover((e) => e.bg(t.hover).text_color(t.foreground)).tooltip("Back to the terminals (⌃⌘B)").on_click(() => this.close()).child(icon("x", 14))
+        : escChip(t, "bd-esc", () => this.close()));
     const column = (col) => {
       const list = cards.filter((c) => c.col === col.id).sort((a, b) => (b.pinned - a.pinned) || (b.need - a.need) || (b.s.active - a.s.active));
       const st = C(t).status, dotC = col.id === "progress" ? st.working : col.id === "review" ? st.done : col.id === "done" ? t.accent : t.dim;
       const target = dragging && this.drag.from !== col.id;
-      return this.zone(t, col.id, v_flex().id(`col-${col.id}`).w(COL_W).flex_none().h_full().gap(6)
+      return this.zone(t, col.id, v_flex().id(`col-${col.id}`).when(this.page, (e) => e.flex_1().min_w(220)).when(!this.page, (e) => e.w(COL_W).flex_none()).h_full().gap(6)
         .child(h_flex().h(28).px(4).gap(8).items_center().flex_none()
           .child(div().size(7).rounded(4).bg(dotC))
           .child(div().text_size(13).font_semibold().text_color(t.foreground).child(col.name))
@@ -245,17 +262,17 @@ export default class Board extends View {
       const inCol = (id) => mine.filter((a) => (id === "blocked" ? a.status === "blocked" || a.status === "error" : id === "idle" ? !["blocked", "error", "working", "done"].includes(a.status) : a.status === id))
         .sort((a, b) => (this.since[b.address] ?? 0) - (this.since[a.address] ?? 0));
       const acol = (col) => { const list = inCol(col.id);
-        return v_flex().id(`acol-${col.id}`).w(COL_W).flex_none().h_full().gap(6)
+        return v_flex().id(`acol-${col.id}`).when(this.page, (e) => e.flex_1().min_w(220)).when(!this.page, (e) => e.w(COL_W).flex_none()).h_full().gap(6)
           .child(h_flex().h(28).px(4).gap(8).items_center().flex_none()
             .child(div().size(7).rounded(4).bg(st[col.id] ?? t.dim))
             .child(div().text_size(13).font_semibold().text_color(t.foreground).child(col.name))
             .child(div().text_size(11).text_color(t.dim).child(String(list.length))))
           .child(v_flex().id(`acolbody-${col.id}`).flex_1().min_h(0).gap(6).overflow_y_scrollbar().children(list.map((a) => this.agentCard(t, a, cardOf(a))))); };
-      return v_flex().id("board").size_full().p(18).gap(14).bg(t.popover).text_size(13).text_color(t.foreground)
+      return v_flex().id("board").size_full().p(18).gap(14).bg(this.page ? t.background : t.popover).text_size(13).text_color(t.foreground)
         .child(head)
         .child(h_flex().flex_1().min_h(0).gap(COL_GAP).children(AGENT_COLS.flatMap((c, i) => i ? [div().w(1).h_full().flex_none().bg(t.border), acol(c)] : [acol(c)])));
     }
-    return v_flex().id("board").size_full().p(18).gap(14).bg(t.popover).text_size(13).text_color(t.foreground)
+    return v_flex().id("board").size_full().p(18).gap(14).bg(this.page ? t.background : t.popover).text_size(13).text_color(t.foreground)
       .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drag = null; this.over = null; cx.notify(); } })
       .child(head)
       .child(h_flex().flex_1().min_h(0).gap(COL_GAP).children(COLS.flatMap((c, i) => i ? [div().w(1).h_full().flex_none().bg(t.border), column(c)] : [column(c)])));

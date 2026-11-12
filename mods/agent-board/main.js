@@ -8,7 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, agents, panes, spaces, focused, props, run, theme, shared, setShared, terminals, openOverlay } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
 import { agentName } from "./agentname.js";
-import { TS, C, icon, statusMark, spaceName } from "./ui.js";
+import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 
 // Workflow order, left to right: waiting on you -> not started / idle -> in progress -> finished.
 const COLUMNS = [
@@ -161,7 +161,7 @@ export default class AgentBoard extends View {
       .when(Boolean(where), (el) => el.child(div().truncate().text_size(TS.small).text_color(t.dim).child(where)))
       .when(Boolean(roleChip), (el) => el.child(h_flex().child(div().id(`role-${a.address}`).max_w_full().truncate().px(6).rounded(8).border_1().border_color(t.border)
         .text_size(TS.tiny).text_color(t.accent).tooltip(kids && !tm ? "Open the Team map" : "Team role")
-        .when(kids > 0 && !tm, (x) => x.cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); }))
+        .when(kids > 0 && !tm, (x) => x.cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); openPage("team", { lead: a.address }); }))
         .child(roleChip))))
       .when(Boolean(l?.task), (el) => el.child(div().truncate().text_size(TS.meta).text_color(t.muted).child(`${l?.parent ? "Lead" : "You"}: ${l.task}`)))
       .child(h_flex().gap(6).items_start().when(Boolean(di), (e) => e.child(div().mt(2).child(icon(di, 12, dc))))

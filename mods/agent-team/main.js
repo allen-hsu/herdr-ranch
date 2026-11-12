@@ -9,10 +9,10 @@
 // diagram — one column per agent with a status card, each message an arrow between columns.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, Popover } from "gpui-base";
-import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
+import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay, shared } from "herdr";
 import { NewTeam } from "./newteam.js";
 import { agentName } from "./agentname.js";
-import { TS, SPACE, C, tint, escChip, dialogTitle, icon, statusMark } from "./ui.js";
+import { TS, SPACE, C, tint, escChip, dialogTitle, icon, statusMark, pageActive, closePage } from "./ui.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -39,7 +39,8 @@ export default class AgentTeam extends View {
     this.addr = null; this.data = null; this.open = new Set(); this.showDone = false;
     const p = props() ?? {};
     if (p.view === "new") { this.form = new NewTeam(p, cx); return; }
-    this.map = Boolean(p.overlay);
+    this.page = Boolean(p.page); // in the layout: a full page in place of the terminals (⌃⌘T toggles it)
+    this.map = Boolean(p.overlay || p.page);
     this.overlay = p.overlay;
     this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
     this.sel = p.sel ?? null; // a member to select on open (e.g. from the sidebar)
@@ -48,7 +49,21 @@ export default class AgentTeam extends View {
     this.w = 980;
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
+    // As a page: when it comes on screen, take what the opener asked for (shared "page.goto": a lead, a member) and
+    // read at once; while hidden it reads nothing.
+    this.gotoSeen = shared("page.goto")?.n ?? 0;
+    if (this.page) cx.timer.every(300, (cx) => {
+      const on = pageActive() === "team", g = shared("page.goto");
+      const asked = g?.page === "team" && g.n !== this.gotoSeen;
+      if (asked) { this.gotoSeen = g.n; this.pinned = g.lead ?? null; this.sel = g.sel ?? null; this.closed = false; }
+      if ((on && !this.wasOn) || (on && asked)) { this.load(cx); cx.notify(); }
+      this.wasOn = on;
+    });
   }
+
+  close() { this.page ? closePage() : closeOverlay(this.overlay); }
+  // Go to an agent's terminal; the page gives the terminals back.
+  go(addr) { run("agent.focus", { terminal: addr }); if (this.page) closePage(); }
 
   target() {
     if (this.map && this.pinned) return this.pinned;
@@ -57,6 +72,7 @@ export default class AgentTeam extends View {
   }
 
   load(cx) {
+    if (this.page && pageActive() !== "team") return;
     const addr = this.target();
     if (!addr && !this.map) return; // the map still lists the teams with no agent focused
     if (this.busy && addr === this.addr) return;
@@ -101,7 +117,7 @@ export default class AgentTeam extends View {
     const right = [m.ctx != null ? `${Math.round(m.ctx)}%` : "", m.out ? `${k(m.out)} out` : ""].filter(Boolean).join(" · ");
     const jump = kind === "herdr" && m.state === "live";
     return h_flex().id(`tm-${kind}-${i}`).px(SPACE.dialog).py(6).gap(8).items_start().pl(14 + ((m.depth ?? 1) - 1) * 14)
-      .when(jump, (e) => e.cursor_pointer().hover((x) => x.bg(t.hover)).tooltip("Go to this agent").on_click(() => run("agent.focus", { terminal: m.id })))
+      .when(jump, (e) => e.cursor_pointer().hover((x) => x.bg(t.hover)).tooltip("Go to this agent").on_click(() => this.go(m.id)))
       .child(div().w(14).flex_none().mt(2).flex().justify_center().child(this.dot(t, m)))
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(h_flex().gap(6).items_center().min_w(0)
@@ -274,8 +290,11 @@ export default class AgentTeam extends View {
       .child(this.teamPicker(t, teams))
       .child(div().flex_1())
       .child(this.newTeam(t, "mp-new"))
-      .child(escChip(t, "mp-close", () => closeOverlay(this.overlay)));
-    const root = v_flex().id("team-map").size_full().bg(t.popover ?? t.chrome).text_color(t.foreground)
+      .child(this.page
+        ? div().id("mp-back").flex_none().size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
+            .hover((e) => e.bg(t.hover).text_color(t.foreground)).tooltip("Back to the terminals (⌃⌘T)").on_click(() => this.close()).child(icon("x", 14))
+        : escChip(t, "mp-close", () => this.close()));
+    const root = v_flex().id("team-map").size_full().bg(this.page ? t.background : t.popover ?? t.chrome).text_color(t.foreground)
       .on_size_change((size, cx) => { if (Math.abs(size.width - this.w) > 4) { this.w = size.width; cx.notify(); } }).child(head);
     if (!d) return root.child(note("Reading…"));
     if (!d.ok) return root.child(note(`Unavailable: ${d.error}`));
@@ -318,7 +337,7 @@ export default class AgentTeam extends View {
         .child(div().text_size(TS.body).font_semibold().text_color(on).child(`${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`)))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color(on).child(waiting[0].doing || "a permission prompt or a question is waiting"))
       .when(Boolean(waiting[0].addr), (e) => e.child(div().id("mp-goto").px(10).py(3).rounded(6).bg(tint(on, 0.2)).text_size(TS.meta).text_color(on).cursor_pointer()
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: waiting[0].addr })).child("Go to agent")))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => this.go(waiting[0].addr)).child("Go to agent")))
       : null;
     const mark = (c) => statusMark(t, c.state === "finished" ? "done" : c.status);
     const lane = (c, i) => {
@@ -423,7 +442,7 @@ export default class AgentTeam extends View {
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.closed = true; cx.notify(); }).child(icon("x", 14, t.dim)))));
     out.push(div().text_size(TS.small).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.model, m.started ? `started ${ago(m.started)}` : ""].filter(Boolean).join(" · ")));
     if (c.addr) out.push(div().id("dr-go").mt(8).h(28).px(10).flex().items_center().justify_center().rounded(7).bg(t.accent).text_size(TS.body).text_color(C(t).on.accent)
-      .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: c.addr })).child("Go to agent"));
+      .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => this.go(c.addr)).child("Go to agent"));
     // Now: what it is doing, how full its context is, what it has cost, and the start of its last reply.
     const [ni, nt, nc] = this.nowLine(t, c, m);
     out.push(sec("Now"));

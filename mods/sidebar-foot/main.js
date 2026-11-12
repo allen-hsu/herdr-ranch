@@ -4,7 +4,7 @@
 import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, theme, props, window } from "herdr";
-import { TS, icon, openCommandBar, sidebarNarrow, toggleSidebar } from "./ui.js";
+import { TS, icon, openCommandBar, sidebarNarrow, toggleSidebar, togglePage } from "./ui.js";
 
 export default class SidebarFoot extends View {
   render() {
@@ -48,8 +48,8 @@ export default class SidebarFoot extends View {
         .child(icon("plus", 14, t.foreground))
         .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_medium().text_color(t.foreground).child("New agent")))
       .child(h_flex().h(28).flex_none().gap(2).items_center()
-        .child(btn("sf-board", "layers", "Board: every space by status (⌃⌘B)", () => run("mod.open", { name: "space-board" })))
-        .child(btn("sf-team", "users", "Team Map (⌃⌘T)", () => run("mod.open", { name: "agent-team" })))
+        .child(btn("sf-board", "layers", "Board: every space by status (⌃⌘B)", () => togglePage("board")))
+        .child(btn("sf-team", "users", "Team Map (⌃⌘T)", () => togglePage("team")))
         .child(div().flex_1())
         .child(btn("sf-machine", "server", "Add machine…", () => run("mod.open", { name: "machine-add" })))
         .child(btn("sf-settings", "settings", "Settings", () => run("app.settings"))));

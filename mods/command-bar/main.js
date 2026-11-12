@@ -7,7 +7,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents } from "herdr";
-import { TS, C, icon, statusMark, spaceName } from "./ui.js";
+import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { loadFolders, folderOf, place } from "./folders.js";
 
@@ -119,8 +119,8 @@ export default class CommandBar extends View {
     act("Toggle details panel", "chevrons-left-right", "Show or hide the right panel (Inspector, Changes, PRs, Files).", () => { this.close(); run("layout.toggle", { id: "panel" }); }, { hint: "⌃⌘G", kw: "right inspector" });
 
     const view = (name, ic, desc, fn, extra = {}) => out.push({ group: "Views", name, mark: icon(ic, 14, t.muted), desc, verb: "Open", kw: "", ...extra, run: () => { this.close(); fn(); } });
-    view("Board", "layers", "Every space as a card in Todo / In progress / In review / Done.", () => openOverlay({ mod: "space-board", kind: "dialog" }), { hint: "⌃⌘B", kw: "kanban todo review" });
-    view("Team Map", "users", "Timeline of the focused agent's team: who did what, and the messages between them.", () => run("mod.open", { name: "agent-team" }), { hint: "⌃⌘T", kw: "timeline members" });
+    view("Board", "layers", "Every space as a card in Todo / In progress / In review / Done.", () => openPage("board"), { hint: "⌃⌘B", kw: "kanban todo review" });
+    view("Team Map", "users", "Timeline of the focused agent's team: who did what, and the messages between them.", () => openPage("team"), { hint: "⌃⌘T", kw: "timeline members" });
     view("Inspector: Overview", "gauge", "What the focused agent is doing, what needs you, context, cache and spend.", () => this.inspector("overview"), { kw: "context cost cache health" });
     view("Inspector: Trace", "clock", "The focused agent's turns: time split, waterfall of LLM calls and tools, cost per call.", () => this.inspector("trace"), { kw: "waterfall turns cost" });
     view("Inspector: Capabilities", "plug", "Skills, MCP servers and tools the focused agent has and used.", () => this.inspector("capabilities"), { kw: "skills mcp tools" });

@@ -140,41 +140,94 @@
               ]
             },
             {
-              "id": "work-body",
-              "type": "row",
+              "id": "center",
+              "type": "stack",
+              "active": "work-body",
               "children": [
                 {
-                  "id": "main",
-                  "type": "block",
-                  "content": {
-                    "tab": "active",
-                    "pane": {
-                      "gap": 8,
+                  "id": "work-body",
+                  "type": "row",
+                  "children": [
+                    {
+                      "id": "main",
+                      "type": "block",
+                      "content": {
+                        "tab": "active",
+                        "pane": {
+                          "gap": 8,
+                          "radius": 10,
+                          "background": "background",
+                          "lone": true,
+                          "border": {
+                            "width": 1,
+                            "color": "border"
+                          },
+                          "focus": {
+                            "width": 1,
+                            "color": "accent"
+                          },
+                          "header": {
+                            "content": {
+                              "mod": "pane"
+                            },
+                            "height": 30,
+                            "position": "top",
+                            "reveal": "always"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "padding": 8,
+                  "gap": 8
+                },
+                {
+                  "id": "board",
+                  "type": "column",
+                  "padding": 8,
+                  "children": [
+                    {
+                      "id": "board-view",
+                      "type": "block",
                       "radius": 10,
-                      "background": "background",
-                      "lone": true,
                       "border": {
                         "width": 1,
                         "color": "border"
                       },
-                      "focus": {
-                        "width": 1,
-                        "color": "accent"
-                      },
-                      "header": {
-                        "content": {
-                          "mod": "pane"
-                        },
-                        "height": 30,
-                        "position": "top",
-                        "reveal": "always"
+                      "background": "background",
+                      "content": {
+                        "mod": "space-board",
+                        "props": {
+                          "page": true
+                        }
                       }
                     }
-                  }
+                  ]
+                },
+                {
+                  "id": "team",
+                  "type": "column",
+                  "padding": 8,
+                  "children": [
+                    {
+                      "id": "team-view",
+                      "type": "block",
+                      "radius": 10,
+                      "border": {
+                        "width": 1,
+                        "color": "border"
+                      },
+                      "background": "background",
+                      "content": {
+                        "mod": "agent-team",
+                        "props": {
+                          "page": true
+                        }
+                      }
+                    }
+                  ]
                 }
-              ],
-              "padding": 8,
-              "gap": 8
+              ]
             }
           ],
           "resizable": false

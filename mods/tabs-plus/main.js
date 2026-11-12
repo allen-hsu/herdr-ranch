@@ -1,9 +1,9 @@
 // Herdr's shipped tab bar (mods/tabs), cloned: tabs show their agent's name (lib/agentname.js) unless you named them.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
-import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props } from "herdr";
+import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props, nextCommand } from "herdr";
 import { agentName } from "./agentname.js";
-import { TS, C, tint, icon, statusMark } from "./ui.js";
+import { TS, C, tint, icon, statusMark, togglePage } from "./ui.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -16,6 +16,8 @@ function find(node, id) {
 
 export default class Tabs extends View {
   init(_props, cx) {
+    // Keys for the full pages (keys.json: "tabs-plus.board", "tabs-plus.team"): this bar is always shown, so it answers.
+    cx.spawn(async () => { for (;;) { const c = String(await nextCommand()).split(".").pop(); if (c === "board" || c === "team") togglePage(c); } });
     // ranch: a tab whose agent finishes (or needs you) while you look elsewhere pulses: finished for a few
     // seconds, needs-you until you open it.
     this.prev = {};

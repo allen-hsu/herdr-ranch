@@ -4,7 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile, appHome } from "herdr";
-import { TS, C, icon, statusMark, spaceName } from "./ui.js";
+import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 
 // ---- context usage (added): Claude Code session -> % of context used ----
 // ~/.claude/herdr-status-snapshot.py (called from the status line) writes the percentages;
@@ -310,7 +310,7 @@ export default class Agents extends View {
     const pic = progIcon(a.program, 14, t.dim);
     return h_flex().id(`bg-${a.address}-${b.id}`).pl(39).pr(8).rounded(8).h(24).flex_none().items_center().text_size(TS.body)
       .hover((s) => s.bg(t.hover)).cursor_pointer().tooltip(`Background subagent${b.type ? ` (${b.type})` : ""} — open in the Team map`)
-      .on_click(() => openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address, sel: b.id } }))
+      .on_click(() => openPage("team", { lead: a.address, sel: b.id }))
       .child(div().self_start().mt(-4).w(9).h(17).mr(4).flex_none().border_l(1.5).border_color(t.input).border_b(1.5).rounded_bl(6).when(!last, (el) => el))
       .when(Boolean(pic), (el) => el.child(div().mr(8).opacity(0.7).child(pic)))
       .child(div().flex_1().truncate().text_color(t.muted).child(b.desc))
@@ -366,7 +366,7 @@ export default class Agents extends View {
         .when(need > 0, (x) => x.bg(C(t).status.blocked).text_color(C(t).on.status)).when(!need, (x) => x.text_color(t.dim))
         .tooltip(need ? `${need} of ${subs.length} team members need you — open the Team map` : `${subs.length} team member${subs.length === 1 ? "" : "s"} — open the Team map`)
         .cursor_pointer().when(!need, (x) => x.hover((h) => h.bg(t.hover).text_color(t.foreground)))
-        .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } }); })
+        .on_click((_e, cx) => { cx.stop_propagation(); openPage("team", { lead: a.address }); })
         .child(svg("mods/agents-ctx/team.svg").size(10).flex_none())
         .child(need ? `${need}!` : String(subs.length));
     };
@@ -466,7 +466,7 @@ export default class Agents extends View {
         .tooltip("Team map")
         .on_click((_e, cx) => {
           cx.stop_propagation();
-          openOverlay({ mod: "agent-team", kind: "window", key: `team-map-${a.address}`, width: 1000, height: 660, props: { lead: a.address } });
+          openPage("team", { lead: a.address });
         })
         .child(svg("mods/agents-ctx/team.svg").size(13));
       // Under a space header the space goes without saying; an automatic tab number says nothing.
