@@ -64,6 +64,8 @@ export default class CommandBar extends View {
     localStorage.setItem("kind", kind.key);
     this.close();
     if (folder === "here") { run("tab.new", { ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) }); return; }
+    // A given space (the Board's "+" on a card).
+    if (folder.space) { run("tab.new", { space: folder.space, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) }); return; }
     // The folder's main space (its first one): a new tab there. No space yet: a new space in the folder's path.
     const ps = panes();
     const mine = spaces().filter((s) => !s.machine && folderOf(s, this.folders, ps) === folder.id);
