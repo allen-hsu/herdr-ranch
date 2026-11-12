@@ -18,7 +18,7 @@ import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOver
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
 import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
-import { TS, C, tint, icon, statusMark, statusOf, spaceName } from "./ui.js";
+import { TS, C, tint, icon, statusMark, statusOf, spaceName, openCommandBar } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
 // A logo's tile: light on a dark theme (dark marks stay visible; the theme's text color is its light tone), the raised tier on a light one.
@@ -29,7 +29,7 @@ const lightTile = (t) => { const h = String(t.background ?? "").replace("#", "")
 // that state and the spaces and folders that hold them.
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
 const matches = (filter, a) => filter === "all" || (filter === "blocked" ? a.status === "blocked" || a.status === "error" : a.status === filter);
-const openBar = (step) => openOverlay({ mod: "command-bar", kind: "popup", at: "top", offset: 90, width: 720, height: 470, props: step ? { step } : {} });
+const openBar = openCommandBar;
 
 function viewSwitch(t, on) {
   const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()

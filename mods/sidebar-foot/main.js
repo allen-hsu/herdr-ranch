@@ -3,8 +3,8 @@
 // Narrow sidebar: just the + button.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { run, openOverlay, theme, layout } from "herdr";
-import { TS, icon } from "./ui.js";
+import { run, theme, layout } from "herdr";
+import { TS, icon, openCommandBar } from "./ui.js";
 
 const find = (node, id) => { if (!node || typeof node !== "object") return null; if (node.id === id) return node;
   for (const c of node.children ?? []) { const f = find(c, id); if (f) return f; } return node.root ? find(node.root, id) : null; };
@@ -14,7 +14,7 @@ export default class SidebarFoot extends View {
   render() {
     const t = theme();
     const slim = narrow();
-    const newAgent = () => openOverlay({ mod: "command-bar", kind: "popup", at: "top", offset: 90, width: 720, height: 470, props: { step: {} } });
+    const newAgent = () => openCommandBar({});
     const btn = (id, ic, tip, act) => div().id(id).size(30).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer().text_color(t.muted)
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click(act).child(icon(ic, 14));
     if (slim) return h_flex().size_full().items_center().justify_center().bg(t.chrome).border_t(1).border_color(t.border).child(btn("sf-new", "plus", "New agent", newAgent));
