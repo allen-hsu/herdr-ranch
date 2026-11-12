@@ -1131,14 +1131,15 @@ export default class Spaces extends View {
     this.seen = seen;
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(TS.item)
       .child(h_flex().h(31).pl(15).pr(8).items_center().justify_between().text_size(TS.body).text_color(t.dim)
-        // (A status filter exists as filterBar(); not shown for now: Needs you / Finished on top cover it.)
-        .when(!collapsed, el => el.child(viewSwitch(t, "spaces")))
+        .when(!collapsed, el => el.child(div().text_size(11).font_semibold().child("Folders")))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null)).tooltip("New folder")))
           .when(!collapsed, el => el.child(button("space-new", "plus", () => newSpaceIn(null, null)).tooltip("New space")))
           // The narrow rail: one button, the way back to the full sidebar.
           .when(collapsed, el => el.child(div().id("rail-expand").size(26).flex_none().flex().items_center().justify_center().rounded(6)
             .hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip("Show the full sidebar").on_click(() => toggleSidebar()).child(icon("panel-left", 14))))))
+      // Status filter: the same tree, only the agents in that state.
+      .when(!collapsed, el => el.child(h_flex().h(28).flex_none().px(15).items_center().child(this.filterBar(t))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         // Released anywhere but on a space or a folder: out of its folder.
         .on_mouse_up("left", (_e, cx) => {
