@@ -2,28 +2,36 @@
 // Settings as two icon buttons. Replaces Herdr's two-row footer (Settings / Add machine).
 // Narrow sidebar: just the + button.
 import { View, div } from "gpui-kit";
-import { h_flex } from "gpui-base";
-import { run, theme, layout } from "herdr";
-import { TS, icon, openCommandBar } from "./ui.js";
-
-const find = (node, id) => { if (!node || typeof node !== "object") return null; if (node.id === id) return node;
-  for (const c of node.children ?? []) { const f = find(c, id); if (f) return f; } return node.root ? find(node.root, id) : null; };
-const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
+import { h_flex, v_flex } from "gpui-base";
+import { run, theme } from "herdr";
+import { TS, icon, openCommandBar, sidebarNarrow, toggleSidebar } from "./ui.js";
 
 export default class SidebarFoot extends View {
   render() {
     const t = theme();
-    const slim = narrow();
+    const slim = sidebarNarrow();
     const newAgent = () => openCommandBar({});
-    const btn = (id, ic, tip, act) => div().id(id).size(30).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer().text_color(t.muted)
+    const btn = (id, ic, tip, act) => div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer().text_color(t.muted)
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click(act).child(icon(ic, 14));
-    if (slim) return h_flex().size_full().items_center().justify_center().bg(t.chrome).border_t(1).border_color(t.border).child(btn("sf-new", "plus", "New agent", newAgent));
-    return h_flex().size_full().px(8).gap(4).items_center().bg(t.chrome).border_t(1).border_color(t.border)
-      .child(h_flex().id("sf-new").flex_1().min_w(0).h(32).px(10).gap(8).items_center().rounded(8).bg(t.surface).cursor_pointer()
-        .hover((s) => s.bg(t.hover)).tooltip("Start an agent: pick the folder, the agent, and type its task").on_click(newAgent)
+    const link = (id, ic, label, act) => h_flex().id(id).h(26).px(6).gap(6).items_center().rounded(6).cursor_pointer().text_size(TS.body).text_color(t.muted)
+      .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(act).child(icon(ic, 13)).child(label);
+    // The narrow rail: the way back to the full sidebar, and New agent.
+    if (slim) return v_flex().size_full().pt(8).gap(4).items_center().bg(t.chrome).border_t(1).border_color(t.border)
+      .child(btn("sf-new", "plus", "New agent", newAgent))
+      .child(btn("sf-expand", "panel-left", "Show the full sidebar", () => toggleSidebar()));
+    // "+ New agent" on top; under it a quiet row of icons (Arc's bottom bar): whole-app views on the left,
+    // machine and settings on the right. Names are in the tooltips.
+    return v_flex().size_full().px(8).pt(8).gap(4).bg(t.chrome).border_t(1).border_color(t.border)
+      .child(h_flex().id("sf-new").h(32).flex_none().px(10).gap(8).items_center().rounded(8).bg(t.surface).cursor_pointer()
+        .hover((s) => s.bg(t.hover)).on_click(newAgent)
         .child(icon("plus", 14, t.foreground))
         .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_medium().text_color(t.foreground).child("New agent")))
-      .child(btn("sf-machine", "server", "Add machine…", () => run("mod.open", { mod: "machine-add" })))
-      .child(btn("sf-settings", "settings", "Settings", () => run("app.settings")));
+      .child(h_flex().h(28).flex_none().gap(2).items_center()
+        .child(btn("sf-board", "layers", "Board: every space by status (⌃⌘B)", () => run("mod.open", { name: "space-board" })))
+        .child(btn("sf-team", "users", "Team Map (⌃⌘T)", () => run("mod.open", { name: "agent-team" })))
+        .child(btn("sf-bar", "search", "Search or run anything (⌘K)", () => run("mod.open", { name: "command-bar" })))
+        .child(div().flex_1())
+        .child(btn("sf-machine", "server", "Add machine…", () => run("mod.open", { name: "machine-add" })))
+        .child(btn("sf-settings", "settings", "Settings", () => run("app.settings"))));
   }
 }

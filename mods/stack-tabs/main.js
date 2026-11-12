@@ -46,7 +46,6 @@ export default class StackTabs extends View {
             .when(on, (el) => el.child(div().absolute().left(7).right(7).bottom(-4).h(2).rounded(1).bg(t.foreground)));
         }))
         .child(div().flex_1())
-        .when(Boolean(active), (el) => el.child(div().flex_none().px(4).text_size(TS.body).text_color(t.dim).child(name(kids.find((c) => c.id === active) ?? { id: active }))))
         .when(typeof p.panel === "string", (el) => el.child(div().id("st-hide").w(30).h(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer()
           .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Hide this panel")
           .on_click(() => run("layout.toggle", { id: p.panel })).child(icon("panel-right", 16))));

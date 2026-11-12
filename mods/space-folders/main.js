@@ -18,7 +18,7 @@ import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOver
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
 import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
-import { TS, C, tint, icon, statusMark, statusOf, spaceName, openCommandBar } from "./ui.js";
+import { TS, C, tint, icon, statusMark, statusOf, spaceName, openCommandBar, toggleSidebar } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
 // A logo's tile: light on a dark theme (dark marks stay visible; the theme's text color is its light tone), the raised tier on a light one.
@@ -1135,7 +1135,10 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child(div().text_size(11).font_semibold().child("Folders")))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null)).tooltip("New folder")))
-          .child(button("space-new", "plus", () => newSpaceIn(null, null)).tooltip("New space"))))
+          .when(!collapsed, el => el.child(button("space-new", "plus", () => newSpaceIn(null, null)).tooltip("New space")))
+          // The narrow rail: one button, the way back to the full sidebar.
+          .when(collapsed, el => el.child(div().id("rail-expand").size(26).flex_none().flex().items_center().justify_center().rounded(6)
+            .hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip("Show the full sidebar").on_click(() => toggleSidebar()).child(icon("panel-left", 14))))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         // Released anywhere but on a space or a folder: out of its folder.
         .on_mouse_up("left", (_e, cx) => {

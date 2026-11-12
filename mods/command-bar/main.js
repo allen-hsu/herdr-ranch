@@ -107,7 +107,7 @@ export default class CommandBar extends View {
       if (r?.code === 0) openOverlay({ mod: "worktrees", kind: "dialog", width: 480, height: 400, props: { wt: "new", root: r.stdout.trim() } });
       else notify({ title: "Not in a git repository", body: "Focus a terminal inside a repo, then try again.", level: "warning" });
     }); }, { kw: "branch isolate" });
-    act("Add machine…", "plus", "Connect another computer (over SSH) so its spaces and agents show up here.", () => { this.close(); run("mod.open", { mod: "machine-add" }); }, { kw: "remote ssh server computer" });
+    act("Add machine…", "plus", "Connect another computer (over SSH) so its spaces and agents show up here.", () => { this.close(); run("mod.open", { name: "machine-add" }); }, { kw: "remote ssh server computer" });
     act("New space", "plus", "A new space on this computer.", () => { this.close(); run("space.new"); }, { hint: "⌘N" });
     act("New terminal tab", "plus", "A plain shell in a new tab of this space.", () => { this.close(); run("tab.new"); }, { hint: "⌘T", kw: "shell" });
     const fa = all.find((a) => a.focused) ?? all.find((a) => a.address === focused()?.agent);
@@ -118,7 +118,7 @@ export default class CommandBar extends View {
 
     const view = (name, ic, desc, fn, extra = {}) => out.push({ group: "Views", name, mark: icon(ic, 14, t.muted), desc, verb: "Open", kw: "", ...extra, run: () => { this.close(); fn(); } });
     view("Board", "layers", "Every space as a card in Todo / In progress / In review / Done.", () => openOverlay({ mod: "space-board", kind: "dialog" }), { hint: "⌃⌘B", kw: "kanban todo review" });
-    view("Team Map", "users", "Timeline of the focused agent's team: who did what, and the messages between them.", () => run("mod.open", { mod: "agent-team" }), { hint: "⌃⌘T", kw: "timeline members" });
+    view("Team Map", "users", "Timeline of the focused agent's team: who did what, and the messages between them.", () => run("mod.open", { name: "agent-team" }), { hint: "⌃⌘T", kw: "timeline members" });
     view("Inspector: Overview", "gauge", "What the focused agent is doing, what needs you, context, cache and spend.", () => this.inspector("overview"), { kw: "context cost cache health" });
     view("Inspector: Trace", "clock", "The focused agent's turns: time split, waterfall of LLM calls and tools, cost per call.", () => this.inspector("trace"), { kw: "waterfall turns cost" });
     view("Inspector: Capabilities", "plug", "Skills, MCP servers and tools the focused agent has and used.", () => this.inspector("capabilities"), { kw: "skills mcp tools" });

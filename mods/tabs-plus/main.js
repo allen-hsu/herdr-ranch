@@ -125,8 +125,9 @@ export default class Tabs extends View {
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().track_scroll(this.scroll)
         .on_size_change((_size, cx) => { if (active >= 0) { this.scroll.scroll_to_item(active); cx.notify(); } })
-        .children(shown.map(item)))
-      .child(button("tab-new", icon("plus", 14), () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
+        .children(shown.map(item))
+        // New tab sits right after the last tab, like a browser's.
+        .child(button("tab-new", icon("plus", 14), () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })).tooltip("New tab or agent")))
       // The panel's own icon tabs already switch views: the layout can turn these two off ("panel_buttons": false).
       .when(showPanelButtons && enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(showPanelButtons && enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
