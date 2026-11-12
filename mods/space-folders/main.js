@@ -30,6 +30,7 @@ const lightTile = (t) => { const h = String(t.background ?? "").replace("#", "")
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
 const matches = (filter, a) => filter === "all" || (filter === "blocked" ? a.status === "blocked" || a.status === "error" : a.status === filter);
 const openBar = openCommandBar;
+const OLD_MS = 12 * 3600 * 1000;
 
 function viewSwitch(t, on) {
   const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
@@ -178,6 +179,7 @@ export default class Spaces extends View {
     // "By space" view: each space lists its agents (lib/agentrows.js), the same rows the "by status" view shows.
     this.adata = new AgentData();
     this.filter = "all";
+    this.oldOpen = new Set(); // spaces whose "older than 12h" agents are shown
     try { this.agentsFold = new Set(JSON.parse(localStorage.getItem("agents-fold") ?? "[]")); } catch { this.agentsFold = new Set(); }
     // Orca's "N hidden worktrees": per repo root, its linked worktrees (path, branch, last commit), refreshed each minute.
     this.trees = {};
@@ -600,7 +602,13 @@ export default class Spaces extends View {
           ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true, hidden: away, seen })),
         ];
       }),
-      ...placed.filter((r) => !r.folder).flatMap((r) => draw(r, hidden)),
+      // Spaces in no folder: "Recent", under the folders.
+      ...(() => {
+        const loose = placed.filter((r) => !r.folder).flatMap((r) => draw(r, hidden));
+        const head = loose.length && list.length && !collapsed && !hidden && !nested
+          ? [div().h(24).mt(8).px(8).flex().items_center().flex_none().text_size(11).font_semibold().text_color(t.dim).child("Recent")] : [];
+        return [...head, ...loose];
+      })(),
     ];
   }
 
@@ -687,7 +695,21 @@ export default class Spaces extends View {
       .when(folded && !need && working > 0, (el) => el.child(statusMark(t, "working")))
       .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).text_color(t.dim)));
     if (folded) return [fold];
-    return [fold, ...mine.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })])];
+    // Agents that finished (or went idle) more than 12 hours ago fold into one line, Arc-style: still there, out of the way.
+    const now = Date.now();
+    const stale = (a) => (a.status === "idle" || a.status === "done") && !a.focused && (this.adata.since(a) ?? now) < now - OLD_MS;
+    const old = this.filter === "all" ? mine.filter(stale) : [];
+    const fresh = mine.filter((a) => !old.includes(a));
+    const rowsOf = (list) => list.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })]);
+    const open = this.oldOpen.has(r.w.id);
+    const older = !old.length ? [] : [h_flex().id(`aold-${r.w.id}`).h(22).pl(pad + 20).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
+      .text_size(TS.meta).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.muted))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); open ? this.oldOpen.delete(r.w.id) : this.oldOpen.add(r.w.id); cx.notify(); })
+      .child(div().flex_1().child(`${old.length} finished · older than 12h`))
+      .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).text_color(t.dim))),
+      ...(open ? rowsOf(old) : [])];
+    return [fold, ...rowsOf(fresh), ...older];
   }
 
   spaceMatches(w) {
