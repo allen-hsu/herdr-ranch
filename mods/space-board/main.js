@@ -143,6 +143,7 @@ export default class Board extends View {
     const s = c.s, dragging = this.drag?.id === s.id;
     // Only agents doing something (or just finished) get a line; the rest are in the summary.
     const live = c.mine.filter((a) => a.status !== "idle");
+    const order = [...live, ...c.mine.filter((a) => a.status === "idle")];
     const shown = live.slice(0, 3);
     const name = spaceName(s.name);
     const st = C(t).status;
@@ -161,6 +162,7 @@ export default class Board extends View {
         .child(div().w(16).flex_none().flex().justify_center().child(this.mark(t, c.mine)))
         .child(div().flex_1().min_w(0).truncate().text_size(13).font_medium().text_color(t.foreground).child(name))
         .when(Boolean(c.pr), (x) => x.child(div().flex_none().text_size(11).text_color(prColor(c.pr, t)).tooltip(prTip(c.pr)).child(`#${c.pr.number}`)))
+        .when(Boolean(c.last) && !hovered, (x) => x.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(Date.now() - c.last))))
         .when(c.manual, (x) => x.child(div().id(`auto-${s.id}`).flex_none().size(18).flex().items_center().justify_center().rounded(4).hover((h) => h.bg(t.raised))
           .tooltip("You placed this card. Click to let it follow its agents and PR again.")
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setCol(s.id, null); cx.notify(); }).child(icon("rotate-ccw", 12, t.dim))))
@@ -177,14 +179,14 @@ export default class Board extends View {
       .when(Boolean(c.folder || branch || c.worktree), (x) => x.child(h_flex().pl(22).gap(6).items_center().min_w(0).text_size(11).text_color(t.muted)
         .when(Boolean(c.folder), (y) => y.child(this.folderTile(t, c.folder, c.folderColor)).child(div().flex_none().child(c.folder)))
         .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child([branch, c.worktree ? "worktree" : null].filter(Boolean).join(" · ")))))
-      // Its agents as chips (the ones doing something first), then what stands out: needs you, a PR, or how long ago.
-      .child(h_flex().pl(22).h(20).gap(5).items_center().min_w(0)
-        .children([...live, ...c.mine.filter((a) => a.status === "idle")].slice(0, 5).map((a) => this.agentChip(t, a)))
-        .when(c.mine.length > 5, (x) => x.child(div().flex_none().text_size(11).text_color(t.dim).child(`+${c.mine.length - 5}`)))
-        .when(!c.mine.length, (x) => x.child(div().text_size(11).text_color(t.dim).child("no agents")))
-        .child(div().flex_1())
-        .when(c.need, (x) => x.child(statusMark(t, "blocked", { label: true })))
-        .when(!c.need && Boolean(c.last), (x) => x.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(Date.now() - c.last)))));
+      // Its agents by name, each with its program's icon and its state (the ones doing something first).
+      .children(order.slice(0, 4).map((a) => h_flex().id(`ag-${a.address}`).pl(22).h(20).gap(6).items_center().min_w(0)
+        .child(div().w(14).flex_none().flex().justify_center().child(programIcon(a.program, 12, t.muted) ?? icon("bot", 12, t.muted)))
+        .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(a.status === "idle" ? t.muted : t.foreground).child(agentName(a) || a.program?.name || a.address))
+        .child(div().w(14).flex_none().flex().justify_center().child(statusMark(t, a.status, { size: 10 })))))
+      .when(order.length > 4, (x) => x.child(div().pl(42).text_size(11).text_color(t.dim).child(`+${order.length - 4} more`)))
+      .when(!c.mine.length, (x) => x.child(div().pl(22).text_size(11).text_color(t.dim).child("no agents")))
+      .when(c.need, (x) => x.child(h_flex().pl(22).child(statusMark(t, "blocked", { label: true }))));
   }
 
   // By agent: one card per agent. Click goes to its terminal.
