@@ -2,8 +2,8 @@
 // active child from layout(); click selects with layout.select. Props: { "stack": "<id>",
 // "labels": { "<child id>": "Label" }, "hide": ["<child id>"], "sync_panels": true } — children without a
 // label show their id; hidden children get no tab but stay selectable (e.g. by the tab bar's buttons).
-// sync_panels: add the children's ids to shared "workspace.panels", which Herdr's tab bar uses to remember
-// per space which panel child was open (it only restores ids listed there).
+// sync_panels: add the children's ids to shared "ranch.panels", which tabs-plus uses to remember per space which
+// panel child was open (it only restores ids listed there).
 // "icons": { "<child id>": "<lucide name>" } draws icon tabs instead of text; "panel": "<layout id>" adds a hide button.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -27,9 +27,14 @@ export default class StackTabs extends View {
     const kids = all.filter((c) => !hide.has(c.id));
     const active = stack?.active ?? kids[0]?.id;
     if (p.sync_panels) {
-      const have = shared("workspace.panels") ?? ["files", "changes"];
+      // Our own list ("ranch.panels"): tabs-plus restores each space's panel from it. Herdr's own tab bar reads
+      // "workspace.panels" in ITS layouts, whose panel only has Files and Changes: keep that list to those two, or
+      // switching to a built-in layout tries to open a panel it doesn't have ("no stack panel-body with a child inspector").
+      const have = shared("ranch.panels") ?? [];
       const missing = all.map((c) => c.id).filter((id) => !have.includes(id));
-      if (missing.length) setShared("workspace.panels", [...have, ...missing]);
+      if (missing.length) setShared("ranch.panels", [...have, ...missing]);
+      const theirs = shared("workspace.panels");
+      if (Array.isArray(theirs) && theirs.some((id) => id !== "files" && id !== "changes")) setShared("workspace.panels", theirs.filter((id) => id === "files" || id === "changes"));
     }
     // Icon tabs (props.icons: { "<child id>": "<icon name>" }), Orca-style: one icon per view, its name on hover,
     // a line under the open one; on the right a button that hides the panel (props.panel: the panel's layout id).
