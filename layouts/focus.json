@@ -74,7 +74,10 @@
               "id": "tabs",
               "type": "block",
               "content": {
-                "mod": "tabs-plus"
+                "mod": "tabs-plus",
+                "props": {
+                  "panel_buttons": false
+                }
               },
               "window_drag": true,
               "size": {
@@ -161,18 +164,23 @@
                         "stack": "panel-body",
                         "labels": {
                           "files": "Files",
+                          "inspector": "Inspector",
                           "changes": "Changes",
-                          "git": "Git",
-                          "prs": "PRs",
-                          "inspector": "Inspector"
+                          "prs": "Pull requests",
+                          "git": "Git graph"
                         },
                         "sync_panels": true,
-                        "hide": [
-                          "changes"
-                        ]
+                        "icons": {
+                          "files": "files",
+                          "inspector": "gauge",
+                          "changes": "git-branch",
+                          "prs": "git-pull-request",
+                          "git": "git-graph"
+                        },
+                        "panel": "panel"
                       }
                     },
-                    "height": 36
+                    "height": 38
                   },
                   "children": [
                     {
@@ -183,17 +191,17 @@
                       }
                     },
                     {
+                      "id": "inspector",
+                      "type": "block",
+                      "content": {
+                        "mod": "agent-inspector"
+                      }
+                    },
+                    {
                       "id": "changes",
                       "type": "block",
                       "content": {
                         "mod": "changes-plus"
-                      }
-                    },
-                    {
-                      "id": "git",
-                      "type": "block",
-                      "content": {
-                        "mod": "git-graph"
                       }
                     },
                     {
@@ -211,10 +219,10 @@
                       }
                     },
                     {
-                      "id": "inspector",
+                      "id": "git",
                       "type": "block",
                       "content": {
-                        "mod": "agent-inspector"
+                        "mod": "git-graph"
                       }
                     }
                   ]

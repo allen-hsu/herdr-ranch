@@ -1131,11 +1131,11 @@ export default class Spaces extends View {
     this.seen = seen;
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(TS.item)
       .child(h_flex().h(31).pl(15).pr(8).items_center().justify_between().text_size(TS.body).text_color(t.dim)
-        .when(!collapsed, el => el.child(this.filterBar(t)))
+        // (A status filter exists as filterBar(); not shown for now: Needs you / Finished on top cover it.)
+        .when(!collapsed, el => el.child(div().text_size(11).font_semibold().child("Folders")))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null)).tooltip("New folder")))
-          // New space / new agent: the footer's "+ New agent" and the command bar. The narrow rail keeps a +.
-          .when(collapsed, el => el.child(button("space-new", "plus", () => newSpaceIn(null, null))))))
+          .child(button("space-new", "plus", () => newSpaceIn(null, null)).tooltip("New space"))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         // Released anywhere but on a space or a folder: out of its folder.
         .on_mouse_up("left", (_e, cx) => {
