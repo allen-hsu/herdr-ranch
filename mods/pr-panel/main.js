@@ -304,7 +304,7 @@ export default class PRPanel extends View {
       .hover((s) => s.bg(this.groupBy === id ? t.selected : t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { this.groupBy = id; this.save(); cx.notify(); }).child(label);
     return v_flex().id("pr-panel").size_full().bg(t.chrome).text_color(t.foreground)
-      .child(h_flex().px(12).h(40).flex_none().gap(4).items_center().border_b(1).border_color(t.border)
+      .child(h_flex().px(12).h(36).flex_none().gap(4).items_center()
         .children(TABS.map((tab) => {
           const on = tab.id === this.tab;
           const n = this.data[tab.id]?.items?.length;

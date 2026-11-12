@@ -9,7 +9,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Popover } from "gpui-base";
 import { spaces, agents, panes, focused, run, theme, props, shared, setShared, closeOverlay, exec } from "herdr";
-import { TS, C, dialogTitle, escChip, icon, statusMark, statusOf, spaceName, openCommandBar, pageActive, closePage, focusKey } from "./ui.js";
+import { TS, C, tint, dialogTitle, escChip, icon, statusMark, statusOf, spaceName, openCommandBar, pageActive, closePage, focusKey } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { PRCache, prColor, prTip, repoSlug } from "./prs.js";
 import { place, loadFolders, folderOf } from "./folders.js";
@@ -28,6 +28,7 @@ const AGENT_COLS = [
   { id: "idle", name: "Idle" },
 ];
 const COL_W = 280, COL_GAP = 12;
+const FOLDER_COLORS = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"]; // the names space-folders stores, in C(t).tile order
 const ago = (ms) => { const s = ms / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`; };
 
 export default class Board extends View {
@@ -101,6 +102,7 @@ export default class Board extends View {
       const col = COLS.some((c) => c.id === manual[s.id]) ? manual[s.id] : auto;
       return { s, dir, mine, pr, col, manual: Boolean(manual[s.id]), pinned: pinned.has(s.id), last,
         folder: (this.folders.list ?? []).find((f) => f.id === fid)?.name ?? null,
+        folderColor: (this.folders.list ?? []).find((f) => f.id === fid)?.color ?? null,
         worktree: dir.includes("/.herdr/worktrees/"), need: mine.some((a) => a.status === "blocked") };
     });
   }
@@ -117,6 +119,18 @@ export default class Board extends View {
   }
 
   mark(t, mine) { return statusMark(t, statusOf(mine)); }
+
+  // A folder's small colored tile with its initial (the folder's own color, as in the sidebar).
+  folderTile(t, name, color) {
+    const i = FOLDER_COLORS.indexOf(color), c = i >= 0 ? C(t).tile[i] : color && String(color).startsWith("#") ? color : t.muted;
+    return div().size(14).flex_none().rounded(4).bg(tint(c, 0.25)).flex().items_center().justify_center().text_size(9).font_bold().text_color(c).child([...name][0]?.toUpperCase() ?? "?");
+  }
+  // One agent as a chip: its program's icon and its state.
+  agentChip(t, a) {
+    return h_flex().id(`chip-${a.address}`).h(20).pl(4).pr(6).gap(5).flex_none().items_center().rounded(5).bg(t.raised).tooltip(`${agentName(a) || a.program?.name || a.address} · ${a.status ?? "idle"}`)
+      .child(programIcon(a.program, 12, t.muted) ?? icon("bot", 12, t.muted))
+      .child(statusMark(t, a.status, { size: 10 }));
+  }
 
   // Agent status: only states worth seeing get a mark (idle agents stay plain, so nothing looks "finished" by mistake).
   agentMark(t, a) {
@@ -137,16 +151,15 @@ export default class Board extends View {
       .map(([k, label, color]) => ({ n: count(k), label, color })).filter((x) => x.n > 0);
     const branch = s.branch && s.branch !== "main" && s.branch !== "master" && s.branch !== s.name ? s.branch : null;
     const hovered = this.hover === s.id;
-    return v_flex().id(`card-${s.id}`).relative().w_full().px(12).py(10).gap(4).rounded(8).cursor_pointer().flex_none()
-      .bg(s.active ? t.selected : t.surface).hover((x) => x.bg(t.hover))
+    return v_flex().id(`card-${s.id}`).relative().w_full().p(10).gap(6).rounded(8).cursor_pointer().flex_none()
+      .bg(c.need ? tint(C(t).status.blocked, 0.12) : s.active ? t.selected : t.surface).hover((x) => x.bg(t.hover))
       .on_hover((h, cx) => { const v = h ? s.id : this.hover === s.id ? null : this.hover; if (v !== this.hover) { this.hover = v; cx.notify(); } })
-      .when(c.need, (x) => x.child(div().absolute().left(0).top(10).bottom(10).w(2).rounded(1).bg(C(t).status.blocked)))
       .when(dragging && this.moved, (x) => x.opacity(0.35))
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.drag = { id: s.id, from: c.col }; this.moved = false; })
       .on_click(() => { if (this.moved) return; run("space.select", { id: s.id }); this.close(); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(16).flex_none().flex().justify_center().child(this.mark(t, c.mine)))
-        .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(name))
+        .child(div().flex_1().min_w(0).truncate().text_size(13).font_medium().text_color(t.foreground).child(name))
         .when(Boolean(c.pr), (x) => x.child(div().flex_none().text_size(11).text_color(prColor(c.pr, t)).tooltip(prTip(c.pr)).child(`#${c.pr.number}`)))
         .when(c.manual, (x) => x.child(div().id(`auto-${s.id}`).flex_none().size(18).flex().items_center().justify_center().rounded(4).hover((h) => h.bg(t.raised))
           .tooltip("You placed this card. Click to let it follow its agents and PR again.")
@@ -160,33 +173,34 @@ export default class Board extends View {
           .hover((h) => h.bg(t.raised)).tooltip(c.pinned ? "Unpin" : "Pin to the top of its column")
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.setPinned(s.id, !c.pinned); cx.notify(); })
           .child(icon(c.pinned && hovered ? "pin-off" : "pin", 12, c.pinned ? t.foreground : t.dim)))))
-      .when(c.need, (x) => x.child(h_flex().pl(22).child(statusMark(t, "blocked", { label: true }))))
-      // Where it is and when something last happened.
-      .when(Boolean(c.folder || branch || c.worktree || c.last), (x) => x.child(div().pl(22).truncate().text_size(11).text_color(t.dim)
-        .child([c.folder, branch, c.worktree ? "worktree" : null, c.last ? `${ago(Date.now() - c.last)} ago` : null].filter(Boolean).join(" · "))))
-      // What its agents are up to, in one line.
-      .when(parts.length > 0, (x) => x.child(h_flex().pl(22).gap(8).flex_wrap().text_size(11)
-        .children(parts.map((p) => div().text_color(p.color).child(`${p.n} ${p.label}`)))))
-      .when(!c.mine.length, (x) => x.child(div().pl(22).text_size(11).text_color(t.dim).child("no agents")))
-      .children(shown.map((a) => h_flex().pl(22).gap(6).items_center().min_w(0)
-        .child(div().w(10).flex_none().flex().justify_center().child(this.agentMark(t, a)))
-        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(a.status === "idle" ? t.muted : t.foreground).child(agentName(a) || a.program?.name || a.address))))
-      .when(live.length > shown.length, (x) => x.child(div().pl(38).text_size(11).text_color(t.dim).child(`+${live.length - shown.length} more`)));
+      // Where it lives: the folder's tile and name, then the branch.
+      .when(Boolean(c.folder || branch || c.worktree), (x) => x.child(h_flex().pl(22).gap(6).items_center().min_w(0).text_size(11).text_color(t.muted)
+        .when(Boolean(c.folder), (y) => y.child(this.folderTile(t, c.folder, c.folderColor)).child(div().flex_none().child(c.folder)))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child([branch, c.worktree ? "worktree" : null].filter(Boolean).join(" · ")))))
+      // Its agents as chips (the ones doing something first), then what stands out: needs you, a PR, or how long ago.
+      .child(h_flex().pl(22).h(20).gap(5).items_center().min_w(0)
+        .children([...live, ...c.mine.filter((a) => a.status === "idle")].slice(0, 5).map((a) => this.agentChip(t, a)))
+        .when(c.mine.length > 5, (x) => x.child(div().flex_none().text_size(11).text_color(t.dim).child(`+${c.mine.length - 5}`)))
+        .when(!c.mine.length, (x) => x.child(div().text_size(11).text_color(t.dim).child("no agents")))
+        .child(div().flex_1())
+        .when(c.need, (x) => x.child(statusMark(t, "blocked", { label: true })))
+        .when(!c.need && Boolean(c.last), (x) => x.child(div().flex_none().text_size(11).text_color(t.dim).child(ago(Date.now() - c.last)))));
   }
 
   // By agent: one card per agent. Click goes to its terminal.
   agentCard(t, a, c) {
     const when = this.since[a.address];
-    return v_flex().id(`acard-${a.address}`).relative().w_full().px(12).py(9).gap(3).rounded(8).cursor_pointer().flex_none()
-      .bg(a.focused ? t.selected : t.surface).hover((x) => x.bg(t.hover))
-      .when(a.status === "blocked" || a.status === "error", (x) => x.child(div().absolute().left(0).top(9).bottom(9).w(2).rounded(1).bg(C(t).status.blocked)))
+    return v_flex().id(`acard-${a.address}`).relative().w_full().p(10).gap(6).rounded(8).cursor_pointer().flex_none()
+      .bg(a.status === "blocked" || a.status === "error" ? tint(C(t).status.blocked, 0.12) : a.focused ? t.selected : t.surface).hover((x) => x.bg(t.hover))
       .on_click(() => { run("pane.focus", { pane: a.pane }); this.close(); })
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(div().w(16).flex_none().flex().justify_center().child(programIcon(a.program, 13, t.muted) ?? statusMark(t, a.status)))
-        .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(agentName(a) || a.program?.name || a.address))
+        .child(div().flex_1().min_w(0).truncate().text_size(13).font_medium().text_color(t.foreground).child(agentName(a) || a.program?.name || a.address))
         .child(div().flex_none().child(statusMark(t, a.status))))
-      .child(div().pl(22).truncate().text_size(11).text_color(t.dim)
-        .child([c?.folder, c ? spaceName(c.s.name) : null, c?.s.branch && c.s.branch !== "main" && c.s.branch !== "master" ? c.s.branch : null, when ? `${ago(Date.now() - when)} ago` : null].filter(Boolean).join(" · ")));
+      .child(h_flex().pl(22).gap(6).items_center().min_w(0).text_size(11).text_color(t.muted)
+        .when(Boolean(c?.folder), (y) => y.child(this.folderTile(t, c.folder, c.folderColor)).child(div().flex_none().child(c.folder)))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child([c ? spaceName(c.s.name) : null, c?.s.branch && c.s.branch !== "main" && c.s.branch !== "master" ? c.s.branch : null].filter(Boolean).join(" · ")))
+        .when(Boolean(when), (y) => y.child(div().flex_none().text_color(t.dim).child(ago(Date.now() - when)))));
   }
 
   drop(target, cx) {
@@ -230,14 +244,14 @@ export default class Board extends View {
     if (this.only && !all.some((c) => c.s.id === this.only)) this.only = null;
     const cards = this.only ? all.filter((c) => c.s.id === this.only) : all;
     const dragging = Boolean(this.drag && this.moved);
-    const head = h_flex().gap(12).items_center().flex_none()
-      .child(h_flex().gap(8).items_baseline().flex_none().child(dialogTitle(t, "Board")).child(div().text_size(11).text_color(t.dim).child(`${all.length} spaces`)))
+    const head = h_flex().h(48).px(16).gap(12).items_center().flex_none().border_b(1).border_color(t.border)
+      .child(dialogTitle(t, "Board"))
       .child(this.spacePicker(t, all))
       .child(h_flex().h(28).p(2).gap(2).flex_none().rounded(7).bg(t.background).border_1().border_color(t.border)
         .children([["space", "By space"], ["agent", "By agent"]].map(([id, label]) => div().id(`bd-mode-${id}`).h_full().px(10).flex().items_center().rounded(5).text_size(TS.body).cursor_pointer()
           .text_color(this.mode === id ? t.foreground : t.muted).when(this.mode === id, (e) => e.bg(t.selected).font_medium())
           .on_click((_e, cx) => { this.mode = id; localStorage.setItem("mode", id); cx.notify(); }).child(label))))
-      .child(div().flex_1())
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(t.dim).child(this.mode === "space" ? `${all.length} spaces · drag a card to move it` : "one card per agent, by state"))
       .child(this.page
         ? div().id("bd-back").flex_none().size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
             .hover((e) => e.bg(t.hover).text_color(t.foreground)).tooltip("Back to the terminals (⌃⌘B)").on_click(() => this.close()).child(icon("x", 14))
@@ -249,7 +263,7 @@ export default class Board extends View {
       return this.zone(t, col.id, v_flex().id(`col-${col.id}`).when(this.page, (e) => e.flex_1().min_w(220)).when(!this.page, (e) => e.w(COL_W).flex_none()).h_full().gap(6)
         .child(h_flex().h(28).px(4).gap(8).items_center().flex_none()
           .child(div().size(7).rounded(4).bg(dotC))
-          .child(div().text_size(13).font_semibold().text_color(t.foreground).child(col.name))
+          .child(div().text_size(11).font_semibold().text_color(t.muted).child(col.name))
           .child(div().text_size(11).text_color(t.dim).child(String(list.length))))
         .child(v_flex().id(`colbody-${col.id}`).flex_1().min_h(0).gap(6).rounded(8).overflow_y_scrollbar()
           .when(target, (x) => x.p(4).border_1().border_dashed().border_color(this.over === col.id ? t.accent : t.input).when(this.over === col.id, (y) => y.bg(t.hover)))
@@ -265,16 +279,16 @@ export default class Board extends View {
         return v_flex().id(`acol-${col.id}`).when(this.page, (e) => e.flex_1().min_w(220)).when(!this.page, (e) => e.w(COL_W).flex_none()).h_full().gap(6)
           .child(h_flex().h(28).px(4).gap(8).items_center().flex_none()
             .child(div().size(7).rounded(4).bg(st[col.id] ?? t.dim))
-            .child(div().text_size(13).font_semibold().text_color(t.foreground).child(col.name))
+            .child(div().text_size(11).font_semibold().text_color(t.muted).child(col.name))
             .child(div().text_size(11).text_color(t.dim).child(String(list.length))))
           .child(v_flex().id(`acolbody-${col.id}`).flex_1().min_h(0).gap(6).overflow_y_scrollbar().children(list.map((a) => this.agentCard(t, a, cardOf(a))))); };
-      return v_flex().id("board").size_full().p(18).gap(14).bg(this.page ? t.background : t.popover).text_size(13).text_color(t.foreground)
+      return v_flex().id("board").size_full().bg(this.page ? t.background : t.popover).text_size(13).text_color(t.foreground)
         .child(head)
-        .child(h_flex().flex_1().min_h(0).gap(COL_GAP).children(AGENT_COLS.flatMap((c, i) => i ? [div().w(1).h_full().flex_none().bg(t.border), acol(c)] : [acol(c)])));
+        .child(h_flex().flex_1().min_h(0).px(16).py(12).gap(COL_GAP).children(AGENT_COLS.flatMap((c, i) => i ? [div().w(1).h_full().flex_none().bg(t.border), acol(c)] : [acol(c)])));
     }
-    return v_flex().id("board").size_full().p(18).gap(14).bg(this.page ? t.background : t.popover).text_size(13).text_color(t.foreground)
+    return v_flex().id("board").size_full().bg(this.page ? t.background : t.popover).text_size(13).text_color(t.foreground)
       .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drag = null; this.over = null; cx.notify(); } })
       .child(head)
-      .child(h_flex().flex_1().min_h(0).gap(COL_GAP).children(COLS.flatMap((c, i) => i ? [div().w(1).h_full().flex_none().bg(t.border), column(c)] : [column(c)])));
+      .child(h_flex().flex_1().min_h(0).px(16).py(12).gap(COL_GAP).children(COLS.flatMap((c, i) => i ? [div().w(1).h_full().flex_none().bg(t.border), column(c)] : [column(c)])));
   }
 }

@@ -189,7 +189,7 @@ export default class Changes extends View {
       .on_key_down((e, cx) => {
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       })
-      .child(h_flex().h(42).flex_none().px(SPACE.panel).gap(8).items_center().border_b(1).border_color(t.border)
+      .child(h_flex().h(36).flex_none().px(SPACE.panel).gap(8).items_center()
         .child(div().font_semibold().child("Changes"))
         .child(div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(TS.tiny).text_color(t.muted).child(`${this.files.length} files`))
         .child(div().flex_1()).child(div().text_size(TS.meta).text_color(c.diff.add).child(`+${add}`)).child(div().text_size(TS.meta).text_color(c.diff.del).child(`−${del}`)))

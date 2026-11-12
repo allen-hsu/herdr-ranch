@@ -830,7 +830,7 @@ export class Graph {
     // drops the same rows down over the graph to switch to another.
     const repo = ws && this.opened ? ws.repos.find((r) => r.path === this.opened) : null;
     const settingsShown = this.state === "workspace" || (this.state === "norepo" && !this.skipped);
-    return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+    return h_flex().h(36).flex_none().px(14).gap(8).items_center()
       .when(!repo, (e) => e.child(div().text_size(TS.item).font_semibold().child(ws ? "Manygit" : "Git")))
       .when(Boolean(repo), (e) => e
         .child(h_flex().id("graph-back").h(24).pl(2).pr(6).gap(3).flex_none().items_center().rounded(6).cursor_pointer()
