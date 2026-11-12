@@ -253,6 +253,8 @@ pasted into a prompt: the agent is given the repo, number and URL and told to tr
 
 ## Credits and licenses
 
+> **License:** Apache-2.0 (see `LICENSE` and `NOTICE`). Mods derived from Herdr's built-in mods and other third-party parts are listed in `NOTICE` and `licenses/README.md`.
+
 This repository has no license of its own yet. Code that started elsewhere:
 
 | Here | Origin | License |

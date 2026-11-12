@@ -1,3 +1,4 @@
+// Modified from Herdr's built-in `spaces` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: folders (ported from jankeesvw/herdr-space-folders, MIT), agents under each space, status filter, attention sections, pin, worktrees.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to

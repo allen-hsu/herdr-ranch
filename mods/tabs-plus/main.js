@@ -1,3 +1,4 @@
+// Modified from Herdr's built-in `tabs` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: agent names on tabs, flash on done / needs-you, new-tab button after the last tab, page keys.
 // Herdr's shipped tab bar (mods/tabs), cloned: tabs show their agent's name (lib/agentname.js) unless you named them.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";

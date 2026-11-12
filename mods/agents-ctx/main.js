@@ -1,3 +1,4 @@
+// Modified from Herdr's built-in `agents` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: context %, sub-agents, team chip, shared rows.
 // Agents in grouped or priority views; parents take their most urgent sub-agent's place.
 // A viewed done agent stays in Done until left.
 

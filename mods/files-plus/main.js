@@ -1,3 +1,4 @@
+// Modified from Herdr's built-in `files` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: flat panel look, header actions, search by file name or contents.
 // Files panel (Herdr's own files mod, cloned): a lazy file browser for the focused pane's folder with read-only
 // previews, restyled Orca-style and with search: by file name ("Names") or inside files ("Contents", ripgrep).
 // Header: the folder's name, then collapse all / refresh / show in Finder. Clicking a result previews the file.

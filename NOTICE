@@ -1,0 +1,24 @@
+herdr-ranch
+Copyright 2026 The herdr-ranch contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This project is a set of mods, layouts and helper scripts for the Herdr app. It is not affiliated with
+or endorsed by the Herdr project.
+
+Portions of this project are modified copies of mods that ship with Herdr (Apache License 2.0).
+Each of these files says so in its first line:
+
+  mods/tabs-plus      from Herdr's `tabs` mod
+  mods/files-plus     from Herdr's `files` mod
+  mods/changes-plus   from Herdr's `changes` mod
+  mods/agents-ctx     from Herdr's `agents` mod
+  mods/space-folders  from Herdr's `spaces` mod
+
+Other third-party work, with its own license text under licenses/:
+
+  mods/space-folders  folder logic ported from jankeesvw/herdr-space-folders (MIT)
+  mods/git-graph      see licenses/README.md (MIT / MIT-or-Apache)
+  lib/icons           Lucide icons (ISC)
+
+See licenses/README.md for the full list and the license texts.

@@ -1,3 +1,4 @@
+// Modified from Herdr's built-in `changes` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: restyled panel, shared colors and icons.
 // herdr-ranch changes-plus: Herdr's shipped `changes` mod (0.1.14) with colored diff rows. See diffRow.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
