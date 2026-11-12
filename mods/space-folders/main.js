@@ -25,6 +25,12 @@ const TRAIL_W = 30;
 const lightTile = (t) => { const h = String(t.background ?? "").replace("#", ""); const v = /^[0-9a-fA-F]{6}/.test(h) ? parseInt(h.slice(0, 6), 16) : 0;
   const lum = (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000; return lum < 128 ? t.foreground : t.raised; };
 // The sidebar's two views, a stack in the layout ("sidebar-view"): agents by space (here) or by status (agents-ctx).
+// Status filter in the header (replaces the old Spaces | Agents switch): the same tree, showing only the agents in
+// that state and the spaces and folders that hold them.
+const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
+const matches = (filter, a) => filter === "all" || (filter === "blocked" ? a.status === "blocked" || a.status === "error" : a.status === filter);
+const openBar = (step) => openOverlay({ mod: "command-bar", kind: "popup", at: "top", offset: 90, width: 720, height: 470, props: step ? { step } : {} });
+
 function viewSwitch(t, on) {
   const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
     .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.selected)).hover((x) => x.bg(t.hover).text_color(t.foreground))
@@ -171,6 +177,7 @@ export default class Spaces extends View {
     this.logos = {};
     // "By space" view: each space lists its agents (lib/agentrows.js), the same rows the "by status" view shows.
     this.adata = new AgentData();
+    this.filter = "all";
     try { this.agentsFold = new Set(JSON.parse(localStorage.getItem("agents-fold") ?? "[]")); } catch { this.agentsFold = new Set(); }
     // Orca's "N hidden worktrees": per repo root, its linked worktrees (path, branch, last commit), refreshed each minute.
     this.trees = {};
@@ -558,8 +565,9 @@ export default class Spaces extends View {
   // for the keys that step through the list.
   foldered(rows, machine, t, collapsed, { guests = [], nested = false, hidden = false, seen = [] } = {}) {
     const draw = (r, away) => {
-      seen.push({ id: r.w.id, shown: !away, folder: r.folder });
-      if (away) return [];
+      const out = this.filter !== "all" && !this.spaceMatches(r.w);
+      seen.push({ id: r.w.id, shown: !away && !out, folder: r.folder });
+      if (away || out) return [];
       if (collapsed) return [this.compact(r, t)];
       const below = [...this.agentsOf(r, t), ...this.hiddenTrees(r, t)];
       // Orca-style: the current space and its agents sit on one faint card.
@@ -578,9 +586,16 @@ export default class Spaces extends View {
         const inside = placed.filter((r) => r.folder === f.id);
         const visitors = guests.filter((g) => g.folder === f.id);
         const counted = [...inside, ...visitors.flatMap((g) => g.rows)];
-        const away = hidden || f.folded;
+        const filtering = this.filter !== "all";
+        if (filtering && !counted.some((r) => this.spaceMatches(r.w))) return [];
+        const away = hidden || (f.folded && !filtering);
         return [
           ...(hidden ? [] : [this.folderHead(f, n, machine, counted, t, collapsed, nested)]),
+          // An empty folder says what to do next.
+          ...(!hidden && !away && !collapsed && !counted.length ? [h_flex().id(`folder-empty-${f.id}`).h(26).ml(indent(null, nested) + 20).mr(8).px(8).gap(6).items_center().rounded(6).flex_none()
+            .border_1().border_dashed().border_color(t.border).text_size(TS.body).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null } }); })
+            .child(icon("plus", 12)).child("New agent")] : []),
           ...inside.flatMap((r) => draw(r, away)),
           ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true, hidden: away, seen })),
         ];
@@ -651,11 +666,11 @@ export default class Spaces extends View {
     let terms = [];
     try { terms = terminals() ?? []; } catch {}
     const childOf = new Set(terms.filter((k) => k.parent && all.some((a) => a.address === k.parent)).map((k) => k.address));
-    const mine = all.filter((a) => a.space === r.w.id && !childOf.has(a.address));
+    const mine = all.filter((a) => a.space === r.w.id && !childOf.has(a.address) && matches(this.filter, a));
     if (!mine.length) return [];
     this.adata.track(all);
     const pad = indent(r.folder, r.nested) + 8; // one small step in from the space, not under its name
-    const folded = this.agentsFold.has(r.w.id);
+    const folded = this.filter === "all" && this.agentsFold.has(r.w.id); // a filter shows what it found
     const need = mine.filter((a) => a.status === "blocked" || a.status === "error").length;
     const working = mine.filter((a) => a.status === "working").length;
     const fold = h_flex().id(`afold-${r.w.id}`).h(22).pl(pad).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
@@ -673,6 +688,45 @@ export default class Spaces extends View {
       .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).text_color(t.dim)));
     if (folded) return [fold];
     return [fold, ...mine.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })])];
+  }
+
+  spaceMatches(w) {
+    return agents().some((a) => !a.address.includes("/") && a.space === w.id && matches(this.filter, a));
+  }
+
+  filterBar(t) {
+    const all = agents().filter((a) => !a.address.includes("/"));
+    const n = (id) => all.filter((a) => matches(id, a)).length;
+    return h_flex().gap(2).items_center().ml(-7).children(FILTERS.map(([id, label]) => {
+      const on = this.filter === id, c = id === "all" ? 0 : n(id);
+      return h_flex().id(`flt-${id}`).px(6).py(2).gap(3).flex_none().items_center().rounded(5).text_size(TS.body).cursor_pointer()
+        .text_color(on ? t.foreground : t.dim).when(on, (e) => e.bg(t.selected)).hover((x) => x.bg(on ? t.selected : t.hover).text_color(t.foreground))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { this.filter = on ? "all" : id; cx.notify(); })
+        .child(label)
+        .when(c > 0, (e) => e.child(div().text_size(TS.tiny).text_color(id === "blocked" ? C(t).status.blocked : t.dim).child(String(c))));
+    }));
+  }
+
+  // The two things worth seeing before the tree: agents waiting for you, and agents that finished while you were
+  // elsewhere (Herdr marks those "done" until you look at them). Only with no filter on.
+  attention(t) {
+    if (this.filter !== "all") return [];
+    const all = agents().filter((a) => !a.address.includes("/"));
+    const sp = spaces();
+    const where = (a) => spaceName(sp.find((s) => s.id === a.space)?.name);
+    const out = [];
+    const section = (id, title, color, list) => {
+      if (!list.length) return;
+      this.adata.track(all);
+      out.push(h_flex().h(22).px(8).gap(6).items_center().flex_none().text_size(11).font_semibold().text_color(color)
+        .child(div().flex_1().child(title)).child(div().font_normal().child(String(list.length))));
+      out.push(v_flex().mb(8).py(2).rounded(8).bg(id === "need" ? tint(C(t).status.blocked, 0.1) : t.surface).flex_none()
+        .children(list.map((a) => simpleAgentRow(t, a, this.adata, { pad: 8, trailW: TRAIL_W, key: id, sub: where(a) }))));
+    };
+    section("need", "Needs you", C(t).status.blocked, all.filter((a) => a.status === "blocked" || a.status === "error"));
+    section("fin", "Finished", t.dim, all.filter((a) => a.status === "done" && !a.focused));
+    return out;
   }
 
   // Every row ends the same way: a fixed-width column (a folder's count + chevron, a space's status dot), with the
@@ -729,6 +783,10 @@ export default class Spaces extends View {
       .when(f.folded && Boolean(status), (el) => el.child(statusMark(t, status)))
       .when(hover, (el) => el.child(div().flex_none().text_size(TS.meta).text_color(t.dim).tooltip(`${inside.length} space${inside.length === 1 ? "" : "s"}`).child(String(inside.length))))
       // ⋯ in the right-hand column, the same place as on space rows; clicking the row folds it (Orca-style).
+      .when(hover, (el) => el.child(div().id(`folder-add-${f.id}`).size(20).flex_none().flex().items_center().justify_center().rounded(5).bg(t.raised).text_color(t.foreground)
+        .hover((s) => s.bg(t.selected)).tooltip(`New agent in ${f.name}`)
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null } }); }).child(icon("plus", 13))))
       .child(this.trail().when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
         () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } })))));
   }
@@ -1072,11 +1130,12 @@ export default class Spaces extends View {
     const seen = [], rows = this.grouped(t, collapsed, seen);
     this.seen = seen;
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(TS.item)
-      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(TS.body).text_color(t.dim)
-        .when(!collapsed, el => el.child(viewSwitch(t, "spaces")))
+      .child(h_flex().h(31).pl(15).pr(8).items_center().justify_between().text_size(TS.body).text_color(t.dim)
+        .when(!collapsed, el => el.child(this.filterBar(t)))
         .child(h_flex().gap(2)
-          .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null))))
-          .child(button("space-new", "plus", () => newSpaceIn(null, null)))))
+          .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null)).tooltip("New folder")))
+          // New space / new agent: the footer's "+ New agent" and the command bar. The narrow rail keeps a +.
+          .when(collapsed, el => el.child(button("space-new", "plus", () => newSpaceIn(null, null))))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         // Released anywhere but on a space or a folder: out of its folder.
         .on_mouse_up("left", (_e, cx) => {
@@ -1084,7 +1143,9 @@ export default class Spaces extends View {
           this.pressed = null; this.over = null; this.overFolder = null; this.moving = null; this.overMove = null;
           cx.notify();
         })
+        .children(collapsed ? [] : this.attention(t))
         .children(rows)
+        .when(this.filter !== "all" && !rows.length && !collapsed, (el) => el.child(div().px(8).py(10).text_size(TS.body).text_color(t.dim).child("No agent in that state right now.")))
         .when(leaving && !collapsed, el => el.child(div().id("folder-out").mt(6).h(34).flex_none().flex().items_center().justify_center()
           .rounded(8).border_1().border_dashed().border_color(this.overFolder === "out" ? t.accent : t.border)
           .text_size(TS.body).text_color(this.overFolder === "out" ? t.foreground : t.dim)
