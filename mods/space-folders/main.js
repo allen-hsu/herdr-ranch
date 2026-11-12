@@ -680,7 +680,7 @@ export default class Spaces extends View {
     const pad = indent(r.folder, r.nested) + 8; // one small step in from the space, not under its name
     const folded = this.filter === "all" && this.agentsFold.has(r.w.id); // a filter shows what it found
     const need = mine.filter((a) => a.status === "blocked" || a.status === "error").length;
-    const working = mine.filter((a) => a.status === "working").length;
+    const working = mine.filter((a) => a.status === "working" || (this.adata.csubs?.[a.address] ?? []).length > 0).length;
     const fold = h_flex().id(`afold-${r.w.id}`).h(22).pl(pad).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
       .text_size(TS.meta).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.muted))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
