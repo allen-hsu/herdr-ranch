@@ -46,10 +46,10 @@ export default class UsageBar extends View {
   provider(t, id, ic, tint, info, now, staleHint, name) {
     const ws = info?.windows ?? [];
     const dim = !ws.length || info.stale;
-    const head = h_flex().id(id).gap(6).items_center().flex_none().when(dim, (e) => e.opacity(0.55))
+    const head = h_flex().id(id).gap(6).items_center().flex_none().when(dim, (e) => e.opacity(0.8))
       .child(tint ? svg(ic).size(13).text_color(tint) : image(ic).size(13));
     // No numbers: say what to do about it, in words.
-    if (!ws.length) return head.child(div().text_color(t.dim).child(`${name}: ${staleHint}`)).tooltip(`${name} has no usage numbers yet.`);
+    if (!ws.length) return head.child(div().text_color(t.muted).child(`${name}: ${staleHint}`)).tooltip(`${name} has no usage numbers yet.`);
     const main = ws[0];
     const c = info.stale ? t.dim : this.color(t, main.percent);
     const lines = ws.map((w) => `${w.name}: ${Math.round(w.percent)}% used${w.resets_at ? `, resets in ${left(w.resets_at, now)}` : ""}`);
@@ -58,9 +58,10 @@ export default class UsageBar extends View {
       .child(this.bar(t, main.percent, c))
       .child(div().text_color(info.stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))
       // In words: when the main limit resets, then the other limits (e.g. a per-model one). Old numbers say so.
-      .when(!info.stale && Boolean(main.resets_at), (e) => e.child(div().text_color(t.dim).child(`resets in ${left(main.resets_at, now)}`)))
-      .when(!info.stale, (e) => e.children(ws.slice(1, 3).map((w) => div().text_color(t.dim).child(`· ${w.name} ${Math.round(w.percent)}%`))))
-      .when(Boolean(info.stale), (e) => e.child(div().text_color(t.dim).child(`old · ${staleHint}`)))
+      // Orca's reading order, in readable colors: the percent and how long until it resets, then the other limits.
+      .when(!info.stale && Boolean(main.resets_at), (e) => e.child(div().text_color(t.foreground).child(left(main.resets_at, now))))
+      .when(!info.stale, (e) => e.children(ws.slice(1, 3).map((w) => div().text_color(t.muted).child(`· ${Math.round(w.percent)}% ${w.name}`))))
+      .when(Boolean(info.stale), (e) => e.child(div().text_color(t.muted).child(`old · ${staleHint}`)))
       .when(Boolean(info.error), (e) => e.child(icon("triangle-alert", 12, C(t).status.blocked)))
       .tooltip(tip);
   }
@@ -70,6 +71,7 @@ export default class UsageBar extends View {
     const now = this.data?.now ?? Date.now() / 1000;
     return h_flex().id("usage-bar").size_full().px(12).gap(16).items_center()
       .text_size(TS.meta).bg(t.chrome).text_color(t.muted)
+      .child(div().text_color(t.muted).child("Used"))
       .child(this.provider(t, "u-claude", "icons/claude.svg", null, this.data?.claude, now, "not available", "Claude"))
       .child(this.provider(t, "u-codex", "icons/codex.svg", null, this.data?.codex, now, "run Codex to refresh", "Codex"))
       .child(this.provider(t, "u-grok", "icons/grok.svg", t.foreground, this.data?.grok, now, "run Grok to refresh", "Grok"))
