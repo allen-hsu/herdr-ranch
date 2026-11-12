@@ -25,7 +25,6 @@ const TRAIL_W = 30;
 // A logo's tile: light on a dark theme (dark marks stay visible; the theme's text color is its light tone), the raised tier on a light one.
 const lightTile = (t) => { const h = String(t.background ?? "").replace("#", ""); const v = /^[0-9a-fA-F]{6}/.test(h) ? parseInt(h.slice(0, 6), 16) : 0;
   const lum = (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000; return lum < 128 ? t.foreground : t.raised; };
-// The sidebar's two views, a stack in the layout ("sidebar-view"): agents by space (here) or by status (agents-ctx).
 // Status filter in the header (replaces the old Spaces | Agents switch): the same tree, showing only the agents in
 // that state and the spaces and folders that hold them.
 const FILTERS = [["all", "All"], ["working", "Working"], ["blocked", "Needs you"], ["done", "Done"]];
@@ -33,14 +32,7 @@ const matches = (filter, a) => filter === "all" || (filter === "blocked" ? a.sta
 const openBar = openCommandBar;
 const OLD_MS = 12 * 3600 * 1000;
 
-function viewSwitch(t, on) {
-  const pill = (id, label) => div().id(`view-${id}`).px(7).py(2).rounded(5).text_size(TS.body).cursor_pointer()
-    .text_color(on === id ? t.foreground : t.dim).when(on === id, (e) => e.bg(t.selected)).hover((x) => x.bg(t.hover).text_color(t.foreground))
-    .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-    .on_click(() => { if (on !== id) { if (id === "agents") setShared("agents.sort", "priority"); run("layout.select", { stack: "sidebar-view", child: id }); } })
-    .child(label);
-  return h_flex().gap(2).items_center().ml(-7).child(pill("spaces", "Spaces")).child(pill("agents", "Agents"));
-} // the right-hand column every row shares // The mod that owns worktree dialogs
+ // the right-hand column every row shares // The mod that owns worktree dialogs
 
 // A machine's folders live in a file in its home, so every screen showing its
 // spaces shows the same folders: { list: [{ id, name, folded }], of: { spaceId:

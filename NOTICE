@@ -12,7 +12,6 @@ Each of these files says so in its first line:
   mods/tabs-plus      from Herdr's `tabs` mod
   mods/files-plus     from Herdr's `files` mod
   mods/changes-plus   from Herdr's `changes` mod
-  mods/agents-ctx     from Herdr's `agents` mod
   mods/space-folders  from Herdr's `spaces` mod
 
 Other third-party work, with its own license text under licenses/:

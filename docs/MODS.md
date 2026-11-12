@@ -9,7 +9,6 @@ Every folder in `mods/`. "Shows" is where the focus layout (`layouts/focus.json`
 | `agent-inspector` | Overview / Trace / Capabilities / Config for the focused Claude Code or Codex agent, from local transcripts. | right panel tab | codexlog.py, ui.js, agentname.js, accounts.py |
 | `agent-team` | Team Map: sequence diagram of an agent's team (hc agents, subagents, messaged sessions) and their messages. | full page (⌃⌘T); also a window | agentname.js, newteam.js, folders.js, ui.js, live.py, codexlog.py, accounts.py, accounts.js |
 | `agent-toast` | Agent notifications that name the agent, state, space, branch and tab; macOS notification when Herdr is in the background; sounds. | toast (layout root `toast`) | agentname.js, live.py, codexlog.py, ui.js, accounts.py |
-| `agents-ctx` | Agents listed by status or grouped, with context %, team chip and background work. Clone of Herdr's `agents`. In the layout's `sidebar-view` stack, but nothing in the UI switches to it at present. | sidebar (second view) | team.svg, ui.js, subs.py, accounts.py, accounts.js |
 | `changes-plus` | Uncommitted changes with coloured diff rows. Clone of Herdr's `changes`. | right panel tab | ui.js |
 | `command-bar` | ⌘K: go to agents and spaces, run actions, open views, New agent flow. | popup / dialog | ui.js, agentname.js, folders.js, accounts.py, accounts.js |
 | `files-plus` | File browser with previews and search by name or content. Clone of Herdr's `files`. | right panel tab | ui.js |
@@ -23,7 +22,6 @@ Every folder in `mods/`. "Shows" is where the focus layout (`layouts/focus.json`
 | `stack-tabs` | Tab strip (text or icons) for a layout `stack` node. | right panel header | ui.js |
 | `tabs-plus` | Tab bar where a tab shows its agent's name and pulses when it finishes or needs you; answers the Board / Team Map keys. Clone of Herdr's `tabs`. | top bar | agentname.js, ui.js |
 | `team-launch` | One-line "New team" launcher; "More options…" for pattern, repo and roles. | dialog (⌃⌘N) | newteam.js, folders.js, ui.js, accounts.js |
-| `title-strip` | Plain draggable title strip for a layout without a tab bar. Not used by the focus layout. | top bar (other layouts) | ui.js |
 | `usage-bar` | Plan usage and reset times for Claude, Codex, Cursor (Grok slot empty). | status bar | ui.js, accounts.py |
 | `worktrees` | Worktree count pill, Resource Manager window, New / Delete / Clean up dialogs. | status bar; window; dialogs | ui.js |
 

@@ -43,25 +43,11 @@
               }
             },
             {
-              "id": "sidebar-view",
-              "type": "stack",
-              "children": [
-                {
-                  "id": "spaces",
-                  "type": "block",
-                  "content": {
-                    "mod": "space-folders"
-                  }
-                },
-                {
-                  "id": "agents",
-                  "type": "block",
-                  "content": {
-                    "mod": "agents-ctx"
-                  }
-                }
-              ],
-              "active": "spaces"
+              "id": "spaces",
+              "type": "block",
+              "content": {
+                "mod": "space-folders"
+              }
             },
             {
               "id": "sidebar-footer",
