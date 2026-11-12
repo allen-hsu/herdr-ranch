@@ -700,7 +700,7 @@ export default class Spaces extends View {
     const stale = (a) => (a.status === "idle" || a.status === "done") && !a.focused && (this.adata.since(a) ?? now) < now - OLD_MS;
     const old = this.filter === "all" ? mine.filter(stale) : [];
     const fresh = mine.filter((a) => !old.includes(a));
-    const rowsOf = (list) => list.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })]);
+    const rowsOf = (list) => list.flatMap((a) => [simpleAgentRow(t, a, this.adata, { pad, trailW: TRAIL_W, pin: this.pinOf(a, "sr") }), ...childrenOf(t, a, this.adata, { pad: pad + 8, trailW: TRAIL_W })]);
     const open = this.oldOpen.has(r.w.id);
     const older = !old.length ? [] : [h_flex().id(`aold-${r.w.id}`).h(22).pl(pad + 20).pr(8).gap(6).items_center().rounded(6).cursor_pointer().flex_none()
       .text_size(TS.meta).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.muted))
@@ -710,6 +710,12 @@ export default class Spaces extends View {
       .child(h_flex().w(TRAIL_W).flex_none().justify_end().child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).text_color(t.dim))),
       ...(open ? rowsOf(old) : [])];
     return [fold, ...rowsOf(fresh), ...older];
+  }
+
+  // Hover state for an agent row's pin button (one row at a time).
+  pinOf(a, key) {
+    const id = `${key}:${a.address}`;
+    return { hovered: this.hoverAgent === id, onHover: (h, cx) => { const v = h ? id : this.hoverAgent === id ? null : this.hoverAgent; if (v !== this.hoverAgent) { this.hoverAgent = v; cx.notify(); } } };
   }
 
   spaceMatches(w) {
@@ -744,8 +750,10 @@ export default class Spaces extends View {
       out.push(h_flex().h(22).px(8).gap(6).items_center().flex_none().text_size(11).font_semibold().text_color(color)
         .child(div().flex_1().child(title)).child(div().font_normal().child(String(list.length))));
       out.push(v_flex().mb(8).py(2).rounded(8).bg(id === "need" ? tint(C(t).status.blocked, 0.1) : t.surface).flex_none()
-        .children(list.map((a) => simpleAgentRow(t, a, this.adata, { pad: 8, trailW: TRAIL_W, key: id, sub: where(a) }))));
+        .children(list.map((a) => simpleAgentRow(t, a, this.adata, { pad: 8, trailW: TRAIL_W, key: id, sub: where(a), pin: this.pinOf(a, id) }))));
     };
+    // Pinned agents (Herdr's own pin) stay on top, whatever they are doing.
+    section("pin", "Pinned", t.dim, all.filter((a) => a.pinned));
     section("need", "Needs you", C(t).status.blocked, all.filter((a) => a.status === "blocked" || a.status === "error"));
     section("fin", "Finished", t.dim, all.filter((a) => a.status === "done" && !a.focused));
     return out;
