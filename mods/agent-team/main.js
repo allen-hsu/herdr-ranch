@@ -8,11 +8,11 @@
 // Opened as an overlay (mod.open agent-team, or openOverlay with props {lead}) it is the Team Map: a sequence
 // diagram — one column per agent with a status card, each message an arrow between columns.
 import { View, div, image, svg } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Popover } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run, props, closeOverlay, openOverlay } from "herdr";
 import { NewTeam } from "./newteam.js";
 import { agentName } from "./agentname.js";
-import { TS, SPACE, C, tint, escChip, icon, statusMark } from "./ui.js";
+import { TS, SPACE, C, tint, escChip, dialogTitle, icon, statusMark } from "./ui.js";
 
 const clock = (t) => {
   if (!t) return "";
@@ -21,6 +21,17 @@ const clock = (t) => {
 };
 const k = (n) => (n == null ? "" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 const since = (t) => { if (!t) return ""; const s = Date.now() / 1000 - t; return s < 60 ? "now" : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`; };
+const ago = (t) => { const s = since(t); return !s ? "" : s === "now" ? "just now" : `${s} ago`; };
+const hhmm = (t) => { const d = new Date(t * 1000); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+// Team Map timeline ranges (secs null: the whole team run).
+const RANGES = [{ id: "10m", name: "10m", secs: 600 }, { id: "1h", name: "1h", secs: 3600 }, { id: "all", name: "All", secs: null }];
+// The first lines of a reply, for the drawer: markdown marks dropped, cut at about three lines (CJK counts double).
+const excerpt = (text, room = 165) => {
+  const s = String(text ?? "").replace(/[*`#]+/g, "").replace(/\s+/g, " ").trim();
+  let w = 0, i = 0;
+  for (const ch of s) { w += ch.codePointAt(0) > 0x2e7f ? 2 : 1; if (w > room) break; i += ch.length; }
+  return i < s.length ? `${s.slice(0, i).trimEnd()}…` : s;
+};
 const AGENT = { "claude-code": "Claude Code", codex: "Codex", grok: "Grok", "cursor-agent": "Cursor", cursor: "Cursor", gemini: "Gemini", pi: "pi", opencode: "OpenCode" };
 
 export default class AgentTeam extends View {
@@ -32,6 +43,8 @@ export default class AgentTeam extends View {
     this.overlay = p.overlay;
     this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
     this.sel = p.sel ?? null; // a member to select on open (e.g. from the sidebar)
+    this.range = "all"; // map: the timeline range, see RANGES
+    this.teams = null; // map: every lead that has a team (from team.py --teams), for the picker
     this.w = 980;
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
@@ -45,16 +58,17 @@ export default class AgentTeam extends View {
 
   load(cx) {
     const addr = this.target();
-    if (!addr || this.busy) return;
-    if (addr !== this.addr) { this.addr = addr; this.data = null; this.open = new Set(); }
+    if (!addr && !this.map) return; // the map still lists the teams with no agent focused
+    if (this.busy && addr === this.addr) return;
+    if (addr !== this.addr) { this.addr = addr; this.data = null; this.lastOut = null; this.open = new Set(); }
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("python3", [appHome() + "/mods/agent-team/team.py", addr], { timeout: 30000 });
+        const r = await exec("python3", [appHome() + "/mods/agent-team/team.py", ...(addr ? [addr] : []), ...(this.map ? ["--teams"] : [])], { timeout: 30000 });
         if (addr === this.addr && r.stdout && r.stdout === this.lastOut) { this.busy = false; return; } // nothing new: no redraw
-        this.lastOut = r.stdout;
+        if (addr === this.addr) this.lastOut = r.stdout;
         const d = r.stdout ? JSON.parse(r.stdout) : { ok: false, error: (r.stderr || "no output").trim().split("\n").pop() };
-        if (addr === this.addr) this.data = d;
+        if (addr === this.addr) { this.data = d; if (d.teams) this.teams = d.teams; }
       } catch (e) { if (addr === this.addr) this.data = { ok: false, error: String(e.message ?? e) }; }
       this.busy = false;
       cx.notify();
@@ -187,38 +201,119 @@ export default class AgentTeam extends View {
       .child(div().truncate().text_size(TS.small).text_color(c.status === "blocked" ? C(t).status.blocked : t.muted).child(c.doing || (c.state === "finished" ? "finished" : "")));
   }
 
+  // ---------- Team Map: timeline lanes + a drawer ----------
+  // Section label, the same style as ui.js heading(): 11 semibold dim, sentence case.
+  label(t, text) { return div().flex_none().text_size(11).font_semibold().text_color(t.dim).child(text); }
+  leadName(id, fallback) { return agentName(agents().find((x) => x.address === id)) || fallback || id; }
+  // Show one lead's team (null: follow the focused agent again).
+  pick(id, cx) { this.pinned = id; this.pickOpen = false; this.closed = false; this.load(cx); cx.notify(); }
+  newTeam(t, id, primary = false) {
+    return h_flex().id(id).h(28).px(10).gap(6).items_center().flex_none().rounded(7).text_size(TS.body).cursor_pointer()
+      .when(primary, (e) => e.bg(t.accent).text_color(C(t).on.accent))
+      .when(!primary, (e) => e.text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover)))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click(() => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: {} }))
+      .child(icon("plus", 14, primary ? C(t).on.accent : t.dim)).child("New team…");
+  }
+
+  // Header dropdown: follow the focused agent (default), or stay on one team.
+  teamPicker(t, teams) {
+    const cur = this.addr, team = teams.find((x) => x.id === cur), agent = agents().find((a) => a.address === cur);
+    const stop = (_e, cx) => cx.stop_propagation();
+    const row = (id, mark, text, right, on) => h_flex().id(`tp-${id ?? "follow"}`).h(30).px(8).gap(8).items_center().rounded(6).cursor_pointer()
+      .when(on, (e) => e.bg(t.selected)).hover((e) => e.bg(t.hover)).on_mouse_down("left", stop).on_click((_e, cx) => this.pick(id, cx))
+      .child(div().w(16).flex_none().flex().justify_center().child(mark))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.item).text_color(t.foreground).child(text))
+      .when(right != null, (e) => e.child(div().flex_none().text_size(TS.small).text_color(t.dim).child(right)));
+    const trigger = h_flex().id("mp-pick").w(260).h(28).px(8).gap(8).items_center().rounded(7).border_1()
+      .border_color(this.pickOpen ? t.accent : t.input).bg(t.background).cursor_pointer()
+      .child(div().w(16).flex_none().flex().justify_center().child(cur ? statusMark(t, agent?.status ?? team?.status ?? "none") : icon("users", 12, t.dim)))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(cur ? t.foreground : t.muted).child(cur ? this.leadName(cur, this.data?.lead?.name ?? team?.name) : "No agent focused"))
+      .when(!this.pinned, (e) => e.child(div().flex_none().text_size(TS.small).text_color(t.dim).child("focused")))
+      .child(icon("chevron-down", 14, t.dim));
+    const list = v_flex().id("mp-pick-list").w(300).max_h(420).mt(4).p(4).gap(1).rounded(9).border_1().border_color(t.border).bg(t.popover).overflow_y_scrollbar()
+      .child(row(null, icon("circle-dot", 12, this.pinned ? t.dim : t.accent), "Follow the focused agent", null, !this.pinned))
+      .child(div().h(1).mx(4).my(3).flex_none().bg(t.border))
+      .when(!teams.length, (e) => e.child(div().px(8).py(6).text_size(TS.meta).text_color(t.dim).child("No teams yet")))
+      .children(teams.map((x) => row(x.id, statusMark(t, agents().find((a) => a.address === x.id)?.status ?? x.status), this.leadName(x.id, x.name),
+        `${x.members} member${x.members === 1 ? "" : "s"}`, this.pinned === x.id)));
+    // The wrapper keeps a press on the dropdown from dragging the window.
+    return div().id("mp-pick-wrap").flex_none().on_mouse_down("left", stop)
+      .child(Popover.new("mp-team").open(Boolean(this.pickOpen)).on_open_change((o, cx) => { this.pickOpen = o; cx.notify(); }).trigger(trigger).content(list));
+  }
+
+  // The current agent has no team: the teams to pick from, or what a team is when there are none.
+  noTeam(t, teams, who) {
+    if (!teams.length) return v_flex().flex_1().min_h(0).items_center().justify_center().gap(12).pb(40)
+      .child(icon("users", 16, t.dim))
+      .child(div().max_w(440).text_center().text_size(TS.body).text_color(t.muted)
+        .child("A team is a lead agent plus the agents and sub-agents it starts. Its map shows when each one ran and what they said to each other."))
+      .child(this.newTeam(t, "mp-new-empty", true));
+    const row = (x, i) => {
+      const a = agents().find((y) => y.address === x.id);
+      return h_flex().id(`tl-${i}`).h(44).px(SPACE.card).gap(10).items_center().flex_none().rounded(8).bg(t.surface).cursor_pointer().hover((e) => e.bg(t.hover))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.pick(x.id, cx))
+        .child(div().w(16).flex_none().flex().justify_center().child(statusMark(t, a?.status ?? x.status)))
+        .child(div().flex_1().min_w(0).truncate().text_size(TS.item).text_color(t.foreground).child(this.leadName(x.id, x.name)))
+        .child(div().flex_none().text_size(TS.meta).text_color(t.muted).child(`${x.members} member${x.members === 1 ? "" : "s"}`))
+        .child(div().w(96).flex_none().text_right().text_size(TS.meta).text_color(t.dim).child(x.started ? `started ${ago(x.started)}` : ""))
+        .child(icon("chevron-right", 12, t.dim));
+    };
+    return v_flex().flex_1().min_w(0).h_full().px(SPACE.dialog).pb(SPACE.dialog).gap(4)
+      .child(div().pb(8).text_size(TS.body).text_color(t.muted).child(who ? `${who} has no team yet. Pick a team to see its map.` : "No agent is focused. Pick a team to see its map."))
+      .child(h_flex().h(24).gap(6).items_center().flex_none().child(this.label(t, "Teams")).child(div().text_size(11).text_color(t.dim).child(String(teams.length))))
+      .child(v_flex().id("mp-teams").flex_1().min_h(0).gap(4).overflow_y_scrollbar().children(teams.map(row)));
+  }
+
   mapView(t) {
-    const d = this.data;
-    const note = (s) => div().p(20).text_size(TS.body).text_color(t.dim).child(s);
-    const head = h_flex().h(40).px(SPACE.dialog).gap(8).items_center().border_b(1).border_color(t.border).flex_none()
-      .child(div().text_size(TS.item).font_semibold().text_color(t.foreground).child("Team map"))
-      .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color(t.dim).child(d?.lead ? `· ${agentName(agents().find((x) => x.address === d.lead.id)) || d.lead.name}` : ""))
-      .child(div().id("mp-new").px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer().text_color(t.foreground).border_1().border_color(t.border).hover((x) => x.bg(t.hover))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click(() => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: {} })).child("New team…"))
-      .child(div().id("mp-follow").px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer().text_color(this.pinned ? t.muted : t.foreground).when(!this.pinned, (e) => e.bg(t.selected))
-        .hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { this.pinned = this.pinned ? null : this.addr; this.load(cx); cx.notify(); }).child(this.pinned ? "Follow focused agent" : "Following focused agent"))
+    const d = this.data, teams = this.teams ?? [];
+    const PADX = SPACE.dialog, DRAWER = 376;
+    const note = (s) => div().px(PADX).py(8).text_size(TS.body).text_color(t.dim).child(s);
+    const head = h_flex().h(52).px(PADX).gap(12).items_center().flex_none()
+      .child(dialogTitle(t, "Team map"))
+      .child(this.teamPicker(t, teams))
+      .child(div().flex_1())
+      .child(this.newTeam(t, "mp-new"))
       .child(escChip(t, "mp-close", () => closeOverlay(this.overlay)));
-    const root = v_flex().id("team-map").size_full().bg(t.popover ?? t.chrome).on_size_change((size, cx) => { if (Math.abs(size.width - this.w) > 4) { this.w = size.width; cx.notify(); } }).child(head);
-    if (!this.addr) return root.child(note("Focus an agent, then open the map."));
+    const root = v_flex().id("team-map").size_full().bg(t.popover ?? t.chrome).text_color(t.foreground)
+      .on_size_change((size, cx) => { if (Math.abs(size.width - this.w) > 4) { this.w = size.width; cx.notify(); } }).child(head);
     if (!d) return root.child(note("Reading…"));
     if (!d.ok) return root.child(note(`Unavailable: ${d.error}`));
-    const rows = this.members(d);
+    const rows = d.lead ? this.members(d) : [];
+    if (rows.length < 2) return root.child(h_flex().flex_1().min_h(0)
+      .child(this.noTeam(t, teams.filter((x) => x.id !== this.addr), rows[0]?.name))
+      .when(Boolean(rows[0]) && teams.some((x) => x.id !== this.addr), (e) => e.child(this.drawer(t, d, rows[0], false))));
     if (!rows.some((c) => c.key === this.sel)) this.sel = (rows.find((c) => !c.lead && c.state !== "finished") ?? rows[rows.length - 1])?.key ?? null;
+    const selCol = this.closed ? null : rows.find((c) => c.key === this.sel);
     const now = Date.now() / 1000;
     const evs = d.events ?? [];
+    // The range: the whole team run (first member start → now, or the last activity once all finished), or its last 10m / 1h.
     const times = [...rows.map((c) => c.start).filter(Boolean), ...evs.map((e) => e.at).filter(Boolean)];
-    const t0 = times.length ? Math.min(...times) : now - 600;
+    const first = times.length ? Math.min(...times) : now - 600;
     const live = rows.some((c) => !c.lead && c.state !== "finished");
-    const t1 = Math.max(live ? now : Math.max(...rows.map((c) => c.end ?? c.start ?? t0), ...evs.map((e) => e.at ?? t0)), t0 + 60);
-    const RIGHT = 380, NAME = 190, DUR = 44, PADX = SPACE.dialog;
-    const trackW = Math.max(120, this.w - RIGHT - PADX * 2 - 18 - NAME - DUR - 24);
-    const xOf = (at) => Math.max(0, Math.min(trackW, ((at - t0) / (t1 - t0)) * trackW));
-    const hm = (at) => { const x = new Date(at * 1000); return `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}`; };
+    const end = live ? now : Math.max(first, ...rows.map((c) => c.end ?? c.start ?? first), ...evs.map((e) => e.at ?? first));
+    const win = RANGES.find((r) => r.id === this.range)?.secs;
+    const t0 = win ? Math.max(first, end - win) : first, t1 = Math.max(end, t0 + 60), span = t1 - t0;
+    const NAME = 190, DUR = 44;
+    const trackW = Math.max(120, this.w - (selCol ? DRAWER : 0) - PADX * 2 - 18 - NAME - DUR - 24);
+    const xOf = (at) => Math.max(0, Math.min(trackW, ((at - t0) / span) * trackW));
+    const long = span > 20 * 3600;
+    const day = (at) => { const x = new Date(at * 1000); return `${x.getMonth() + 1}/${x.getDate()}`; };
+    // A tick's label: the clock time; over a long run midnight reads as the date, so days stay told apart.
+    const hm = (at) => { const x = new Date(at * 1000); return long && !x.getHours() && !x.getMinutes() ? day(at) : hhmm(at); };
+    // Ticks: round clock times, 3–5 labels in all with the one at the right end.
+    const LW = 40, endLabel = live ? "now" : long ? `${day(t1)} ${hhmm(t1)}` : hhmm(t1), endW = live ? 28 : long ? 78 : LW;
+    const step = [60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 7200, 10800, 14400, 21600, 43200, 86400, 172800, 604800].find((s) => span / s <= 4) ?? Math.ceil(span / 4 / 604800) * 604800;
+    const tz = new Date().getTimezoneOffset() * 60;
+    let ticks = [];
+    for (let at = Math.ceil((t0 - tz) / step) * step + tz; at < t1; at += step) {
+      const x = xOf(at);
+      if (x + LW + 8 <= trackW - endW && (!ticks.length || x >= ticks[ticks.length - 1].x + LW + 8)) ticks.push({ at, x });
+    }
+    if (ticks.length < 2) ticks = [0, 1 / 3, 2 / 3].map((f) => ({ at: Math.round((t0 + f * span) / 60) * 60, x: f * trackW }));
     const waiting = rows.filter((c) => c.state !== "finished" && (c.status === "blocked" || c.status === "error"));
     const S = C(t).status, on = C(t).on.status;
-    const banner = waiting.length ? h_flex().px(PADX).py(8).gap(10).items_center().flex_none().bg(S.blocked).opacity(0.92)
+    const banner = waiting.length ? h_flex().mx(PADX).mb(8).px(SPACE.card).py(8).gap(10).items_center().flex_none().rounded(8).bg(S.blocked).opacity(0.92)
       .child(h_flex().flex_none().gap(6).items_center().child(icon("triangle-alert", 14, on))
         .child(div().text_size(TS.body).font_semibold().text_color(on).child(`${waiting.map((c) => c.name).join(", ")} ${waiting.length === 1 ? "needs" : "need"} you`)))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.meta).text_color(on).child(waiting[0].doing || "a permission prompt or a question is waiting"))
@@ -227,21 +322,24 @@ export default class AgentTeam extends View {
       : null;
     const mark = (c) => statusMark(t, c.state === "finished" ? "done" : c.status);
     const lane = (c, i) => {
-      const sel = c.key === this.sel;
+      const sel = c.key === this.sel && !this.closed;
       const a = c.start ?? t0, b = c.state === "finished" ? (c.end ?? a) : now;
       const color = c.status === "blocked" || c.status === "error" ? S.blocked : c.state === "finished" ? t.dim : c.lead ? t.accent : S.working;
-      const mine = evs.filter((e) => !c.lead && c.ids.includes(e.who));
-      const track = div().relative().w(trackW).h(16).flex_none()
-        .child(div().absolute().left(0).right(0).top(7).h(2).rounded(1).bg(t.border).opacity(0.5))
-        .child(div().absolute().left(xOf(a)).top(4).w(Math.max(4, xOf(b) - xOf(a))).h(8).rounded(4).bg(color).opacity(c.state === "finished" ? 0.55 : 0.9)
-          .when(c.state !== "finished" && c.status === "working", (x) => x.loop("opacity", { from: 0.55, to: 0.95, period: 1600 })))
-        .children(mine.slice(0, 40).map((e, k) => div().absolute().left(Math.max(0, xOf(e.at) - 2)).top(1).size(4).rounded(2)
-          .bg(e.k === "from" ? t.accent : e.k === "note" ? S.done : t.foreground).opacity(0.85)));
+      // Only what falls inside the range is drawn; a bar that started before it is cut at the left edge.
+      const shown = b >= t0 && a <= t1, x0 = xOf(Math.max(a, t0)), bw = Math.max(4, xOf(Math.min(b, t1)) - x0);
+      const mine = evs.filter((e) => !c.lead && c.ids.includes(e.who) && e.at >= t0 && e.at <= t1);
+      const track = div().relative().w(trackW).h(18).flex_none().overflow_hidden()
+        .child(div().absolute().left(0).right(0).top(8).h(2).rounded(1).bg(t.border).opacity(0.5))
+        .children(ticks.map((k) => div().absolute().left(k.x).top(2).w(1).h(14).bg(t.border).opacity(0.5)))
+        .when(shown, (x) => x.child(div().absolute().left(Math.min(x0, trackW - bw)).top(5).w(bw).h(8).rounded(4).bg(color).opacity(c.state === "finished" ? 0.55 : 0.9)
+          .when(c.state !== "finished" && c.status === "working", (y) => y.loop("opacity", { from: 0.55, to: 0.95, period: 1600 }))))
+        .children(mine.slice(0, 40).map((e) => div().absolute().left(Math.max(0, Math.min(trackW - 6, xOf(e.at) - 3))).top(0).size(6).rounded(3)
+          .bg(e.k === "from" ? t.accent : e.k === "note" ? S.done : t.foreground)));
       const dur = c.start ? (b - a < 60 ? "<1m" : b - a < 3600 ? `${Math.round((b - a) / 60)}m` : `${(Math.round((b - a) / 360) / 10)}h`) : "";
-      return h_flex().id(`ln-${i}`).h(34).px(PADX).gap(8).items_center().cursor_pointer().flex_none()
+      return h_flex().id(`ln-${i}`).h(36).mx(8).px(8).gap(8).items_center().rounded(6).cursor_pointer().flex_none()
         .when(sel, (x) => x.bg(t.selected)).when(!sel, (x) => x.hover((h) => h.bg(t.hover)))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { this.sel = c.key; cx.notify(); })
+        .on_click((_e, cx) => { this.sel = c.key; this.closed = false; cx.notify(); })
         .child(div().w(18).flex_none().flex().justify_center().child(mark(c)))
         .child(v_flex().w(NAME).flex_none().min_w(0)
           .child(div().truncate().text_size(TS.body).text_color(sel || c.state !== "finished" ? t.foreground : t.muted).when(c.lead, (x) => x.font_semibold()).child(c.name))
@@ -249,20 +347,36 @@ export default class AgentTeam extends View {
         .child(track)
         .child(div().w(DUR).flex_none().text_right().text_size(TS.meta).text_color(t.dim).child(dur));
     };
-    const axis = h_flex().h(22).px(PADX).gap(8).items_center().flex_none().text_size(TS.small).text_color(t.dim).border_b(1).border_color(t.border)
-      .child(div().w(18 + NAME + 8).flex_none().child(`${rows.length - 1} member${rows.length === 2 ? "" : "s"}`))
-      .child(h_flex().w(trackW).flex_none().justify_between().child(div().child(hm(t0))).child(div().child(live ? "now" : hm(t1))))
+    // Timeline header: the label, the range control, and the legend on the right.
+    const seg = h_flex().flex_none().p(2).gap(1).rounded(7).bg(t.surface).children(RANGES.map((r) => {
+      const cur = (this.range ?? "all") === r.id;
+      return div().id(`rg-${r.id}`).h(20).px(8).flex().items_center().rounded(5).text_size(TS.meta).cursor_pointer()
+        .text_color(cur ? t.foreground : t.muted).when(cur, (e) => e.bg(t.selected)).when(!cur, (e) => e.hover((x) => x.bg(t.hover)))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { this.range = r.id; cx.notify(); }).child(r.name);
+    }));
+    const key = (swatch, text) => h_flex().flex_none().gap(4).items_center().child(swatch).child(div().child(text));
+    const dot = (color) => div().size(6).flex_none().rounded(3).bg(color);
+    const legend = h_flex().flex_none().gap(12).items_center().text_size(TS.meta).text_color(t.muted)
+      .child(key(div().w(14).h(6).flex_none().rounded(3).bg(S.working), "ran"))
+      .child(key(dot(t.foreground), "lead → it")).child(key(dot(t.accent), "its reply")).child(key(dot(S.done), "finished"));
+    const n = rows.length - 1;
+    const bar = h_flex().h(32).px(PADX).gap(10).items_center().flex_none()
+      .child(this.label(t, "Timeline"))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(`${n} member${n === 1 ? "" : "s"}`))
+      .child(seg).child(div().flex_1().min_w(0)).child(legend);
+    const axis = h_flex().h(20).px(PADX).gap(8).items_center().flex_none().text_size(TS.small).text_color(t.dim)
+      .child(div().w(18 + NAME + 8).flex_none())
+      .child(div().relative().w(trackW).h(20).flex_none()
+        .children(ticks.map((k) => div().absolute().left(k.x).top(3).w(LW).child(hm(k.at))))
+        .child(div().absolute().right(0).top(3).w(endW).text_right().child(endLabel)))
       .child(div().w(DUR).flex_none());
     const left = v_flex().flex_1().min_w(0).h_full()
-      .child(axis)
-      .child(v_flex().id("mp-lanes").flex_1().min_h(0).overflow_y_scrollbar().children(rows.map(lane)));
-    const selCol = rows.find((c) => c.key === this.sel);
+      .child(bar).child(axis)
+      .child(v_flex().id("mp-lanes").flex_1().min_h(0).pb(12).overflow_y_scrollbar().children(rows.map(lane)));
     return root
       .when(Boolean(banner), (e) => e.child(banner))
-      .child(h_flex().flex_1().min_h(0).child(left).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))))
-      .child(h_flex().h(26).px(PADX).gap(14).items_center().border_t(1).border_color(t.border).text_size(TS.small).text_color(t.dim).flex_none()
-        .child(div().child("bar: when it ran")).child(div().text_color(t.foreground).child("• lead → it")).child(div().text_color(t.accent).child("• its reply"))
-        .child(div().text_color(S.done).child("• finished")).child(div().flex_1()).child(div().child("Click a row for its conversation")));
+      .child(h_flex().flex_1().min_h(0).child(left).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))));
   }
 
   // Every teammate (no cap), lead first, then by start time: what the timeline and its drawer show.
@@ -285,8 +399,18 @@ export default class AgentTeam extends View {
     return cols;
   }
 
-  drawer(t, d, c) {
-    const m = c.m ?? {};
+  // What a member is doing right now, for the drawer: [icon name, text, color].
+  nowLine(t, c, m) {
+    const S = C(t).status, tool = m.tool ? `${m.tool.name}${m.tool.target ? ` · ${m.tool.target}` : ""}` : "";
+    if (c.state === "finished") return ["circle-check", m.exit != null && m.exit !== 0 ? `Exited with code ${m.exit}${c.end ? ` · ${ago(c.end)}` : ""}` : `Finished${c.end ? ` ${ago(c.end)}` : ""}`, t.muted];
+    if (c.status === "blocked" || c.status === "error") return ["triangle-alert", `Waiting for you${tool ? ` · ${tool}` : ""}`, S.blocked];
+    if (c.status === "working") return tool ? ["wrench", tool, t.foreground] : ["brain", "Thinking…", t.foreground];
+    if (m.kind === "session") return ["arrow-left-right", "Another Claude session", t.muted];
+    return ["clock", m.last ? `Idle since ${hhmm(m.last)} (${ago(m.last)})` : "Idle", t.muted];
+  }
+
+  drawer(t, d, c, closable = true) {
+    const m = c.lead ? { ...(d.lead?.info ?? {}), started: d.lead?.started } : c.m ?? {};
     const mine = (e) => c.lead ? true : c.ids.includes(e.who);
     const evs = (d.events ?? []).filter(mine);
     const spawn = evs.find((e) => e.k === "spawn" || e.k === "hc-run");
@@ -295,16 +419,26 @@ export default class AgentTeam extends View {
     const out = [];
     out.push(h_flex().gap(8).items_center()
       .child(div().flex_1().min_w(0).truncate().text_size(TS.item).font_semibold().text_color(t.foreground).child(c.name))
-      .child(div().id("dr-x").size(22).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.sel = null; cx.notify(); }).child(icon("x", 14, t.dim))));
-    out.push(div().text_size(TS.small).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.state === "finished" ? "finished" : m.status, m.out ? `${k(m.out)} tokens out` : "", m.ctx != null ? `context ${Math.round(m.ctx)}%` : "", m.started ? `started ${since(m.started)} ago` : ""].filter(Boolean).join(" · ")));
+      .when(closable, (e) => e.child(div().id("dr-x").size(22).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim).hover((x) => x.bg(t.hover)).tooltip("Hide details")
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.closed = true; cx.notify(); }).child(icon("x", 14, t.dim)))));
+    out.push(div().text_size(TS.small).text_color(t.dim).child([c.lead ? "lead" : "", c.vendor, m.model, m.started ? `started ${ago(m.started)}` : ""].filter(Boolean).join(" · ")));
     if (c.addr) out.push(div().id("dr-go").mt(8).h(28).px(10).flex().items_center().justify_center().rounded(7).bg(t.accent).text_size(TS.body).text_color(C(t).on.accent)
       .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("agent.focus", { terminal: c.addr })).child("Go to agent"));
-    if (c.doing) { out.push(sec("Now")); out.push(para(c.doing, t.foreground)); }
+    // Now: what it is doing, how full its context is, what it has cost, and the start of its last reply.
+    const [ni, nt, nc] = this.nowLine(t, c, m);
+    out.push(sec("Now"));
+    out.push(h_flex().gap(6).items_start().min_w(0).child(div().mt(2).flex_none().child(icon(ni, 12, nc === t.foreground ? t.dim : nc))).child(div().flex_1().min_w(0).text_size(TS.body).text_color(nc).child(nt)));
+    if (c.lead && c.doing) out.push(div().pl(18).pt(2).text_size(TS.meta).text_color(t.muted).child(c.doing));
+    const stat = (name, text) => h_flex().flex_none().gap(4).items_center().child(icon(name, 12, t.dim)).child(div().child(text));
+    const stats = [m.ctx != null ? stat("gauge", `Context ${Math.round(m.ctx)}%`) : null, m.out ? stat("zap", `${k(m.out)} tokens out`) : null,
+      m.cost != null ? stat("coins", `$${Number(m.cost).toFixed(2)}`) : null].filter(Boolean);
+    if (stats.length) out.push(h_flex().pt(6).gap(12).flex_wrap().text_size(TS.meta).text_color(t.muted).children(stats));
+    const last = m.reply || m.text;
+    if (last) { out.push(sec("Last reply")); out.push(para(excerpt(last))); }
     if (spawn?.prompt && !c.lead) { out.push(sec("Task it was given")); out.push(para(spawn.prompt)); }
     if ((m.steps ?? []).length) { out.push(sec("Recent steps")); for (const [i, st] of [...m.steps].reverse().entries()) out.push(h_flex().id(`dr-st-${i}`).gap(6).items_center().min_w(0).child(icon("wrench", 12, t.dim))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.small).text_color(t.muted).child(`${st.tool}${st.target ? ` · ${st.target}` : ""}`))); }
-    if ((m.screen ?? []).length) { out.push(sec("Screen")); out.push(v_flex().p(6).rounded(6).bg(t.surface).children(m.screen.map((l, i) => div().id(`dr-sc-${i}`).truncate().text_size(TS.tiny).text_color(t.muted).font_family("Menlo").child(l)))); }
+    if ((m.screen ?? []).length) { out.push(sec("Screen")); out.push(v_flex().p(6).rounded(6).bg(t.popover ?? t.chrome).children(m.screen.map((l, i) => div().id(`dr-sc-${i}`).truncate().text_size(TS.tiny).text_color(t.muted).font_family("Menlo").child(l)))); }
     // The conversation, oldest first like a chat: the lead's messages on the left, the member's replies on the right.
     const msgs = evs.filter((e) => e.k !== "spawn" && e.k !== "hc-run").slice(0, c.lead ? 12 : 30).reverse();
     out.push(sec(c.lead ? "Latest messages" : `Conversation (${msgs.length})`));
@@ -314,14 +448,16 @@ export default class AgentTeam extends View {
       const who = notice ? "notice" : reply ? (c.lead ? e.name ?? e.who : c.name) : (c.lead ? `→ ${e.name ?? e.who}` : "lead");
       out.push(h_flex().id(`dr-m-${i}`).mt(6).when(reply, (x) => x.justify_end())
         .child(v_flex().max_w(300).p(8).rounded(10).gap(2)
-          .bg(reply ? tint(t.accent, 0.13) : notice ? (t.popover ?? t.chrome) : t.surface)
+          .bg(reply ? tint(t.accent, 0.13) : t.popover ?? t.chrome)
           .child(h_flex().gap(6).text_size(TS.small).child(div().text_color(reply ? t.accent : t.dim).child(who)).child(div().text_color(t.dim).child(clock(e.at)))
             .when(Boolean(e.verdict), (x) => { const ok = e.verdict === "APPROVE", vc = ok ? C(t).status.done : C(t).status.blocked;
               return x.child(h_flex().gap(2).items_center().child(icon(ok ? "check" : "x", 12, vc)).child(div().font_semibold().text_color(vc).child(ok ? "APPROVED" : "CHANGES"))); }))
           .child(div().text_size(TS.body).text_color(t.foreground).child((e.full || e.text || "").slice(0, 600)))));
     }
-    return v_flex().id("mp-drawer").w(380).h_full().flex_none().border_l(1).border_color(t.border).bg(t.chrome)
-      .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(SPACE.dialog).py(12).overflow_y_scrollbar().children(out));
+    // A card on the dialog: the surface tier is its edge, no border.
+    return div().w(376).h_full().flex_none().pr(12).pb(12)
+      .child(v_flex().id("mp-drawer").size_full().rounded(8).bg(t.surface)
+        .child(v_flex().id("dr-scroll").flex_1().min_h(0).px(SPACE.card + 4).py(12).overflow_y_scrollbar().children(out)));
   }
 
   render() {

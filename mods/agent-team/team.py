@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Who works with an agent, and what they said to each other. For the Herdr agent-team panel. Local only.
 
-Usage: team.py <terminal address of the lead, e.g. t8>
+Usage: team.py <terminal address of the lead, e.g. t8> [--teams]     (--teams alone: only the list of teams)
 Two kinds of teammates:
   herdr  : terminals the lead started with `hc run` (any agent: Claude Code, Codex, Grok, Cursor, Gemini...),
            found through hc's parent links, two levels deep. Status from hc, activity from live.py.
   sub    : Claude Code subagents (the Agent tool) inside the lead's own session (<session>/subagents/).
 Timeline (from the lead's Claude Code transcript): spawns, the lead's messages (SendMessage, hc send / hc run),
 replies (<agent-message>, <hc from>, <cross-session-message>) and completion notices.
+With --teams it also lists every live agent that has a team (members it started), for the Team Map's picker.
 Prints one JSON object. Secret-looking strings are redacted.
 """
 import glob, json, os, re, subprocess, sys, tempfile
@@ -17,7 +18,7 @@ import live  # noqa: E402  (shared lib, copied in by install.sh)
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
-VERSION = 8
+VERSION = 9
 red = live.clean
 TAG = re.compile(r"<(agent-message|hc|cross-session-message)\b([^>]*)>(.*?)</\1>", re.S)
 NOTE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
@@ -73,8 +74,76 @@ def first_program(rest):
     return None
 
 
+_TERMS = None
+
+
+def all_terms():
+    global _TERMS
+    if _TERMS is None:
+        _TERMS = (hc_json("ls", "--all") or {}).get("terminals") or []
+    return _TERMS
+
+
+def absorb(st, r, side=False):
+    """Fold one transcript record into st: tokens out (once per assistant message) and the last reply text.
+    side: a subagent's own transcript, where every record is a sidechain."""
+    if r.get("type") != "assistant" or (r.get("isSidechain") and not side):
+        return
+    m = r.get("message") or {}
+    n = (m.get("usage") or {}).get("output_tokens") or 0
+    if m.get("id") and m.get("id") == st.get("mid"):
+        st["mval"] = max(st.get("mval") or 0, n)  # one message is written once per content block
+    else:
+        st["out"] = (st.get("out") or 0) + (st.get("mval") or 0)
+        st["mid"], st["mval"] = m.get("id"), n
+    for b in m.get("content") or []:
+        if isinstance(b, dict) and b.get("type") == "text" and (b.get("text") or "").strip():
+            st["reply"] = red(b["text"], 320)
+
+
+def transcript_extra(path):
+    """{out, reply, last} for a Claude transcript. Cached per member and read incrementally: only what was appended."""
+    try:
+        size, mtime = os.path.getsize(path), os.path.getmtime(path)
+    except OSError:
+        return {}
+    cache = os.path.join(CACHE_DIR, "team-x-%s.json" % os.path.basename(path)[:-6])
+    try:
+        st = json.load(open(cache))
+        st = st if st.get("v") == VERSION and st.get("off", 0) <= size else {}
+    except Exception:
+        st = {}
+    if st.get("size") != size:
+        try:
+            with open(path, "rb") as f:
+                f.seek(st.get("off", 0))
+                chunk = f.read()
+            end = chunk.rfind(b"\n") + 1  # whole lines only: the last one may still be written
+            for line in chunk[:end].split(b"\n"):
+                if b'"assistant"' not in line:
+                    continue
+                try:
+                    absorb(st, json.loads(line))
+                except ValueError:
+                    continue
+            st.update({"v": VERSION, "size": size, "off": st.get("off", 0) + end})
+            os.makedirs(CACHE_DIR, mode=0o700, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=CACHE_DIR, prefix=".team-")
+            with os.fdopen(fd, "w") as f:
+                json.dump(st, f)
+            os.replace(tmp, cache)
+        except OSError:
+            pass
+    return {"out": (st.get("out") or 0) + (st.get("mval") or 0), "reply": st.get("reply"), "last": mtime}
+
+
+def session_path(sid):
+    paths = glob.glob(os.path.join(HOME, ".claude", "projects", "*", "%s.jsonl" % sid)) if sid else []
+    return paths[0] if paths else None
+
+
 def herdr_members(lead):
-    terms = (hc_json("ls", "--all") or {}).get("terminals") or []
+    terms = all_terms()
     by_parent = {}
     for t in terms:
         if t.get("parent"):
@@ -93,6 +162,9 @@ def herdr_members(lead):
             if t.get("state") == "live":
                 info = live.info_for(t["address"])
                 m.update({k: info.get(k) for k in ("task", "tool", "text", "ctx", "cost", "model", "program")})
+                sp = session_path(info.get("session"))
+                if sp:
+                    m.update(transcript_extra(sp))
                 if not info.get("session"):
                     m["screen"] = screen_tail(t["address"])
             res.append(m)
@@ -175,13 +247,13 @@ def subagents(path):
                 first = f.readline()
             m["started"] = ts(json.loads(first).get("timestamp") or "") if first else None
             m.update({k: v for k, v in live.claude_live(jl).items() if k in ("tool", "text")})
-            outs = 0
-            recs = live.tail_records(jl, 1 << 22)
+            recs = list(live.tail_records(jl, 1 << 22))
             m["steps"] = recent_steps(recs)
+            acc = {}
             for line in recs:
-                u = ((line.get("message") or {}).get("usage") or {}) if line.get("type") == "assistant" else {}
-                outs += u.get("output_tokens") or 0
-            m["out"] = outs
+                absorb(acc, line, True)
+            m["out"] = (acc.get("out") or 0) + (acc.get("mval") or 0)
+            m["reply"] = acc.get("reply")
         except Exception:
             pass
         res.append(m)
@@ -330,10 +402,53 @@ def sessions_by_pid():
     return res
 
 
+def teams():
+    """Every live agent that has a team: terminals it started (two levels) and its Claude Code subagents."""
+    terms = all_terms()
+    by_parent = {}
+    for t in terms:
+        if t.get("parent"):
+            by_parent.setdefault(t["parent"], []).append(t)
+    res = []
+    for t in terms:
+        if t.get("state") != "live" or t.get("parent"):
+            continue  # a member of someone else's team shows up in that team
+        kids = list(by_parent.get(t["address"], []))
+        kids += [k2 for k in list(kids) for k2 in by_parent.get(k["address"], [])]
+        if not kids and not t.get("agent"):
+            continue
+        g, sess, path = lead_session(t["address"])
+        n, running, starts = len({k.get("name") or k["address"] for k in kids}), sum(1 for k in kids if k.get("state") == "live"), []
+        for k in kids:
+            c = (hc_json("get", k["address"]) or {}).get("created_ms")
+            if c:
+                starts.append(c / 1000)
+        if path:
+            for meta in glob.glob(os.path.join(os.path.dirname(path), os.path.basename(path)[:-6], "subagents", "*.meta.json")):
+                try:
+                    done = bool(json.load(open(meta)).get("finished"))
+                    st = os.stat(meta[: -len(".meta.json")] + ".jsonl")
+                except Exception:
+                    continue
+                n += 1
+                running += 0 if done else 1
+                starts.append(getattr(st, "st_birthtime", st.st_mtime))
+        if n:
+            res.append({"id": t["address"], "name": red((sess or {}).get("name") or g.get("title") or t["address"], 60), "status": t.get("status"),
+                        "members": n, "running": running, "started": min(starts) if starts else None})
+    res.sort(key=lambda x: (0 if x["status"] in ("working", "blocked") else 1, -(x["started"] or 0)))
+    return res
+
+
 def main():
-    if len(sys.argv) < 2 or not re.fullmatch(r"[A-Za-z0-9_-]+", sys.argv[1]):
+    args = [a for a in sys.argv[1:] if a != "--teams"]
+    want_teams = "--teams" in sys.argv[1:]
+    extra = {"teams": teams()} if want_teams else {}
+    if not args and want_teams:
+        out(ok=True, lead=None, **extra)
+    if not args or not re.fullmatch(r"[A-Za-z0-9_-]+", args[0]):
         out(ok=False, error="usage")
-    lead = sys.argv[1]
+    lead = args[0]
     g, sess, path = lead_session(lead)
     members = herdr_members(lead)
     subs, events, counts = [], [], {}
@@ -368,9 +483,14 @@ def main():
         m["msgs_to"], m["msgs_from"] = c.get("to", 0), c.get("from", 0)
     sessions = sorted({e["who"] for e in events if e.get("via") == "session" and e.get("who")})
     tp = terminal_of_pid() if sessions else {}
+    # What the lead itself is doing now (the drawer's "Now"), like a member's.
+    li = live.info_for(lead) if g.get("state") == "live" else {}
+    info = {k: li.get(k) for k in ("task", "tool", "text", "ctx", "cost", "model") if li.get(k) is not None}
+    if path:
+        info.update(transcript_extra(path))
     out(ok=True, lead={"id": lead, "name": (sess or {}).get("name") or g.get("title") or lead, "agent": (g.get("foreground") or {}).get("argv", [""])[0],
-                       "status": g.get("status"), "claude": bool(path)},
-        herdr=members, subs=subs, events=events,
+                       "status": g.get("status"), "claude": bool(path), "info": info, "started": (g.get("created_ms") or 0) / 1000 or None},
+        herdr=members, subs=subs, events=events, **extra,
         sessions=[{"id": s, "name": sessions_by_pid().get(s, s), "addr": tp.get(s)} for s in sessions])
 
 
