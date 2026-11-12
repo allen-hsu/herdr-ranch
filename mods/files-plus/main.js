@@ -275,7 +275,8 @@ export default class Files extends View {
           .child(btn("files-collapse", "chevrons-down-up", "Collapse all folders", (_e, cx) => { this.folders = new Set(); this.entries = new Map([["", this.entries.get("") ?? []]]); cx.notify(); }))
           .child(btn("files-refresh", "refresh-cw", "Refresh", (_e, cx) => { this.refresh(cx); if (searching) this.search(++this.seq, cx); }))
           .child(btn("files-reveal", "folder-open", "Show this folder in Finder", () => { if (this.root && !this.on) exec("open", [this.root]).catch(() => null); })))
-        .when(Boolean(this.file), el => el.child(btn("files-open", "external-link", "Open in your editor", () => { if (!this.on) exec("open", [`${this.root}/${this.file}`]).catch(() => null); }))))
+        .when(Boolean(this.file), el => el.child(btn("files-open", "external-link", "Open in your text editor", () => { // open -t: the text editor, never the file's own handler (.command, .app)
+           if (!this.on) exec("open", ["-t", `${this.root}/${this.file}`]).catch(() => null); }))))
       .when(Boolean(this.file), el => el.child(div().px(12).pb(6).truncate().text_size(11).text_color(t.dim).child(this.file)))
       // Search: by name or inside files.
       .when(!this.file, el => el.child(v_flex().flex_none().px(10).pb(8).gap(6)

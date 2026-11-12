@@ -313,7 +313,7 @@ export default class AgentInspector extends View {
       if (open) out.push(v_flex().mx(SPACE.panel).mb(6).rounded(8).bg(t.surface)
         .child(h_flex().px(10).pt(8).gap(6).items_center().text_size(TS.small)
           .child(div().flex_1())
-          .child(this.linkBtn(t, `c-m-ed-${i}`, "external-link", "Open", () => exec("open", [full])))
+          .child(this.linkBtn(t, `c-m-ed-${i}`, "external-link", "Open", () => exec("open", ["-t", full])))
           .child(this.linkBtn(t, `c-m-rv-${i}`, "folder", "Show in Finder", () => exec("open", ["-R", full]))))
         .child(v_flex().id(`c-m-tx-${i}`).max_h(360).overflow_y_scrollbar().px(12).pb(10).text_size(TS.body)
           .child(this.openFile.text == null ? div().text_color(t.dim).child("Reading…") : TextView.markdown(`c-m-md-${i}`, this.openFile.text))));
