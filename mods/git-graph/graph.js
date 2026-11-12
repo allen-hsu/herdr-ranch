@@ -878,11 +878,13 @@ export class Graph {
     let height = 8;
     repos.forEach((r, i) => {
       if (grouped && r.group !== repos[i - 1]?.group) {
-        rows.push(div().h(26).flex_none().px(14).pt(9).text_size(TS.meta).text_color(t.dim).truncate().child(r.group ? `${r.group}/` : "./"));
-        height += 26;
+        // A group is a folder of repositories; the ones right in the workspace folder go under its own name.
+        const top = String(this.workspace.root ?? "").split("/").filter(Boolean).pop() ?? "workspace";
+        rows.push(div().h(24).flex_none().px(14).pt(8).text_size(11).font_semibold().text_color(t.dim).truncate().child(r.group ? r.group : top));
+        height += 24;
       }
       rows.push(this.repoRow(r, i, grouped, t));
-      height += 34;
+      height += 30;
     });
     return { rows, height };
   }
@@ -920,16 +922,18 @@ export class Graph {
     // A failure (reading it, or its last fetch) shows git's words where the branch goes.
     const problem = st?.error ?? fetchError;
     const branch = st && !problem ? (st.detached ? "detached" : st.branch) : null, tag = !problem && tagsShown() && st?.tag;
-    return h_flex().id(`graph-repo-${i}`).h(34).flex_none().pl(indent ? 28 : 14).pr(14).gap(10).items_center().cursor_pointer()
+    return h_flex().id(`graph-repo-${i}`).h(30).flex_none().mx(4).pl(10).pr(10).gap(8).items_center().rounded(6).cursor_pointer()
       .when(here, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => { if (here) { this.picking = false; cx.notify(); } else this.open(r.path, cx); })
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); if (st && !st.error) this.repoMenu(r, cx); })
-      .child(div().min_w(0).truncate().text_size(TS.body).text_color(here ? t.accent : t.foreground).child(r.name))
-      .child(h_flex().flex_none().gap(5).items_center().text_size(TS.body)
-        .when(st?.dirty > 0, (e) => e.child(h_flex().mr(2).gap(4).items_center().text_color(t.blocked)
-          .child(div().size(6).rounded(3).bg(t.blocked)).child(String(st.dirty))))
-        .when(counts && st.ahead > 0, (e) => e.child(div().text_color(t.ansi2).child(`\u2191${st.ahead}`)))
-        .when(counts && st.behind > 0, (e) => e.child(div().text_color(t.ansi1).child(`\u2193${st.behind}`)))
+      .child(div().min_w(0).truncate().text_size(TS.item).text_color(t.foreground).when(here, (e) => e.font_semibold()).child(r.name))
+      // What needs doing here, each with its meaning on hover: files changed (yellow), commits to push (green),
+      // commits to pull (quiet: being behind is not a problem).
+      .child(h_flex().flex_none().gap(8).items_center().text_size(TS.meta)
+        .when(st?.dirty > 0, (e) => e.child(h_flex().id(`gr-d-${i}`).gap(4).items_center().text_color(t.working).tooltip(`${st.dirty} file${st.dirty === 1 ? "" : "s"} changed, not committed`)
+          .child(div().size(6).rounded(3).bg(t.working)).child(String(st.dirty))))
+        .when(counts && st.ahead > 0, (e) => e.child(div().id(`gr-a-${i}`).text_color(t.ansi2).tooltip(`${st.ahead} commit${st.ahead === 1 ? "" : "s"} to push`).child(`\u2191${st.ahead}`)))
+        .when(counts && st.behind > 0, (e) => e.child(div().id(`gr-b-${i}`).text_color(t.muted).tooltip(`${st.behind} commit${st.behind === 1 ? "" : "s"} behind its remote: pull to catch up`).child(`\u2193${st.behind}`)))
         .when(Boolean(label), (e) => e.child(div().text_color(color).child(label))))
       .child(div().flex_1())
       // The newest tag, just before the branch (Show tags).
