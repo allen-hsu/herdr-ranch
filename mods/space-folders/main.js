@@ -1132,7 +1132,7 @@ export default class Spaces extends View {
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(TS.item)
       .child(h_flex().h(31).pl(15).pr(8).items_center().justify_between().text_size(TS.body).text_color(t.dim)
         // (A status filter exists as filterBar(); not shown for now: Needs you / Finished on top cover it.)
-        .when(!collapsed, el => el.child(div().text_size(11).font_semibold().child("Folders")))
+        .when(!collapsed, el => el.child(viewSwitch(t, "spaces")))
         .child(h_flex().gap(2)
           .when(!collapsed, el => el.child(button("folder-new", "folder-plus", () => this.newFolder(null)).tooltip("New folder")))
           .when(!collapsed, el => el.child(button("space-new", "plus", () => newSpaceIn(null, null)).tooltip("New space")))

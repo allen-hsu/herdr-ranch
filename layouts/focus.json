@@ -28,6 +28,19 @@
               "window_drag": true
             },
             {
+              "id": "sidebar-search",
+              "type": "block",
+              "size": {
+                "px": 36
+              },
+              "content": {
+                "mod": "sidebar-foot",
+                "props": {
+                  "search": true
+                }
+              }
+            },
+            {
               "id": "sidebar-view",
               "type": "stack",
               "children": [

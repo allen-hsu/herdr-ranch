@@ -3,13 +3,23 @@
 // Narrow sidebar: just the + button.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, theme } from "herdr";
+import { run, theme, props } from "herdr";
 import { TS, icon, openCommandBar, sidebarNarrow, toggleSidebar } from "./ui.js";
 
 export default class SidebarFoot extends View {
   render() {
     const t = theme();
     const slim = sidebarNarrow();
+    // props.search: the same mod draws the "Search or run a command" row under the brand.
+    if (props()?.search) {
+      if (slim) return div().size_full().bg(t.chrome);
+      return h_flex().size_full().px(8).pb(6).items_center().bg(t.chrome)
+        .child(h_flex().id("sb-search").flex_1().min_w(0).h(30).px(10).gap(8).items_center().rounded(8).bg(t.surface).cursor_pointer().text_color(t.muted)
+          .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(() => run("mod.open", { name: "command-bar" }))
+          .child(icon("search", 13))
+          .child(div().flex_1().min_w(0).truncate().text_size(TS.body).child("Search or run a command"))
+          .child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim).child("⌘K")));
+    }
     const newAgent = () => openCommandBar({});
     const btn = (id, ic, tip, act) => div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer().text_color(t.muted)
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click(act).child(icon(ic, 14));
@@ -29,7 +39,6 @@ export default class SidebarFoot extends View {
       .child(h_flex().h(28).flex_none().gap(2).items_center()
         .child(btn("sf-board", "layers", "Board: every space by status (⌃⌘B)", () => run("mod.open", { name: "space-board" })))
         .child(btn("sf-team", "users", "Team Map (⌃⌘T)", () => run("mod.open", { name: "agent-team" })))
-        .child(btn("sf-bar", "search", "Search or run anything (⌘K)", () => run("mod.open", { name: "command-bar" })))
         .child(div().flex_1())
         .child(btn("sf-machine", "server", "Add machine…", () => run("mod.open", { name: "machine-add" })))
         .child(btn("sf-settings", "settings", "Settings", () => run("app.settings"))));
