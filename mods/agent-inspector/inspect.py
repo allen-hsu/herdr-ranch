@@ -18,7 +18,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 21
+VERSION = 22
 # $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
 # From the Claude API reference, 2026-11. Unknown models: no cost shown.
 PRICES = {
@@ -105,6 +105,31 @@ def label(name, inp):
     return ""
 
 
+_PLUGIN_HOOKS = None
+
+
+def plugin_hooks():
+    """command line -> plugin name, from every installed plugin's hooks/hooks.json (the command itself only says
+    ${CLAUDE_PLUGIN_ROOT}, not which plugin)."""
+    global _PLUGIN_HOOKS
+    if _PLUGIN_HOOKS is None:
+        _PLUGIN_HOOKS = {}
+        for path in glob.glob(os.path.join(HOME, ".claude", "plugins", "cache", "*", "*", "*", "hooks", "hooks.json"))[:400]:
+            try:
+                if os.path.getsize(path) > 1024 * 1024:
+                    continue
+                data = json.load(open(path, encoding="utf-8", errors="replace"))
+                hooks = data.get("hooks") if isinstance(data, dict) else None
+                for groups in (hooks.values() if isinstance(hooks, dict) else []):
+                    for grp in (groups if isinstance(groups, list) else []):
+                        for h in (grp.get("hooks") if isinstance(grp, dict) and isinstance(grp.get("hooks"), list) else []):
+                            if isinstance(h, dict) and isinstance(h.get("command"), str):
+                                _PLUGIN_HOOKS.setdefault(h["command"].strip(), path.split(os.sep)[-4])
+            except Exception:
+                continue
+    return _PLUGIN_HOOKS
+
+
 def hook_label(c):
     """What a hook is, in words: (label, source). The command itself is often a long inline script."""
     c = c or ""
@@ -115,10 +140,10 @@ def hook_label(c):
     if "herdr" in c.lower():
         return "Herdr hook", "settings"
     plug = re.search(r"/plugins/(?:cache/|marketplaces/)?[^/]+/([^/]+)/", c)
-    src = (plug.group(1) if plug else "plugin") if ("CLAUDE_PLUGIN_ROOT" in c or "/plugins/" in c) else "settings"
-    m = re.search(r"([\w.-]+\.(?:sh|py|js|mjs|cjs|ts|cmd|bat))\b", c)
-    if m:
-        return m.group(1), src
+    src = (plugin_hooks().get(c.strip()) or (plug.group(1) if plug else "plugin")) if ("CLAUDE_PLUGIN_ROOT" in c or "/plugins/" in c) else "settings"
+    scripts = re.findall(r"([\w.-]+\.(?:sh|py|js|mjs|cjs|ts|cmd|bat))\b", c)
+    if scripts:
+        return scripts[-1], src  # the last script is the real one (the first is often a runner)
     first = c.strip().split()[0] if c.strip() else "hook"
     return ("inline script" if first in ("if", "case", "[", "test") or len(c) > 60 else red(c, 40)), src
 
