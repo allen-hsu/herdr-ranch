@@ -10,7 +10,6 @@
         "width": 1,
         "color": "border"
       },
-      "resizable": false,
       "children": [
         {
           "id": "sidebar",
@@ -169,96 +168,6 @@
                       }
                     }
                   }
-                },
-                {
-                  "id": "panel",
-                  "type": "column",
-                  "children": [
-                    {
-                      "id": "panel-body",
-                      "type": "stack",
-                      "active": "inspector",
-                      "header": {
-                        "content": {
-                          "mod": "stack-tabs",
-                          "props": {
-                            "stack": "panel-body",
-                            "labels": {
-                              "files": "Files",
-                              "inspector": "Inspector",
-                              "changes": "Changes",
-                              "prs": "Pull requests",
-                              "git": "Git graph"
-                            },
-                            "sync_panels": true,
-                            "icons": {
-                              "files": "files",
-                              "inspector": "gauge",
-                              "changes": "file-diff",
-                              "prs": "git-pull-request",
-                              "git": "history"
-                            }
-                          }
-                        },
-                        "height": 38
-                      },
-                      "children": [
-                        {
-                          "id": "files",
-                          "type": "block",
-                          "content": {
-                            "mod": "files-plus"
-                          }
-                        },
-                        {
-                          "id": "inspector",
-                          "type": "block",
-                          "content": {
-                            "mod": "agent-inspector"
-                          }
-                        },
-                        {
-                          "id": "changes",
-                          "type": "block",
-                          "content": {
-                            "mod": "changes-plus"
-                          }
-                        },
-                        {
-                          "id": "prs",
-                          "type": "block",
-                          "content": {
-                            "mod": "pr-panel",
-                            "props": {
-                              "reveal": {
-                                "panel": "panel",
-                                "stack": "panel-body",
-                                "child": "prs"
-                              }
-                            }
-                          }
-                        },
-                        {
-                          "id": "git",
-                          "type": "block",
-                          "content": {
-                            "mod": "git-graph"
-                          }
-                        }
-                      ]
-                    }
-                  ],
-                  "size": {
-                    "px": 440
-                  },
-                  "min": 300,
-                  "max": 900,
-                  "hidden": false,
-                  "radius": 10,
-                  "border": {
-                    "width": 1,
-                    "color": "border"
-                  }
                 }
               ],
               "padding": 8,
@@ -266,6 +175,93 @@
             }
           ],
           "resizable": false
+        },
+        {
+          "id": "panel",
+          "type": "column",
+          "children": [
+            {
+              "id": "panel-body",
+              "type": "stack",
+              "active": "inspector",
+              "header": {
+                "content": {
+                  "mod": "stack-tabs",
+                  "props": {
+                    "stack": "panel-body",
+                    "labels": {
+                      "files": "Files",
+                      "inspector": "Inspector",
+                      "changes": "Changes",
+                      "prs": "Pull requests",
+                      "git": "Git graph"
+                    },
+                    "sync_panels": true,
+                    "icons": {
+                      "files": "files",
+                      "inspector": "gauge",
+                      "changes": "file-diff",
+                      "prs": "git-pull-request",
+                      "git": "history"
+                    },
+                    "panel": "panel"
+                  }
+                },
+                "height": 42
+              },
+              "children": [
+                {
+                  "id": "files",
+                  "type": "block",
+                  "content": {
+                    "mod": "files-plus"
+                  }
+                },
+                {
+                  "id": "inspector",
+                  "type": "block",
+                  "content": {
+                    "mod": "agent-inspector"
+                  }
+                },
+                {
+                  "id": "changes",
+                  "type": "block",
+                  "content": {
+                    "mod": "changes-plus"
+                  }
+                },
+                {
+                  "id": "prs",
+                  "type": "block",
+                  "content": {
+                    "mod": "pr-panel",
+                    "props": {
+                      "reveal": {
+                        "panel": "panel",
+                        "stack": "panel-body",
+                        "child": "prs"
+                      }
+                    }
+                  }
+                },
+                {
+                  "id": "git",
+                  "type": "block",
+                  "content": {
+                    "mod": "git-graph"
+                  }
+                }
+              ]
+            }
+          ],
+          "size": {
+            "px": 440
+          },
+          "min": 300,
+          "max": 900,
+          "hidden": false,
+          "background": "chrome"
         }
       ]
     },
@@ -278,13 +274,13 @@
       "resizable": false,
       "children": [
         {
-          "id": "status",
+          "id": "usage",
           "type": "block",
           "size": {
-            "px": 330
+            "weight": 1
           },
           "content": {
-            "mod": "workspace-status"
+            "mod": "usage-bar"
           }
         },
         {
@@ -301,13 +297,13 @@
           }
         },
         {
-          "id": "usage",
+          "id": "status",
           "type": "block",
           "size": {
-            "weight": 1
+            "px": 330
           },
           "content": {
-            "mod": "usage-bar"
+            "mod": "workspace-status"
           }
         }
       ],

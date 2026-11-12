@@ -36,7 +36,7 @@ export default class StackTabs extends View {
     const icons = p.icons && typeof p.icons === "object" ? p.icons : null;
     const name = (c) => (typeof labels[c.id] === "string" ? labels[c.id] : c.id);
     if (icons) {
-      return h_flex().id("stack-tabs").size_full().px(8).gap(2).items_center().bg(t.chrome).border_b(1).border_color(t.border)
+      return h_flex().id("stack-tabs").size_full().pl(8).pr(10).gap(2).items_center().bg(t.chrome).border_b(1).border_color(t.border)
         .children(kids.map((c) => {
           const on = c.id === active;
           return div().id(`st-${c.id}`).relative().w(32).h(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer()
@@ -46,9 +46,9 @@ export default class StackTabs extends View {
             .when(on, (el) => el.child(div().absolute().left(7).right(7).bottom(-4).h(2).rounded(1).bg(t.foreground)));
         }))
         .child(div().flex_1())
-        .when(typeof p.panel === "string", (el) => el.child(div().id("st-hide").w(30).h(28).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer()
-          .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Hide this panel")
-          .on_click(() => run("layout.toggle", { id: p.panel })).child(icon("panel-right", 16))));
+        .when(typeof p.panel === "string", (el) => el.child(div().id("st-hide").size(26).flex_none().flex().items_center().justify_center().rounded(7).cursor_pointer()
+          .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Hide the right panel")
+          .on_click(() => run("layout.toggle", { id: p.panel })).child(icon("panel-right", 14))));
     }
     return h_flex().id("stack-tabs").size_full().px(8).gap(2).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .children(kids.map((c) => {

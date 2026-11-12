@@ -55,7 +55,8 @@ export default class UsageBar extends View {
     const tip = [name, ...lines, info.stale ? `Old numbers: ${staleHint}.` : null, info.error ? `Last refresh failed (${info.error}); showing the last good numbers.` : null].filter(Boolean).join("\n");
     return head
       .child(this.bar(t, main.percent, c))
-      .child(div().w(28).text_right().text_color(info.stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))
+      .child(div().text_color(info.stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))
+      .when(!info.stale && Boolean(main.resets_at), (e) => e.child(div().text_color(t.dim).child(left(main.resets_at, now))))
       .when(Boolean(info.error), (e) => e.child(icon("triangle-alert", 12, C(t).status.blocked)))
       .tooltip(tip);
   }
@@ -63,7 +64,7 @@ export default class UsageBar extends View {
   render() {
     const t = theme();
     const now = this.data?.now ?? Date.now() / 1000;
-    return h_flex().id("usage-bar").size_full().px(10).gap(16).items_center().justify_end()
+    return h_flex().id("usage-bar").size_full().px(12).gap(16).items_center()
       .text_size(TS.meta).bg(t.chrome).text_color(t.muted)
       .child(this.provider(t, "u-claude", "icons/claude.svg", null, this.data?.claude, now, "unavailable", "Claude"))
       .child(this.provider(t, "u-codex", "icons/codex.svg", null, this.data?.codex, now, "run Codex to refresh", "Codex"))

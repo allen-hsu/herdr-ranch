@@ -92,7 +92,7 @@ export default class CommandBar extends View {
     const ps = panes();
     for (const f of this.folders.list ?? []) {
       const n = sp.filter((s) => !s.machine && folderOf(s, this.folders, ps) === f.id).length;
-      out.push({ group: "Folders", name: f.name, hint: n ? `${n} space${n > 1 ? "s" : ""}` : "empty", mark: icon("folder", 14, t.muted), kw: "folder project new agent", verb: "New agent here",
+      out.push({ group: "Folders", name: f.name, hint: n ? `${n} space${n > 1 ? "s" : ""}` : "empty", mark: icon("folder", 14, t.muted), kw: "folder project", verb: "New agent here",
         desc: `Start an agent in ${f.name}: a new tab in its main space${n ? "" : " (it has none yet, so a new space in its path)"}.`, keep: true,
         run: (cx) => this.setStep({ folder: f }, cx) });
     }
@@ -154,10 +154,15 @@ export default class CommandBar extends View {
         ...["New agent…", "Board", "Changes", "Pull requests"].map(pick).filter(Boolean).map((r) => ({ ...r, group: "Suggested" }))].slice(0, ROWS);
     }
     const words = q.split(/\s+/);
-    const score = (r) => { const hay = `${r.name} ${r.kw ?? ""} ${r.group} ${r.hint ?? ""}`.toLowerCase(); if (!words.every((w) => hay.includes(w))) return -1;
-      const n = r.name.toLowerCase(); return n.startsWith(q) ? 3 : n.includes(q) ? 2 : 1; };
-    return all.map((r) => ({ r, s: score(r) })).filter((x) => x.s >= 0)
-      .sort((a, b) => GROUPS.indexOf(a.r.group) - GROUPS.indexOf(b.r.group) || b.s - a.s).map((x) => x.r).slice(0, ROWS);
+    // Every word must appear somewhere; a match in the name beats one in the keywords, a name that starts with
+    // what was typed beats both. The best group comes first, each group keeps its matches together.
+    const score = (r) => { const n = r.name.toLowerCase(), hay = `${n} ${r.kw ?? ""} ${r.group} ${r.hint ?? ""}`.toLowerCase();
+      if (!words.every((w) => hay.includes(w))) return -1;
+      return n.startsWith(q) ? 4 : n.includes(q) ? 3 : words.every((w) => n.includes(w)) ? 2 : 1; };
+    const hits = all.map((r) => ({ r, s: score(r) })).filter((x) => x.s >= 0);
+    const best = {};
+    for (const x of hits) best[x.r.group] = Math.max(best[x.r.group] ?? 0, x.s);
+    return hits.sort((a, b) => best[b.r.group] - best[a.r.group] || GROUPS.indexOf(a.r.group) - GROUPS.indexOf(b.r.group) || b.s - a.s).map((x) => x.r).slice(0, ROWS);
   }
 
   enter(cx) {

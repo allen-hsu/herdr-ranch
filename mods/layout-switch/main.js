@@ -59,7 +59,8 @@ export default class LayoutSwitch extends View {
       // Optional props.panel: id of a layout node this button shows/hides (e.g. the right panel).
       .when(Boolean(panel), (el) => {
         const shown = !find(layout(), panel)?.hidden;
-        return el.child(div().w(1).h(14).mx(4).bg(t.border)).child(div().id("ls-panel").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer()
+        if (shown) return el; // the panel's header carries the button while it is open
+        return el.child(div().id("ls-panel").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer()
           .text_color(shown ? t.foreground : t.dim).when(shown, (e) => e.bg(t.selected))
           .hover((s) => s.bg(t.hover).text_color(t.foreground))
           .tooltip(`${shown ? "Hide" : "Show"} the right panel${panelKey ? ` (${pretty(panelKey)})` : ""}`)
