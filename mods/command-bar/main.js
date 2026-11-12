@@ -10,6 +10,7 @@ import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, 
 import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { loadFolders, folderOf, place } from "./folders.js";
+import { providerOf, accountsInfo, activeName, openAccounts } from "./accounts.js";
 
 // What "New agent" can start: the agents Herdr knows are installed on this computer (the same list, icons and
 // commands as Herdr's own "+" menu), then a plain terminal.
@@ -33,6 +34,10 @@ export default class CommandBar extends View {
     this.input.focus();
     cx.timer.after(300, () => this.input.focus());
     cx.spawn(async (cx) => { this.folders = await loadFolders(); cx.notify(); });
+    // Accounts: Claude Code and Codex start on the active one (see the Accounts dialog).
+    this.acct = null;
+    this.acctLoad = accountsInfo("command-bar").then((d) => { this.acct = d; }).catch(() => { this.acct = {}; });
+    cx.spawn(async (cx) => { await this.acctLoad; cx.notify(); });
     // Installed agents: what Herdr last reported at once, then a fresh check.
     this.known = shared(KNOWN)?.[""] ?? [];
     cx.spawn(async (cx) => {
@@ -58,8 +63,11 @@ export default class CommandBar extends View {
   }
   kindIcon(t, kd, size = 14) { return kd.tint ? svg(kd.icon).size(size).flex_none().text_color(t.foreground) : image(kd.icon).size(size).flex_none(); }
 
-  start(folder, kind, task) {
-    const argv = kind.run ?? undefined, t = task.trim() || undefined;
+  start(folder, kind, task, cx) {
+    // The account list is read when the bar opens; a start before it arrived waits for it (never the wrong login).
+    const pv = kind.run ? providerOf(kind) : null;
+    if (pv && !this.acct) { cx.spawn(async (cx) => { await this.acctLoad; this.start(folder, kind, task, cx); }); return; }
+    const argv = kind.run ? [...(pv ? this.acct?.[pv]?.env ?? [] : []), ...kind.run] : undefined, t = task.trim() || undefined;
     const name = t ? t.slice(0, 28) : kind.run ? kind.name : undefined;
     localStorage.setItem("kind", kind.key);
     this.close();
@@ -72,6 +80,12 @@ export default class CommandBar extends View {
     if (mine.length) run("tab.new", { space: mine[0].id, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) });
     else if (folder.path) run("space.new", { folder: folder.path, ...(argv ? { argv, task: t } : {}) });
     else notify({ title: `${folder.name} has no space and no path`, body: "Give the folder a path (⋯ › Edit) or open a space in it first.", level: "warning" });
+  }
+
+  // Which login a Claude Code / Codex agent will start on (other agents have one login only).
+  accountLine(kd) {
+    const pv = kd.run ? providerOf(kd) : null, name = pv ? activeName(this.acct, pv) : null;
+    return name ? `\nAccount: ${name}` : "";
   }
 
   // ---------- rows ----------
@@ -110,6 +124,7 @@ export default class CommandBar extends View {
       else notify({ title: "Not in a git repository", body: "Focus a terminal inside a repo, then try again.", level: "warning" });
     }); }, { kw: "branch isolate" });
     act("Add machine…", "plus", "Connect another computer (over SSH) so its spaces and agents show up here.", () => { this.close(); run("mod.open", { name: "machine-add" }); }, { kw: "remote ssh server computer" });
+    act("Accounts…", "circle-user", "Claude Code and Codex logins: add another subscription, and switch to it when one runs out of quota.", () => { this.close(); openAccounts(); }, { kw: "account login subscription quota switch claude codex sign in" });
     act("New space", "plus", "A new space on this computer.", () => { this.close(); run("space.new"); }, { hint: "⌘N" });
     act("New terminal tab", "plus", "A plain shell in a new tab of this space.", () => { this.close(); run("tab.new"); }, { hint: "⌘T", kw: "shell" });
     const fa = all.find((a) => a.focused) ?? all.find((a) => a.address === focused()?.agent);
@@ -130,6 +145,7 @@ export default class CommandBar extends View {
     view("Pull requests", "git-pull-request", "Your PRs, review requests and CI status.", () => this.panel("prs"), { kw: "pr review ci github" });
     view("Files", "file", "Browse and preview files in this space's folder.", () => this.panel("files"), { kw: "browse tree" });
     view("Resource Manager", "database", "Worktrees, disk space, and cleaning up merged or stale ones.", () => openOverlay({ mod: "worktrees", kind: "window", key: "worktree-resources", width: 560, height: 680, props: { view: "window" } }), { kw: "worktrees clean disk" });
+    view("Accounts", "circle-user", "Which Claude Code and Codex login new agents start on; add, switch or remove one.", () => openAccounts(), { kw: "account login subscription quota switch" });
     view("Settings", "settings", "Theme, font size, keys.", () => run("app.settings"), { hint: "⌘,", kw: "theme font" });
     view("Keybinds", "info", "Every key and what it does.", () => run("app.help"), { hint: "⌘/", kw: "keys shortcuts help" });
     view("Herdr command palette", "search", "Herdr's own list of every app command.", () => run("app.palette"), { hint: "⌘⇧P", kw: "commands" });
@@ -147,7 +163,7 @@ export default class CommandBar extends View {
       const f = this.step.folder, whereName = f === "here" ? "this space" : f.name;
       // Typing here is the task, not a filter. The agent used last time comes first.
       return this.kinds().map((kd) => ({ group: "Agent", name: kd.name, hint: kd.key === this.last ? "used last time" : "", mark: this.kindIcon(t, kd),
-        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: () => this.start(f, kd, kd.run ? this.q : "") }));
+        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${this.accountLine(kd)}${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: (cx) => this.start(f, kd, kd.run ? this.q : "", cx) }));
     }
     const all = this.everything(t);
     if (!q) {

@@ -12,6 +12,7 @@ With --teams it also lists every live agent that has a team (members it started)
 Prints one JSON object. Secret-looking strings are redacted.
 """
 import glob, json, os, re, subprocess, sys, tempfile
+import accounts
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import live  # noqa: E402  (shared lib, copied in by install.sh)
@@ -177,9 +178,8 @@ def herdr_members(lead):
 def lead_session(lead):
     g = hc_json("get", lead) or {}
     pid = (g.get("foreground") or {}).get("pid")
-    try:
-        sess = json.load(open(os.path.join(HOME, ".claude", "sessions", "%d.json" % pid)))
-    except Exception:
+    sess = accounts.session(pid)  # also a lead started under another account folder
+    if sess is None:
         return g, None, None
     paths = glob.glob(os.path.join(HOME, ".claude", "projects", "*", "%s.jsonl" % sess.get("sessionId")))
     return g, sess, (paths[0] if paths else None)
@@ -393,7 +393,7 @@ def terminal_of_pid():
 
 def sessions_by_pid():
     res = {}
-    for f in glob.glob(os.path.join(HOME, ".claude", "sessions", "*.json")):
+    for f in accounts.session_files():
         try:
             d = json.load(open(f))
             res[os.path.basename(f)[:-5]] = d.get("name") or os.path.basename(d.get("cwd") or "") or d.get("sessionId", "")[:8]

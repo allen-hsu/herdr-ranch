@@ -7,8 +7,14 @@ The token is only sent to api.anthropic.com and never written anywhere. Results 
 reset times only) are cached in ~/.cache/herdr-claude-status/usage.json for MIN_INTERVAL seconds.
 
 Codex: the newest rate_limits record in ~/.codex/sessions rollout files (local, no credentials).
+
+Accounts (lib/accounts.py): the numbers are the ACTIVE account's. Claude Code keeps an added account's login in
+the keychain item "Claude Code-credentials-" + the first 8 hex of sha256(its config folder) (agreed 2026-11-12);
+Codex keeps it in <account folder>/auth.json. Each account has its own cache file, and "account" in the output
+is its short name (the part of the email before @) when it is not the system login.
 """
-import glob, json, os, subprocess, sys, time, urllib.request
+import glob, hashlib, json, os, subprocess, sys, time, urllib.request
+import accounts
 from datetime import datetime
 
 CACHE_DIR = os.path.expanduser("~/.cache/herdr-claude-status")
@@ -24,8 +30,11 @@ def iso(ts):
         return None
 
 
-def claude_fetch():
-    raw = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+def claude_fetch(acct):
+    service = "Claude Code-credentials"
+    if acct["dir"]:
+        service += "-" + hashlib.sha256(acct["dir"].encode()).hexdigest()[:8]
+    raw = subprocess.run(["security", "find-generic-password", "-s", service, "-w"],
                          capture_output=True, text=True, timeout=15)
     if raw.returncode != 0:
         return {"error": "keychain"}
@@ -58,23 +67,24 @@ def claude_fetch():
     return out
 
 
-def claude():
+def claude(acct):
+    cache = CACHE if not acct["dir"] else os.path.join(CACHE_DIR, "usage-claude-%s.json" % acct["id"])
     try:
-        cached = json.load(open(CACHE))
+        cached = json.load(open(cache))
     except Exception:
         cached = None
     if cached and not FORCE and time.time() - cached.get("fetched_at", 0) < MIN_INTERVAL:
         return cached
-    fresh = claude_fetch()
+    fresh = claude_fetch(acct)
     fresh["fetched_at"] = time.time()
     if "error" in fresh and cached and "windows" in cached:
         cached["error"] = fresh["error"]  # keep the last good numbers, note the failure
         return cached
     os.makedirs(CACHE_DIR, exist_ok=True)
-    tmp = CACHE + ".tmp"
+    tmp = cache + ".tmp"
     with open(tmp, "w") as f:
         json.dump(fresh, f)
-    os.replace(tmp, CACHE)
+    os.replace(tmp, cache)
     return fresh
 
 
@@ -154,9 +164,10 @@ def get_json(url, headers):
         return None, "network"
 
 
-def codex_live():
-    # Token from ~/.codex/auth.json (user-approved 2026-11-10); sent only to chatgpt.com.
-    tokens = json.load(open(os.path.expanduser("~/.codex/auth.json"))).get("tokens") or {}
+def codex_live(home=None):
+    # Token from ~/.codex/auth.json, or the active account folder's auth.json (user-approved 2026-11-10);
+    # sent only to chatgpt.com.
+    tokens = json.load(open(os.path.join(home or os.path.expanduser("~/.codex"), "auth.json"))).get("tokens") or {}
     if not tokens.get("access_token"):
         return {"error": "no-token"}
     headers = {"Authorization": "Bearer " + tokens["access_token"]}
@@ -223,10 +234,22 @@ def cursor_live():
     return {"windows": windows, "plan": data.get("membershipType")}
 
 
-def codex_best():
+def codex_best(acct):
+    if acct["dir"]:
+        # Another account: its own numbers only (the local rollout files are shared by every account).
+        return cached("codex-%s" % acct["id"], lambda: codex_live(acct["dir"]))
     live = cached("codex", codex_live)
     return live if live.get("windows") else codex()
 
 
-print(json.dumps({"claude": claude(), "codex": codex_best(), "cursor": cached("cursor", cursor_live),
-                  "grok": {"windows": [], "stale": True}, "now": time.time()}))
+def tagged(info, acct):
+    return dict(info, account=acct["short"]) if acct["dir"] else info
+
+
+try:
+    REG = accounts.load()
+    A_CLAUDE, A_CODEX = accounts.active("claude", REG), accounts.active("codex", REG)
+except Exception:
+    A_CLAUDE = A_CODEX = {"id": "default", "dir": None, "short": None}
+print(json.dumps({"claude": tagged(claude(A_CLAUDE), A_CLAUDE), "codex": tagged(codex_best(A_CODEX), A_CODEX),
+                  "cursor": cached("cursor", cursor_live), "grok": {"windows": [], "stale": True}, "now": time.time()}))

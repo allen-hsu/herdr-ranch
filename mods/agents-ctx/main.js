@@ -5,6 +5,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile, appHome } from "herdr";
 import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
+import { accountDirOf } from "./accounts.js";
 
 // ---- context usage (added): Claude Code session -> % of context used ----
 // ~/.claude/herdr-status-snapshot.py (called from the status line) writes the percentages;
@@ -147,7 +148,10 @@ export default class Agents extends View {
           }
           if (!p.pid) continue;
           if (!this.sidOf[p.pid]) {
-            try { this.sidOf[p.pid] = JSON.parse((await readTextFile(`${h}/.claude/sessions/${p.pid}.json`)) ?? "{}").sessionId ?? null; } catch {}
+            // An agent on another account (Accounts dialog) keeps its session record in that account's folder.
+            let dir = null;
+            try { dir = accountDirOf((terminals() ?? []).find((x) => x.address === a.address)); } catch {}
+            try { this.sidOf[p.pid] = JSON.parse((await readTextFile(`${dir ?? `${h}/.claude`}/sessions/${p.pid}.json`)) ?? "{}").sessionId ?? null; } catch {}
           }
           const pct = contexts[this.sidOf[p.pid]]?.used_percent;
           if (typeof pct === "number") next[a.address] = pct;

@@ -2,7 +2,7 @@
 // Numbers come from ./usage.py (Claude: usage API, cached 5 min; Codex: local rollout files).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { exec, appHome, theme } from "herdr";
+import { exec, appHome, theme, shared } from "herdr";
 import { TS, C, icon } from "./ui.js";
 
 const left = (resetsAt, now) => {
@@ -17,10 +17,13 @@ export default class UsageBar extends View {
     this.data = null;
     this.load(cx, false);
     cx.timer.every(60000, (cx) => this.load(cx, false));
+    // The Accounts dialog switched account: show the new one's numbers now (a compare every 2 s, no redraw).
+    this.acctSeen = shared("accounts.changed") ?? 0;
+    cx.timer.every(2000, (cx) => { const n = shared("accounts.changed") ?? 0; if (n !== this.acctSeen) { this.acctSeen = n; this.load(cx, false); } });
   }
 
   load(cx, force) {
-    if (this.busy) return;
+    if (this.busy) { this.again = true; return; }
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
@@ -29,6 +32,7 @@ export default class UsageBar extends View {
       } catch {}
       this.busy = false;
       cx.notify();
+      if (this.again) { this.again = false; this.load(cx, false); }
     });
   }
 
@@ -46,14 +50,18 @@ export default class UsageBar extends View {
   provider(t, id, ic, tint, info, now, staleHint, name) {
     const ws = info?.windows ?? [];
     const dim = !ws.length || info.stale;
+    // Another account than the system login is in use (Accounts dialog): its short name sits next to the icon.
+    const acct = typeof info?.account === "string" && info.account ? info.account : null;
     const head = h_flex().id(id).gap(6).items_center().flex_none().when(dim, (e) => e.opacity(0.8))
-      .child(tint ? svg(ic).size(13).text_color(tint) : image(ic).size(13));
+      .child(tint ? svg(ic).size(13).text_color(tint) : image(ic).size(13))
+      .when(Boolean(acct), (e) => e.child(div().flex_none().max_w(90).truncate().text_color(t.foreground).child(acct)));
     // No numbers: say what to do about it, in words.
-    if (!ws.length) return head.child(div().text_color(t.muted).child(`${name}: ${staleHint}`)).tooltip(`${name} has no usage numbers yet.`);
+    if (!ws.length) return head.child(div().text_color(t.muted).child(`${acct ? "" : `${name}: `}${info?.error === "keychain" ? "can't read this login" : staleHint}`))
+      .tooltip(`${name}${acct ? ` (account ${acct})` : ""} has no usage numbers yet.${info?.error ? ` Last try failed: ${info.error}.` : ""}`);
     const main = ws[0];
     const c = info.stale ? t.dim : this.color(t, main.percent);
     const lines = ws.map((w) => `${w.name}: ${Math.round(w.percent)}% used${w.resets_at ? `, resets in ${left(w.resets_at, now)}` : ""}`);
-    const tip = [name, ...lines, info.stale ? `Old numbers: ${staleHint}.` : null, info.error ? `Last refresh failed (${info.error}); showing the last good numbers.` : null].filter(Boolean).join("\n");
+    const tip = [acct ? `${name} · account ${acct}` : name, ...lines, info.stale ? `Old numbers: ${staleHint}.` : null, info.error ? `Last refresh failed (${info.error}); showing the last good numbers.` : null].filter(Boolean).join("\n");
     return head
       .child(this.bar(t, main.percent, c))
       .child(div().text_color(info.stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))

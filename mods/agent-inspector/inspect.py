@@ -13,6 +13,7 @@ Plus cost / context % / window / model from the status-line snapshot. Prints one
 Token figures marked approximate are chars/4. Secret-looking strings are redacted.
 """
 import collections, glob, hashlib, json, os, pickle, re, subprocess, sys, tempfile, time
+import accounts
 from datetime import datetime
 
 HOME = os.path.expanduser("~")
@@ -850,10 +851,7 @@ def main():
     except Exception:
         out(ok=False, error="terminal unavailable")
     pid = fg.get("pid")
-    try:
-        sess = json.load(open(os.path.join(HOME, ".claude", "sessions", "%d.json" % pid)))
-    except Exception:
-        sess = None
+    sess = accounts.session(pid)  # ~/.claude/sessions/<pid>.json, or the same in an account folder
     if sess is None:
         import codexlog
         if not codexlog.is_codex(fg):

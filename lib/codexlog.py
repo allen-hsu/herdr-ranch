@@ -37,7 +37,7 @@ def find_rollout(pid, cwd, created_ms):
     try:
         r = subprocess.run(["lsof", "-p", str(int(pid)), "-Fn"], capture_output=True, text=True, timeout=4)
         for line in r.stdout.splitlines():
-            if line.startswith("n") and "/.codex/sessions/" in line and line.endswith(".jsonl"):
+            if line.startswith("n") and "/sessions/" in line and "/rollout-" in line and line.endswith(".jsonl"):
                 return line[1:]
     except Exception:
         pass

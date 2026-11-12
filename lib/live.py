@@ -9,6 +9,7 @@ Per Claude Code agent (terminal -> pid -> ~/.claude/sessions/<pid>.json -> trans
 Other programs: {"program": argv}. Secret-looking strings are redacted.
 """
 import glob, json, os, re, subprocess, sys
+import accounts
 
 HOME = os.path.expanduser("~")
 SNAPSHOT = os.path.join(HOME, ".cache", "herdr-claude-status", "claude-statusline.json")
@@ -129,10 +130,7 @@ def info_for(addr, snap=None):
     if d.get("parent"):
         info["parent"] = d["parent"]
     pid = fg.get("pid")
-    try:
-        sess = json.load(open(os.path.join(HOME, ".claude", "sessions", "%d.json" % pid)))
-    except Exception:
-        sess = None
+    sess = accounts.session(pid)  # ~/.claude/sessions/<pid>.json, or the same in an account folder
     if sess is None:
         import codexlog
         if codexlog.is_codex(fg):

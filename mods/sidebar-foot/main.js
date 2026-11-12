@@ -51,6 +51,7 @@ export default class SidebarFoot extends View {
         .child(btn("sf-board", "layers", "Board: every space by status (⌃⌘B)", () => togglePage("board")))
         .child(btn("sf-team", "users", "Team Map (⌃⌘T)", () => togglePage("team")))
         .child(div().flex_1())
+        .child(btn("sf-accounts", "circle-user", "Accounts: Claude Code and Codex logins", () => run("mod.open", { name: "accounts" })))
         .child(btn("sf-machine", "server", "Add machine…", () => run("mod.open", { name: "machine-add" })))
         .child(btn("sf-settings", "settings", "Settings", () => run("app.settings"))));
   }
