@@ -1,36 +1,43 @@
-// Agent inspector for the focused Claude Code / Codex agent. One tab per question:
-//   Health  - what went wrong (hook errors/timeouts, tool errors, permission blocks, MCP failures, compactions)
-//   Trace   - what it did (per turn: skills loaded, thinking, tool calls with duration/size/permission, hooks, subagents)
-//   Skills  - which skills were really loaded, by whom (model / you / subagent), when, how big; named but never loaded
-//   MCP     - every MCP server: status, tools, which were loaded / called, context they cost
-//   Config  - what shapes it (memory/rules files, hooks, mode, style)
-//   Cost    - where tokens went (context, cost, cache, per tool, per turn, subagents)
+// Agent inspector for the focused Claude Code / Codex agent. Four tabs:
+//   Overview     - what it's doing now, what needs you, how long the context lasts, what the cache and the session cost
+//   Trace        - what it did, per turn: summary, time split, waterfall of LLM calls / tools / hooks, per-call detail
+//   Capabilities - skills, MCP servers and tools: what it could use, what it used, what each costs in context
+//   Config       - what shapes it: model and mode, memory files, hooks (by name, with their health)
 // Data: ./inspect.py (local transcripts only).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, focused, agents, theme, run } from "herdr";
-import { TS, SPACE, C, icon } from "./ui.js";
+import { TS, SPACE, C, tint, icon, statusMark } from "./ui.js";
 import { agentName } from "./agentname.js";
 
 const k = (n) => (n == null ? "–" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
 const ms = (v) => (v == null ? "" : v < 1000 ? `${v}ms` : v < 60000 ? `${(v / 1000).toFixed(1)}s` : `${Math.floor(v / 60000)}m${String(Math.round((v % 60000) / 1000)).padStart(2, "0")}s`);
 const dur = (s) => ms(s == null ? null : Math.round(s * 1000));
 const clock = (t) => { if (!t) return ""; const d = new Date(t * 1000); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
-const TABS = ["health", "trace", "skills", "mcp", "config", "cost"];
-const TAB_LABEL = { health: "Health", trace: "Trace", skills: "Skills", mcp: "MCP", config: "Config", cost: "Cost" };
+const TABS = ["overview", "trace", "capabilities", "config"];
+const TAB_LABEL = { overview: "Overview", trace: "Trace", capabilities: "Capabilities", config: "Config" };
+const OLD_TAB = { health: "overview", cost: "overview", skills: "capabilities", mcp: "capabilities" };
+const money = (v) => (v == null ? "–" : v < 0.01 ? `$${v.toFixed(3)}` : `$${v.toFixed(2)}`);
 const HOW = { model: "by the model", you: "by you (/command)", subagent: "in a subagent", restored: "restored after compaction" };
 
 export default class AgentInspector extends View {
   init(_props, cx) {
     this.addr = null;
     this.data = null;
-    this.tab = localStorage.getItem("tab") ?? "health";
+    const saved = localStorage.getItem("tab") ?? "overview";
+    this.tab = TABS.includes(saved) ? saved : OLD_TAB[saved] ?? "overview";
+    this.cap = localStorage.getItem("cap") ?? "skills"; // Capabilities: skills | mcp | tools
+    this.filter = "all"; // Trace: all | errors | skills
+    this.cache = new Map(); // address -> last data, so switching agents shows something at once
+    this.keys = new Map(); // address -> last output (minus the clock), to skip redraws when nothing changed
+    this.fade = 1;
     this.open = new Set([0]); // expanded turns in Trace (the latest starts open)
     this.openSpan = new Set(); // expanded waterfall rows in Trace
     this.openSrv = new Set(); // expanded servers in MCP
-    this.onlySkills = false; // Trace: only turns that loaded or named a skill
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
+    // Follow focus quickly: a string compare every 250 ms, a redraw only when the focused agent changes.
+    cx.timer.every(250, (cx) => { const a = this.target(); if (a && a !== this.addr) this.switchTo(a, cx); });
   }
 
   target() {
@@ -38,25 +45,39 @@ export default class AgentInspector extends View {
     return f?.agent ?? (agents().some((a) => a.address === f?.terminal) ? f.terminal : null);
   }
 
+  // Show another agent: its last data at once (dimmed until fresh data lands), or a skeleton.
+  switchTo(addr, cx) {
+    this.addr = addr;
+    this.data = this.cache.get(addr) ?? null;
+    this.fade = this.data ? 0.6 : 0;
+    this.open = new Set([0]); this.openSpan = new Set();
+    cx.notify();
+    this.load(cx);
+  }
+
   load(cx) {
-    const addr = this.target();
-    if (!addr || this.busy) return;
-    if (addr !== this.addr) { this.addr = addr; this.data = null; this.open = new Set([0]); }
-    this.busy = true;
+    const addr = this.target() ?? this.addr;
+    if (!addr) return;
+    if (addr !== this.addr) return this.switchTo(addr, cx);
+    if (this.inflight?.has(addr)) return;
+    (this.inflight ??= new Set()).add(addr);
     cx.spawn(async (cx) => {
+      let d;
       try {
         const r = await exec("python3", [appHome() + "/mods/agent-inspector/inspect.py", addr], { timeout: 30000 });
-        // Nothing new (ignoring the clock): skip the redraw, except every 30 s for the cache countdown.
+        // Nothing new (ignoring the clock): skip the redraw — unless it's busy (the elapsed time moves) or 30 s passed.
         const key = (r.stdout || "").replace(/"now":[\d.]+/, "");
-        if (addr === this.addr && key === this.lastOut && Date.now() - (this.drawnAt ?? 0) < 30000) { this.busy = false; return; }
-        this.lastOut = key; this.drawnAt = Date.now();
-        const d = JSON.parse(r.stdout || "{}");
-        if (addr === this.addr) this.data = d;
+        const same = key === this.keys.get(addr);
+        this.keys.set(addr, key);
+        d = same && this.cache.has(addr) ? this.cache.get(addr) : JSON.parse(r.stdout || "{}");
+        if (same && addr === this.addr && this.fade === 1 && d.doing?.state === "idle" && Date.now() - (this.drawnAt ?? 0) < 30000) { this.inflight.delete(addr); return; }
+        if (same) d = { ...d, now: Date.now() / 1000 };
       } catch (e) {
-        if (addr === this.addr) this.data = { ok: false, error: String(e.message ?? e) };
+        d = { ok: false, error: String(e.message ?? e) };
       }
-      this.busy = false;
-      cx.notify();
+      this.inflight.delete(addr);
+      if (d.ok) this.cache.set(addr, d);
+      if (addr === this.addr) { this.data = d; this.fade = 1; this.drawnAt = Date.now(); cx.notify(); }
     });
   }
 
@@ -87,6 +108,12 @@ export default class AgentInspector extends View {
       .on_click((_e, _cx) => run("layout.resize", { id: "panel", px: wide ? 440 : 760 }))
       .child(icon("chevrons-left-right", 14, t.dim)).child(wide ? "Narrow" : "Wide");
   }
+  // What actually needs you: live context/cache warnings and real failures (hooks, MCP). A tool returning an error or a
+  // rejected call is part of normal work: those stay in Trace (Errors filter); skill/MCP notes go to Capabilities.
+  needs(t, d) {
+    return [...this.liveIssues(t, d).filter((i) => i.level !== "info" && (i.kind === "context" || i.kind === "cache")),
+      ...(d.issues ?? []).filter((i) => i.level === "error" || (i.level === "warn" && i.kind === "hook"))];
+  }
   lvlColor(t, l) { const c = C(t).status; return l === "error" ? c.blocked : l === "warn" ? c.working : t.dim; }
 
   // ---------- derived alerts (live state) ----------
@@ -112,48 +139,172 @@ export default class AgentInspector extends View {
     return out;
   }
 
-  // ---------- tabs ----------
-  health(t, d) {
-    const all = [...this.liveIssues(t, d), ...(d.issues ?? [])];
-    const order = { error: 0, warn: 1, info: 2 };
-    all.sort((a, b) => (order[a.level] ?? 3) - (order[b.level] ?? 3));
-    const out = [this.h(t, "Problems", all.filter((i) => i.level !== "info").length || "none")];
-    if (!all.length) out.push(this.note(t, "Nothing wrong detected in this session."));
-    for (const [i, x] of all.entries()) out.push(h_flex().id(`is-${i}`).px(SPACE.panel).py(6).gap(8).items_start()
-      .child(div().mt(4).w(7).h(7).rounded(4).flex_none().bg(this.lvlColor(t, x.level)))
+  // ---------- Overview ----------
+  // The live line: what the agent is doing this second.
+  nowCard(t, d) {
+    const a = agents().find((x) => x.address === this.addr);
+    const st = C(t).status, x = d.doing ?? { state: "idle" };
+    const since = x.since ? Math.max(0, d.now - x.since) : null;
+    let mark, title, sub = "", color = t.foreground;
+    if (a?.status === "blocked" || x.state === "ask") {
+      mark = statusMark(t, "blocked"); color = st.blocked;
+      title = x.state === "ask" ? `Asking you (${x.name})` : "Waiting for you";
+      sub = x.state === "ask" ? (x.label || "a question is open in its terminal") : "a permission prompt or question in its terminal";
+    } else if (x.state === "tool") {
+      mark = statusMark(t, "working"); title = `Running ${x.name}`; sub = x.label;
+    } else if (x.state === "model" || a?.status === "working") {
+      mark = statusMark(t, "working"); title = "Thinking"; sub = "the model is working on its next step";
+    } else {
+      mark = statusMark(t, a?.status === "done" ? "done" : "idle"); title = "Idle"; color = t.muted;
+      sub = x.since ? `last activity ${clock(x.since)}` : "";
+    }
+    return h_flex().id("ov-now").mx(SPACE.panel).mt(12).px(12).py(10).gap(10).items_center().rounded(8).bg(t.surface)
+      .child(div().w(16).flex_none().flex().justify_center().child(mark))
+      .child(v_flex().flex_1().min_w(0).gap(1)
+        .child(div().truncate().text_size(TS.item).font_semibold().text_color(color).child(title))
+        .when(Boolean(sub), (e) => e.child(div().truncate().text_size(TS.small).text_color(t.dim).child(sub))))
+      .when(since != null && x.state !== "idle", (e) => e.child(div().flex_none().text_size(TS.meta).text_color(since > 120 ? st.working : t.dim).child(dur(since))));
+  }
+
+  overview(t, d) {
+    const out = [this.nowCard(t, d)];
+    const st = C(t).status;
+    // Needs you: errors and warnings only; informational notes live with their topic.
+    const issues = this.needs(t, d);
+    out.push(this.h(t, "Needs attention", issues.length || null));
+    if (!issues.length) out.push(this.note(t, "Nothing needs you."));
+    for (const [i, x] of issues.slice(0, 8).entries()) out.push(h_flex().id(`is-${i}`).px(SPACE.panel).py(5).gap(8).items_start()
+      .child(div().mt(5).size(7).rounded(4).flex_none().bg(this.lvlColor(t, x.level)))
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(div().text_size(TS.body).text_color(t.foreground).child(x.text))
         .child(div().text_size(TS.tiny).text_color(t.dim).child(`${x.kind}${x.count > 1 ? ` · ${x.count}×` : ""}${x.last ? ` · last ${clock(x.last)}` : ""}`))));
+
+    // Context: how full, how fast it grows, what fills it.
+    const pct = d.pct ?? (d.window ? (d.ctx / d.window) * 100 : null);
+    if (pct != null) {
+      const grow = (d.turns ?? []).slice(0, 5).map((x) => x.ctx_delta).filter((v) => v > 0);
+      const per = grow.length ? grow.reduce((n, v) => n + v, 0) / grow.length : 0;
+      const room = d.window ? d.window * 0.9 - d.ctx : 0; // auto-compaction kicks in near the top
+      const turnsLeft = per > 0 && room > 0 ? Math.floor(room / per) : null;
+      const pc = pct >= 80 ? st.blocked : pct >= 60 ? st.working : C(t).kind.llm;
+      out.push(this.h(t, "Context", `${Math.round(pct)}% · ${k(d.ctx)} of ${k(d.window)}`));
+      out.push(div().px(SPACE.panel).child(h_flex().h(6).rounded(3).overflow_hidden().bg(t.surface)
+        .child(div().h_full().w(`${Math.min(100, pct).toFixed(1)}%`).rounded(3).bg(pc).transition("width", { duration: 300, easing: "ease-out" }))));
+      out.push(this.note(t, turnsLeft != null ? `Grows ~${k(per)} per turn lately — about ${turnsLeft} more turn${turnsLeft === 1 ? "" : "s"} like that before it compacts.` : "Not growing lately."));
+      for (const [i, b] of (d.in_ctx ?? []).slice(0, 4).entries()) out.push(this.row(t, `ov-c-${i}`, icon("wrench", 12, t.dim), `${b.tool} · ${b.label}`, `~${k(b.tok)}`, t.dim));
+    }
+
+    // Cache: what replying now vs later costs.
+    const left = d.cache_until ? d.cache_until - d.now : null;
+    if (d.agent !== "codex" && left != null && d.price && d.ctx) {
+      const w = (d.cache_ttl ?? 300) >= 3600 ? 2 : 1.25;
+      const now = (d.ctx * d.price.read) / 1e6, later = (d.ctx * d.price.in * w) / 1e6;
+      out.push(this.h(t, "Prompt cache", left > 0 ? `warm · ${dur(left)} left` : "expired"));
+      out.push(this.note(t, left > 0
+        ? `Reply before it expires: re-reading the context costs ~${money(now)}. After: rewriting it costs ~${money(later)}.`
+        : `The next reply rewrites ~${k(d.ctx)} tokens: ~${money(later)} instead of ~${money(now)} while warm.`));
+    }
+
+    // Spend: the session total, the recent turns, and turns that cost far more than usual.
+    const turns = (d.turns ?? []).filter((x) => x.sum?.cost != null);
+    if (d.cost != null || turns.length) {
+      const costs = turns.map((x) => x.sum.cost).sort((a, b) => a - b);
+      const med = costs.length ? costs[Math.floor(costs.length / 2)] : 0;
+      const recent = costs.reduce((n, v) => n + v, 0);
+      out.push(this.h(t, "Spend", d.cost != null ? `session ${money(d.cost)}` : null));
+      if (turns.length) out.push(this.note(t, `Last ${turns.length} turns ~${money(recent)} · typical turn ~${money(med)} (estimated from token prices).`));
+      const odd = turns.map((x, i) => ({ x, i: (d.turns ?? []).indexOf(x) })).filter(({ x }) => med > 0 && x.sum.cost > med * 3).slice(0, 3);
+      for (const { x, i } of odd) out.push(h_flex().id(`ov-odd-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta).cursor_pointer().rounded(6)
+        .hover((e) => e.bg(t.hover)).tooltip("Open this turn in Trace")
+        .on_click((_e, cx) => { this.tab = "trace"; this.open = new Set([i]); localStorage.setItem("tab", "trace"); cx.notify(); })
+        .child(div().flex_none().text_color(st.working).child(`${(x.sum.cost / med).toFixed(1)}×`))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.prompt))
+        .child(div().flex_none().text_color(t.dim).child(money(x.sum.cost))));
+    }
+
+    // Subagents still around.
+    const subs = d.subagents ?? [];
+    if (subs.length) {
+      out.push(this.h(t, "Subagents", subs.length));
+      for (const [i, s] of subs.slice(-6).reverse().entries()) out.push(this.row(t, `ov-s-${i}`, statusMark(t, s.finished ? "done" : "working", { size: 10 }), s.desc || s.type || "agent", `${s.tools} tools · ${k(s.out)} out`));
+    }
+    // Quiet notes that aren't problems.
+    const notes = [...(d.issues ?? [])].filter((i) => i.level === "info" && !["skills", "mcp"].includes(i.kind));
+    if (notes.length) {
+      out.push(this.h(t, "Notes", notes.length));
+      for (const n of notes) out.push(this.note(t, n.text));
+    }
+    return out;
+  }
+
+  // ---------- Capabilities: skills, MCP, tools ----------
+  capabilities(t, d) {
+    const seg = (id, label) => div().id(`cap-${id}`).px(8).py(2).rounded(6).text_size(TS.small).cursor_pointer()
+      .text_color(this.cap === id ? t.foreground : t.muted).when(this.cap === id, (e) => e.bg(t.selected))
+      .hover((e) => e.bg(this.cap === id ? t.selected : t.hover).text_color(t.foreground))
+      .on_click((_e, cx) => { this.cap = id; localStorage.setItem("cap", id); cx.notify(); }).child(label);
+    const sk = d.config?.skills ?? {}, mt = d.config?.mcp?.totals ?? {};
+    const out = [h_flex().px(SPACE.panel - 2).pt(10).gap(4)
+      .child(seg("skills", `Skills ${(sk.used ?? []).filter((u) => u.count > 0).length}/${sk.available ?? 0}`))
+      .child(seg("mcp", `MCP ${mt.connected ?? 0}`))
+      .child(seg("tools", `Tools ${(d.tools ?? []).length}`))];
+    return [...out, ...(this.cap === "mcp" ? this.mcp(t, d) : this.cap === "tools" ? this.tools(t, d) : this.skills(t, d))];
+  }
+
+  tools(t, d) {
+    const out = [this.h(t, "Tools used", "calls · avg · context added")];
+    if (!(d.tools ?? []).length) out.push(this.note(t, "No tool calls yet."));
+    for (const [i, x] of (d.tools ?? []).entries()) out.push(h_flex().id(`tl-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta)
+      .child(icon(x.name.startsWith("mcp__") ? "plug" : x.name === "Agent" || x.name === "Task" ? "bot" : "wrench", 12, x.errors ? C(t).status.blocked : t.dim))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.name.startsWith("mcp__") ? x.name.split("__").slice(1).join(" · ") : x.name))
+      .child(div().flex_none().text_color(t.dim).child(`${x.calls}×`))
+      .child(div().flex_none().w(48).text_right().text_color(x.avg_ms > 10000 ? C(t).status.working : t.dim).child(ms(x.avg_ms)))
+      .when(x.errors > 0, (e) => e.child(div().flex_none().text_color(C(t).status.blocked).child(`${x.errors} err`)))
+      .child(div().flex_none().w(44).text_right().text_color(x.result_tok > 20000 ? C(t).status.working : t.dim).child(`~${k(x.result_tok)}`)));
+    if ((d.big ?? []).length) {
+      out.push(this.h(t, "Biggest results", "tokens"));
+      for (const [i, b] of d.big.slice(0, 6).entries()) out.push(this.row(t, `tl-b-${i}`, icon("wrench", 12, t.dim), `${b.tool} · ${b.label}`, `~${k(b.tok)}`));
+    }
+    out.push(this.note(t, "Result sizes are estimates (characters ÷ 4)."));
     return out;
   }
 
   config(t, d) {
     const c = d.config ?? {};
+    const st = C(t).status;
     const out = [];
+    // Things that rarely change: one line each, no tables.
     out.push(this.h(t, "Session"));
-    out.push(this.row(t, "c-model", "Model", d.model_name || d.model || "–"));
-    out.push(this.row(t, "c-mode", d.agent === "codex" ? "Approval · sandbox" : "Permission mode", c.permission_mode || "default"));
-    if (c.effort) out.push(this.row(t, "c-effort", "Reasoning effort", c.effort));
-    if (c.cli_version) out.push(this.row(t, "c-cli", "CLI", `${d.agent === "codex" ? "codex" : "claude"} ${c.cli_version}${c.originator ? ` · started by ${c.originator}` : ""}`));
-    if (c.output_style) out.push(this.row(t, "c-style", "Output style", c.output_style));
-    out.push(this.row(t, "c-sys", "System prompt", `~${k(c.system_prompt_tok)} tokens`));
-    out.push(this.row(t, "c-base", "Baseline context", `${k(d.first_ctx)} tokens at the first reply`));
-    out.push(this.h(t, "Memory & rules", c.memory?.length ? `~${k(c.memory_tok)} tok` : 0));
+    out.push(this.note(t, [d.model_name || d.model, c.effort ? `effort ${c.effort}` : null, `${c.permission_mode || "default"} mode`, c.output_style ? `${c.output_style} style` : null,
+      c.cli_version ? `${d.agent === "codex" ? "codex" : "claude"} ${c.cli_version}` : null].filter(Boolean).join(" · ")));
+    out.push(this.note(t, `System prompt ~${k(c.system_prompt_tok)} · context at the first reply ${k(d.first_ctx)}${c.agent_types ? ` · ${c.agent_types} subagent types` : ""}`));
+    out.push(this.h(t, "Memory & rules", c.memory?.length ? `~${k(c.memory_tok)} tokens` : null));
     if (!c.memory?.length) out.push(this.note(t, "No CLAUDE.md / AGENTS.md / rules loaded."));
-    for (const [i, m] of (c.memory ?? []).entries()) out.push(this.row(t, `c-m-${i}`, m.type ?? "", m.path, `~${k(m.tokens)} · ${m.how}`));
-    out.push(this.note(t, "Skills and MCP servers have their own tabs."));
-    const hooks = c.hooks ?? [];
+    for (const [i, m] of (c.memory ?? []).entries()) out.push(this.row(t, `c-m-${i}`, icon("file", 12, t.dim), m.path, `~${k(m.tokens)} · ${m.how}`));
     if (d.agent === "codex") { out.push(this.note(t, "Codex sessions don't record hooks or MCP servers in their log.")); return out; }
-    out.push(this.h(t, "Hooks that ran", hooks.length));
-    for (const [i, x] of hooks.entries()) {
-      const bad = x.errors || x.timeouts;
-      out.push(h_flex().id(`c-h-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta)
-        .child(div().w(6).h(6).rounded(3).flex_none().bg(bad ? C(t).status.blocked : C(t).status.done))
-        .child(div().flex_none().w(96).truncate().text_color(t.muted).child(x.event))
-        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.cmd))
-        .child(div().flex_none().text_color(bad ? t.blocked : t.dim).child(`${x.runs}× · avg ${ms(x.avg_ms)}${x.errors ? ` · ${x.errors} err` : ""}${x.timeouts ? ` · ${x.timeouts} timeout` : ""}${x.injected ? ` · injected ${x.injected}` : ""}`)));
+    // Hooks by what they are, not their command line (the full command is in the tooltip).
+    const groups = new Map();
+    for (const x of c.hooks ?? []) {
+      const key = `${x.label}|${x.src}`;
+      const g = groups.get(key) ?? { label: x.label, src: x.src, events: new Set(), runs: 0, errors: 0, timeouts: 0, total: 0, full: x.full };
+      g.events.add(x.event); g.runs += x.runs; g.errors += x.errors; g.timeouts += x.timeouts; g.total += (x.avg_ms ?? 0) * x.runs;
+      groups.set(key, g);
     }
-    if (c.agent_types) out.push(this.note(t, `${c.agent_types} subagent types available.`));
+    const hooks = [...groups.values()].sort((a, b) => (b.errors + b.timeouts) - (a.errors + a.timeouts) || b.runs - a.runs);
+    out.push(this.h(t, "Hooks", hooks.length || null));
+    if (!hooks.length) out.push(this.note(t, "No hooks ran in this session."));
+    for (const [i, g] of hooks.entries()) {
+      const bad = g.errors + g.timeouts;
+      out.push(h_flex().id(`c-h-${i}`).px(SPACE.panel).py(5).gap(8).items_center().text_size(TS.meta).rounded(6).hover((e) => e.bg(t.hover))
+        .tooltip(`${[...g.events].join(", ")}\n${g.full ?? ""}`)
+        .child(div().size(7).rounded(4).flex_none().bg(bad ? st.blocked : C(t).ok))
+        .child(v_flex().flex_1().min_w(0).gap(1)
+          .child(h_flex().gap(6).items_center().min_w(0)
+            .child(div().min_w(0).truncate().text_color(t.foreground).child(g.label))
+            .child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(TS.tiny).text_color(t.dim).child(g.src)))
+          .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child([...g.events].join(" · "))))
+        .child(div().flex_none().text_color(bad ? st.blocked : t.dim).child(`${g.runs}× · ${ms(Math.round(g.total / Math.max(1, g.runs)))}${g.errors ? ` · ${g.errors} err` : ""}${g.timeouts ? ` · ${g.timeouts} timeout` : ""}`)));
+    }
     return out;
   }
 
@@ -275,23 +426,33 @@ export default class AgentInspector extends View {
 
   trace(t, d) {
     const turns = d.turns ?? [];
-    const withSkills = turns.filter((tu) => tu.skills?.length || tu.missed?.length).length;
-    const pill = (id, label, on, action) => div().id(id).px(8).py(2).rounded(10).border_1().border_color(t.border).text_size(TS.small).cursor_pointer()
-      .text_color(on ? t.foreground : t.muted).when(on, (e) => e.bg(t.selected)).hover((x) => x.bg(on ? t.selected : t.hover).text_color(t.foreground)).on_click(action).child(label);
-    const cost = turns.reduce((n, tu) => n + (tu.sum?.cost ?? 0), 0);
-    const out = [this.h(t, "Turns", `${d.prompt_count} total · last ${turns.length}${cost ? ` · ~$${cost.toFixed(2)}` : ""}`),
-      h_flex().px(SPACE.panel - 8).pb(4).gap(4)
-        .child(pill("tr-all", "All turns", !this.onlySkills, (_e, cx) => { this.onlySkills = false; cx.notify(); }))
-        .child(pill("tr-sk", `With skills (${withSkills})`, this.onlySkills, (_e, cx) => { this.onlySkills = true; cx.notify(); }))];
+    const costs = turns.map((x) => x.sum?.cost).filter((v) => v != null).sort((a, b) => a - b);
+    const med = costs.length ? costs[Math.floor(costs.length / 2)] : 0;
+    const hit = { all: () => true, errors: (x) => (x.sum?.errors ?? 0) > 0 || x.steps.some((s) => s.error), skills: (x) => x.skills?.length || x.missed?.length,
+      pricey: (x) => med > 0 && (x.sum?.cost ?? 0) > med * 3 };
+    const count = (f) => turns.filter(hit[f]).length;
+    const pill = (id, label) => { const on = this.filter === id; return div().id(`tr-${id}`).px(8).py(2).rounded(10).border_1().border_color(t.border).text_size(TS.small).cursor_pointer()
+      .text_color(on ? t.foreground : t.muted).when(on, (e) => e.bg(t.selected)).hover((x) => x.bg(on ? t.selected : t.hover).text_color(t.foreground))
+      .on_click((_e, cx) => { this.filter = id; cx.notify(); }).child(label); };
+    const cost = costs.reduce((n, v) => n + v, 0);
+    const out = [this.h(t, "Turns", `last ${turns.length} of ${d.prompt_count}${cost ? ` · ~${money(cost)}` : ""}`),
+      h_flex().px(SPACE.panel - 8).pb(4).gap(4).flex_wrap()
+        .child(pill("all", "All"))
+        .child(pill("errors", `Errors ${count("errors")}`))
+        .child(pill("pricey", `Costly ${count("pricey")}`))
+        .child(pill("skills", `Skills ${count("skills")}`))];
     for (const [i, tu] of turns.entries()) {
-      if (this.onlySkills && !(tu.skills?.length || tu.missed?.length)) continue;
+      if (!hit[this.filter](tu)) continue;
+      const ratio = med > 0 && tu.sum?.cost != null ? tu.sum.cost / med : 0;
       const open = this.open.has(i);
       out.push(v_flex().id(`tu-${i}`).mx(SPACE.panel - 8).px(8).py(6).rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).gap(2)
         .when(open, (e) => e.bg(t.surface))
         .on_click((_e, cx) => { open ? this.open.delete(i) : this.open.add(i); cx.notify(); })
         .child(h_flex().gap(6).items_center().text_size(TS.body)
           .child(h_flex().flex_none().gap(2).items_center().text_color(t.dim).child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim)).child(clock(tu.at)))
-          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(tu.prompt || "(empty)")))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(tu.prompt || "(empty)"))
+          .when(ratio > 3, (e) => e.child(div().flex_none().px(5).rounded(4).bg(tint(C(t).status.working)).text_size(TS.tiny).text_color(C(t).status.working)
+            .tooltip(`This turn cost ${ratio.toFixed(1)}× a typical turn`).child(`${ratio.toFixed(1)}×`))))
         .child(div().pl(SPACE.panel + 2).child(this.turnSummary(t, tu)))
         .when(Boolean(tu.skills?.length || tu.missed?.length), (el) => el.child(h_flex().pl(SPACE.panel + 2).pt(2).gap(4).flex_wrap()
           .children((tu.skills ?? []).map((s, j) => this.chip(t, `tsk-${i}-${j}`, `${s.how === "you" ? "/" : ""}${s.name}${s.tok ? ` ~${k(s.tok)}` : ""}`,
@@ -386,71 +547,66 @@ export default class AgentInspector extends View {
     return out;
   }
 
-  cost(t, d) {
-    const out = [];
-    out.push(this.h(t, "Tokens by tool result", "context added"));
-    for (const [i, x] of (d.tools ?? []).slice(0, 10).entries()) out.push(this.row(t, `co-t-${i}`, `~${k(x.result_tok)}`, x.name, `${x.calls}× · avg ${ms(x.avg_ms)}${x.errors ? ` · ${x.errors} err` : ""}`, x.result_tok > 20000 ? t.working : t.muted));
-    out.push(this.h(t, "Biggest single outputs"));
-    for (const [i, b] of (d.big ?? []).entries()) out.push(this.row(t, `co-b-${i}`, `~${k(b.tok)}`, `${b.tool} · ${b.label}`, null, b.tok > 10000 ? t.working : t.muted));
-    out.push(this.h(t, "Per turn", "context added · output"));
-    for (const [i, tu] of (d.turns ?? []).slice(0, 10).entries()) out.push(this.row(t, `co-u-${i}`, `${tu.ctx_delta >= 0 ? "+" : ""}${k(tu.ctx_delta)}`, tu.prompt, `${k(tu.out)} out${tu.sum?.cost != null ? ` · ~$${tu.sum.cost.toFixed(2)}` : ""}`, tu.ctx_delta > 20000 ? t.working : t.muted));
-    if ((d.subagents ?? []).length) {
-      out.push(this.h(t, "Subagents", d.subagents.length));
-      for (const [i, s] of d.subagents.entries()) out.push(this.row(t, `co-s-${i}`, `${k(s.out)} out`, s.desc || s.type || "agent", `${s.tools} tools · ctx ${k(s.ctx)}`, s.finished ? t.done : t.working));
-    }
-    if ((d.compactions ?? []).length) {
-      out.push(this.h(t, "Compactions", d.compactions.length));
-      for (const [i, c] of d.compactions.entries()) out.push(this.row(t, `co-c-${i}`, clock(c.at), `from ${k(c.pre)} tokens`, c.trigger));
-    }
-    out.push(this.h(t, "Session totals"));
-    out.push(this.row(t, "co-o", "Output", `${k(d.out)} tokens written`));
-    out.push(this.row(t, "co-r", "Cache read", `${k(d.cache_read)} tokens re-read across all turns`));
-    out.push(this.row(t, "co-w", "Cache write", `${k(d.cache_write)} tokens written to cache`));
-    out.push(this.note(t, "Token sizes of tool outputs are estimates (characters ÷ 4)."));
-    return out;
-  }
-
-  body(t) {
-    const d = this.data;
-    const note = (s) => [div().p(16).text_size(TS.body).text_color(t.dim).child(s)];
-    if (!this.addr) return note("Select an agent to inspect it.");
-    if (!d) return note("Reading the session…");
-    if (!d.ok) return note(d.error === "unsupported agent" ? `Inspector reads Claude Code and Codex sessions. This agent runs ${d.program || "something else"}.`
-      : /transcript not found|session file not found/i.test(d.error ?? "") ? "Waiting for this agent's first prompt…" : `Unavailable: ${d.error}`);
-    const pct = d.pct ?? (d.window ? (d.ctx / d.window) * 100 : null);
-    const pctColor = pct >= 80 ? t.blocked : pct >= 60 ? t.working : t.foreground;
-    const left = d.cache_until ? d.cache_until - d.now : null;
-    const problems = [...this.liveIssues(t, d), ...(d.issues ?? [])].filter((i) => i.level === "error" || i.level === "warn").length;
-    const head = [
+  // Header: name, model line, three numbers. Drawn from agents() alone when there is no data yet, so a switch never shows a blank panel.
+  head(t, d) {
+    const a = agents().find((x) => x.address === this.addr);
+    const name = agentName(a) || d?.name || d?.session?.slice(0, 8) || this.addr;
+    const pct = d ? d.pct ?? (d.window ? (d.ctx / d.window) * 100 : null) : null;
+    const st = C(t).status;
+    const left = d?.cache_until ? d.cache_until - d.now : null;
+    const tile = (label, value, color, tip) => this.stat(t, label, value ?? "–", color, tip);
+    return [
       v_flex().px(SPACE.panel).pt(12).gap(2)
         .child(h_flex().gap(8).items_center()
-          .child(div().flex_1().min_w(0).text_size(TS.item).font_semibold().text_color(t.foreground).truncate().child(agentName(agents().find((x) => x.address === this.addr)) || d.name || d.session.slice(0, 8)))
+          .child(div().flex_1().min_w(0).text_size(TS.item).font_semibold().text_color(t.foreground).truncate().child(name))
           .child(this.widthToggle(t)))
-        .child(div().text_size(TS.small).text_color(t.dim).truncate().child(`${d.model_name || d.model || ""} · ${d.cwd} · ${d.prompt_count} prompts`)),
+        .child(div().text_size(TS.small).text_color(t.dim).truncate().child(d?.ok ? `${d.model_name || d.model || ""} · ${d.cwd} · ${d.prompt_count} prompts` : a?.cwd ?? " ")),
       h_flex().px(SPACE.panel).pt(8).gap(6)
-        .child(this.stat(t, "Context", pct != null ? `${Math.round(pct)}%` : k(d.ctx), pctColor, `${k(d.ctx)} of ${k(d.window)} tokens`))
-        .child(this.stat(t, "Cost", d.cost != null ? `$${d.cost.toFixed(2)}` : "–", null, "This session so far (Claude Code status line)"))
-        .child(d.agent === "codex"
-          ? this.stat(t, "Cached in", k(d.cache_read), null, "Input tokens served from cache across the session")
-          : this.stat(t, "Cache", left == null ? "–" : left > 0 ? dur(left) : "expired", left != null && left <= 0 ? t.working : t.done, `Prompt cache TTL ${(d.cache_ttl ?? 300) / 60} min after the last reply`)),
-      // Sub-navigation inside the panel: one step quieter than the panel's own tabs (Files / Git / … at TS.body).
-      h_flex().px(SPACE.panel - 6).pt(8).border_b(1).border_color(t.border).children(TABS.map((id) => {
-        const on = id === this.tab;
-        return div().id(`tab-${id}`).px(6).py(5).text_size(TS.meta).cursor_pointer()
-          .text_color(on ? t.foreground : t.dim).when(on, (el) => el.border_b(2).border_color(t.accent))
-          .rounded_t(5).hover((s) => s.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => { this.tab = id; localStorage.setItem("tab", id); cx.notify(); })
-          .child(id === "health" && problems ? `${TAB_LABEL[id]} · ${problems}` : TAB_LABEL[id]);
-      })),
+        .child(tile("Context", pct != null ? `${Math.round(pct)}%` : d?.ok ? k(d.ctx) : null, pct >= 80 ? st.blocked : pct >= 60 ? st.working : null, d?.ok ? `${k(d.ctx)} of ${k(d.window)} tokens` : null))
+        .child(tile("Session cost", d?.cost != null ? money(d.cost) : null, null, "This whole session so far (Claude Code status line)"))
+        .child(d?.agent === "codex"
+          ? tile("Cached in", k(d.cache_read), null, "Input tokens served from cache across the session")
+          : tile("Cache", left == null ? null : left > 0 ? dur(left) : "expired", left != null && left <= 0 ? st.working : left != null ? st.done : null, `Prompt cache TTL ${(d?.cache_ttl ?? 300) / 60} min after the last reply`)),
     ];
-    const content = this[this.tab]?.(t, d) ?? [];
-    return [...head, ...content, div().h(16)];
+  }
+
+  tabs(t, d) {
+    const problems = d?.ok ? this.needs(t, d).length : 0;
+    return h_flex().px(SPACE.panel - 6).pt(8).border_b(1).border_color(t.border).children(TABS.map((id) => {
+      const on = id === this.tab;
+      return div().id(`tab-${id}`).px(6).py(5).text_size(TS.meta).cursor_pointer()
+        .text_color(on ? t.foreground : t.dim).when(on, (el) => el.border_b(2).border_color(t.accent))
+        .rounded_t(5).hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => { this.tab = id; localStorage.setItem("tab", id); cx.notify(); })
+        .child(id === "overview" && problems ? `${TAB_LABEL[id]} · ${problems}` : TAB_LABEL[id]);
+    }));
+  }
+
+  // Placeholder rows while the first read of an agent runs.
+  skeleton(t) {
+    const bar = (w) => div().h(10).w(`${w}%`).rounded(4).bg(t.surface).loop("opacity", { from: 0.45, to: 1, period: 1400 });
+    return [v_flex().px(SPACE.panel).pt(16).gap(12).child(bar(70)).child(bar(90)).child(bar(55)).child(bar(80)).child(bar(40))];
+  }
+
+  content(t, d) {
+    const note = (s) => [div().p(16).text_size(TS.body).text_color(t.dim).child(s)];
+    if (!d) return this.skeleton(t);
+    if (!d.ok) return note(d.error === "unsupported agent" ? `Inspector reads Claude Code and Codex sessions. This agent runs ${d.program || "something else"}.`
+      : /transcript not found|session file not found/i.test(d.error ?? "") ? "Waiting for this agent's first prompt…" : `Unavailable: ${d.error}`);
+    return this[this.tab]?.(t, d) ?? [];
   }
 
   render() {
     const t = theme();
-    return v_flex().id("agent-inspector").size_full().bg(t.chrome)
-      .on_size_change((size, cx) => { if (Math.round(size.width) !== Math.round(this.width ?? 0)) { this.width = size.width; cx.notify(); } })
-      .child(v_flex().id("ai-scroll").flex_1().min_h(0).overflow_y_scrollbar().children(this.body(t)));
+    const d = this.data;
+    const root = v_flex().id("agent-inspector").size_full().bg(t.chrome)
+      .on_size_change((size, cx) => { if (Math.round(size.width) !== Math.round(this.width ?? 0)) { this.width = size.width; cx.notify(); } });
+    if (!this.addr) return root.child(div().p(16).text_size(TS.body).text_color(t.dim).child("Select an agent to inspect it."));
+    // Same element ids across agents, so the opacity change animates: a switch dims the old content, fresh data fades in.
+    return root.child(v_flex().id("ai-scroll").flex_1().min_h(0).overflow_y_scrollbar()
+      .children(this.head(t, d?.ok ? d : null))
+      .child(this.tabs(t, d))
+      .child(v_flex().id("ai-body").opacity(this.fade).transition("opacity", { duration: this.fade === 1 ? 180 : 90, easing: "ease-out" })
+        .children(this.content(t, d)).child(div().h(16))));
   }
 }

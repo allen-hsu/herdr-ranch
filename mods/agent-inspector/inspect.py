@@ -18,7 +18,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 14
+VERSION = 16
 # $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
 # From the Claude API reference, 2026-11. Unknown models: no cost shown.
 PRICES = {
@@ -103,6 +103,24 @@ def label(name, inp):
         if isinstance(inp.get(k), str):
             return red(inp[k], 90)
     return ""
+
+
+def hook_label(c):
+    """What a hook is, in words: (label, source). The command itself is often a long inline script."""
+    c = c or ""
+    if not c.strip():
+        return "built-in (no command)", "settings"
+    if "ORCA_AGENT_HOOK" in c:
+        return "Orca agent hook", "settings"
+    if "herdr" in c.lower():
+        return "Herdr hook", "settings"
+    plug = re.search(r"/plugins/(?:cache/|marketplaces/)?[^/]+/([^/]+)/", c)
+    src = (plug.group(1) if plug else "plugin") if ("CLAUDE_PLUGIN_ROOT" in c or "/plugins/" in c) else "settings"
+    m = re.search(r"([\w.-]+\.(?:sh|py|js|mjs|cjs|ts|cmd|bat))\b", c)
+    if m:
+        return m.group(1), src
+    first = c.strip().split()[0] if c.strip() else "hook"
+    return ("inline script" if first in ("if", "case", "[", "test") or len(c) > 60 else red(c, 40)), src
 
 
 def short_cmd(c):
@@ -237,7 +255,7 @@ class Agg:
 
     def hook(self, a, at):
         key = (a.get("hookEvent"), a.get("hookName"), a.get("command"))
-        h = self.hooks.setdefault(key, {"event": a.get("hookEvent"), "name": a.get("hookName"), "cmd": short_cmd(a.get("command")),
+        h = self.hooks.setdefault(key, {"event": a.get("hookEvent"), "name": a.get("hookName"), "cmd": short_cmd(a.get("command")), "label": hook_label(a.get("command"))[0], "src": hook_label(a.get("command"))[1], "full": red(a.get("command"), 300),
                                         "runs": 0, "errors": 0, "timeouts": 0, "ms": 0, "max_ms": 0, "injected": 0})
         h["runs"] += 1
         try:
@@ -269,6 +287,7 @@ def parse(path):
     slash = None  # the /command that started the current turn, until its skill text arrives
     restored = set()  # skills re-injected since the last compaction
     big = []
+    last_in = last_any = None  # last prompt or tool result; last record of any kind
     # Per API call (Claude Code records each request: api-request + api-request-blob; responses carry requestRef).
     reqs, blobs, calls, id2tool, shapes = {}, {}, {}, {}, {}
     for line in open(path, encoding="utf-8", errors="replace"):
@@ -313,6 +332,8 @@ def parse(path):
             continue
         m = r.get("message") or {}
         a = r.get("attachment")
+        if at and t in ("user", "assistant"):
+            last_any = at
         if t == "permission-mode" and r.get("permissionMode"):
             g.perm_mode = r["permissionMode"]
         if isinstance(a, dict):
@@ -417,6 +438,7 @@ def parse(path):
                     cmd = text.split("<command-name>")[1].split("</command-name>")[0].lstrip("/") if "<command-name>" in text else None
                     args = text.split("<command-args>")[1].split("</command-args>")[0] if "<command-args>" in text else ""
                     text = "/" + cmd + (" " + args if args else "") if cmd else text
+                last_in = at or last_in
                 cur = {"at": at, "prompt": red(text, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": [], "spans": [],
                        "skills": [], "in_skill": None, "mentions": mentions(text, g.skill_names) if not cmd else []}
                 turns.append(cur)
@@ -457,7 +479,7 @@ def parse(path):
                         if step.get("t0") and at:
                             step["ms"] = int((at - step["t0"]) * 1000)
                             tool["ms"] += step["ms"]
-                        big.append((n, name, step.get("label", "")))
+                        big.append((n, name, step.get("label", ""), at))
                     if b.get("is_error") and text.startswith("The user doesn't want to proceed"):
                         if step:
                             step["perm"] = "reject:you"
@@ -480,6 +502,7 @@ def parse(path):
                             g.issue("warn", "permission", ("perm", name, pd.get("source")), f"{name} was rejected by {pd.get('source')}" + (f" ({pd.get('reasonType')})" if pd.get("reasonType") else ""), at)
                 if cur is not None and at:
                     cur["end"] = at
+                last_in = at or last_in
             continue
         if t == "assistant":
             slash = None
@@ -549,7 +572,15 @@ def parse(path):
         g.issue("error", "mcp", ("mcpfail",), "MCP servers failed to connect: " + ", ".join(sorted(g.mcp_failed)), None)
     if g.cache_drops:
         g.issue("info", "cache", ("cachedrop",), f"Prompt cache prefix changed {g.cache_drops}× (thinking dropped / cache rebuilt)", None)
-    big.sort(reverse=True)
+    big.sort(key=lambda b: -b[0])
+    # What it's doing right now: a tool still running (or a question waiting for you), the model working, or idle.
+    now_state = {"state": "idle", "since": last_any}
+    live = [st for st in pending.values() if st.get("t0")]
+    if live:
+        st = max(live, key=lambda x: x["t0"])
+        now_state = {"state": "ask" if st.get("name") in ASKS_USER else "tool", "name": st.get("tool") or st.get("name"), "label": st.get("label") or "", "since": st["t0"]}
+    elif last_in and (not last_asst_ts or last_in > last_asst_ts):
+        now_state = {"state": "model", "since": last_in}
     lvl = {"error": 0, "warn": 1, "info": 2}
     issues = sorted(g.issues.values(), key=lambda i: (lvl.get(i["level"], 3), -(i["last"] or 0)))
     memory = sorted(g.memory.values(), key=lambda x: -x["tokens"])
@@ -576,7 +607,12 @@ def parse(path):
         "issues": issues,
         "tools": sorted(g.tools.values(), key=lambda x: -x["result_tok"]),
         "compactions": g.compactions,
-        "big": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb in big[:8]],
+        "big": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb, _ in big[:8]],
+        # Big tool results read since the last compaction: still in context now.
+        "in_ctx": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb, w in big
+                   if not g.compactions or (w or 0) > (g.compactions[-1]["at"] or 0)][:5],
+        "price": dict(zip(("in", "out", "read"), price_of(g.model))) if price_of(g.model) else None,
+        "doing": now_state,
         "turns": [turn_row(x, reqs, calls, blobs, id2tool, shapes, mem_tok) for x in turns[-15:]][::-1],
     }
 
