@@ -3,7 +3,8 @@
     "ctrl-cmd-g": "layout.toggle:panel",
     "ctrl-cmd-t": "mod.open:agent-team",
     "ctrl-cmd-n": "mod.open:team-launch",
-    "ctrl-cmd-b": "mod.open:space-board"
+    "ctrl-cmd-b": "mod.open:space-board",
+    "cmd-k": "mod.open:command-bar"
   },
   "layout:focus": {
     "alt-down": "space-folders.next",

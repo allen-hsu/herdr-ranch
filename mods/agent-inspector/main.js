@@ -6,7 +6,7 @@
 // Data: ./inspect.py (local transcripts only).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
-import { exec, appHome, focused, agents, theme, run, readTextFile, home, settings } from "herdr";
+import { exec, appHome, focused, agents, theme, run, readTextFile, home, settings, shared } from "herdr";
 import { TS, SPACE, C, tint, icon, statusMark } from "./ui.js";
 import { agentName } from "./agentname.js";
 
@@ -39,7 +39,13 @@ export default class AgentInspector extends View {
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
     // Follow focus quickly: a string compare every 250 ms, a redraw only when the focused agent changes.
-    cx.timer.every(250, (cx) => { const a = this.target(); if (a && a !== this.addr) this.switchTo(a, cx); });
+    this.gotoSeen = shared("inspector.goto")?.n ?? 0;
+    cx.timer.every(250, (cx) => {
+      const a = this.target(); if (a && a !== this.addr) this.switchTo(a, cx);
+      // The command bar asks for a tab through shared "inspector.goto" {tab, n}.
+      const g = shared("inspector.goto");
+      if (g?.n && g.n !== this.gotoSeen) { this.gotoSeen = g.n; if (TABS.includes(g.tab) && g.tab !== this.tab) { this.tab = g.tab; localStorage.setItem("tab", g.tab); cx.notify(); } }
+    });
   }
 
   target() {
