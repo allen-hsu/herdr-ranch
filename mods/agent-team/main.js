@@ -24,7 +24,7 @@ const since = (t) => { if (!t) return ""; const s = Date.now() / 1000 - t; retur
 const ago = (t) => { const s = since(t); return !s ? "" : s === "now" ? "just now" : `${s} ago`; };
 const hhmm = (t) => { const d = new Date(t * 1000); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 // Team Map timeline ranges (secs null: the whole team run).
-const RANGES = [{ id: "10m", name: "10m", secs: 600 }, { id: "1h", name: "1h", secs: 3600 }, { id: "all", name: "All", secs: null }];
+const RANGES = [{ id: "10m", name: "10m", secs: 600 }, { id: "1h", name: "1h", secs: 3600 }, { id: "6h", name: "6h", secs: 21600 }, { id: "all", name: "All", secs: null }];
 // The first lines of a reply, for the drawer: markdown marks dropped, cut at about three lines (CJK counts double).
 const excerpt = (text, room = 165) => {
   const s = String(text ?? "").replace(/[*`#]+/g, "").replace(/\s+/g, " ").trim();
@@ -44,7 +44,7 @@ export default class AgentTeam extends View {
     this.overlay = p.overlay;
     this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
     this.sel = p.sel ?? null; // a member to select on open (e.g. from the sidebar)
-    this.range = "all"; // map: the timeline range, see RANGES
+    this.range = null; // map: the timeline range, see RANGES (null: picked from the run's length, see mapView)
     this.teams = null; // map: every lead that has a team (from team.py --teams), for the picker
     this.w = 980;
     this.load(cx);
@@ -302,7 +302,7 @@ export default class AgentTeam extends View {
     if (rows.length < 2) return root.child(h_flex().flex_1().min_h(0)
       .child(this.noTeam(t, teams.filter((x) => x.id !== this.addr), rows[0]?.name))
       .when(Boolean(rows[0]) && teams.some((x) => x.id !== this.addr), (e) => e.child(this.drawer(t, d, rows[0], false))));
-    if (!rows.some((c) => c.key === this.sel)) this.sel = (rows.find((c) => !c.lead && c.state !== "finished") ?? rows[rows.length - 1])?.key ?? null;
+    if (!rows.some((c) => c.key === this.sel)) this.sel = (rows.find((c) => !c.lead && c.state !== "finished" && c.m?.kind !== "session") ?? [...rows].reverse().find((c) => !c.lead && c.m?.kind !== "session") ?? rows[rows.length - 1])?.key ?? null;
     const selCol = this.closed ? null : rows.find((c) => c.key === this.sel);
     const now = Date.now() / 1000;
     const evs = d.events ?? [];
@@ -311,9 +311,13 @@ export default class AgentTeam extends View {
     const first = times.length ? Math.min(...times) : now - 600;
     const live = rows.some((c) => !c.lead && c.state !== "finished");
     const end = live ? now : Math.max(first, ...rows.map((c) => c.end ?? c.start ?? first), ...evs.map((e) => e.at ?? first));
-    const win = RANGES.find((r) => r.id === this.range)?.secs;
+    // No range picked yet: a long run whose members were busy lately opens on the last hour (or six), so their
+    // short runs are bars, not specks on a two-day line; a short run shows whole.
+    const lastStart = Math.max(0, ...rows.filter((c) => !c.lead).map((c) => c.start ?? 0));
+    const range = this.range ?? (end - first > 3 * 3600 && end - lastStart < 3600 ? "1h" : end - first > 12 * 3600 && end - lastStart < 6 * 3600 ? "6h" : "all");
+    const win = RANGES.find((r) => r.id === range)?.secs;
     const t0 = win ? Math.max(first, end - win) : first, t1 = Math.max(end, t0 + 60), span = t1 - t0;
-    const NAME = 190, DUR = 44;
+    const NAME = 210, DUR = 44;
     const trackW = Math.max(120, this.w - (selCol ? DRAWER : 0) - PADX * 2 - 18 - NAME - DUR - 24);
     const xOf = (at) => Math.max(0, Math.min(trackW, ((at - t0) / span) * trackW));
     const long = span > 20 * 3600;
@@ -340,45 +344,56 @@ export default class AgentTeam extends View {
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => this.go(waiting[0].addr)).child("Go to agent")))
       : null;
     const mark = (c) => statusMark(t, c.state === "finished" ? "done" : c.status);
+    // One member, one lane (the preview's proportions): a 48px row; who it is on the left (status, name, a small
+    // vendor tile and its role), a 14px bar for when it ran, round markers for the messages.
+    const TILE = { "claude-code": ["C", t.ansi3 ?? t.accent], claude: ["C", t.ansi3 ?? t.accent], codex: ["X", t.muted], grok: ["G", t.foreground], cursor: ["U", t.ansi4 ?? t.accent], session: ["S", t.dim] };
+    const tile = (c) => { const k = c.lead ? (d.lead?.agent === "claude" ? "claude-code" : d.lead?.agent) : c.m?.kind === "session" ? "session" : c.m?.kind === "sub" ? "claude" : c.m?.agent;
+      const [ch, col] = TILE[k] ?? [String(k ?? "?")[0]?.toUpperCase() ?? "?", t.muted];
+      return div().size(13).flex_none().rounded(4).bg(tint(col, 0.22)).flex().items_center().justify_center().text_size(9).font_bold().text_color(col).child(ch); };
+    const barColor = (c) => (c.status === "blocked" || c.status === "error" ? S.blocked : c.state === "finished" ? S.done : c.lead ? C(t).kind.llm : S.working);
     const lane = (c, i) => {
       const sel = c.key === this.sel && !this.closed;
       const a = c.start ?? t0, b = c.state === "finished" ? (c.end ?? a) : now;
-      const color = c.status === "blocked" || c.status === "error" ? S.blocked : c.state === "finished" ? t.dim : c.lead ? t.accent : S.working;
-      // Only what falls inside the range is drawn; a bar that started before it is cut at the left edge.
-      const shown = b >= t0 && a <= t1, x0 = xOf(Math.max(a, t0)), bw = Math.max(4, xOf(Math.min(b, t1)) - x0);
+      const color = barColor(c);
+      // Only what falls inside the range is drawn; a bar that started before it is cut at the left edge. A member
+      // with no known start (another Claude session it only messaged) has markers, no bar.
+      const shown = (c.lead || c.start != null) && b >= t0 && a <= t1, x0 = xOf(Math.max(a, t0)), bw = Math.max(6, xOf(Math.min(b, t1)) - x0);
       const mine = evs.filter((e) => !c.lead && c.ids.includes(e.who) && e.at >= t0 && e.at <= t1);
-      const track = div().relative().w(trackW).h(18).flex_none().overflow_hidden()
-        .child(div().absolute().left(0).right(0).top(8).h(2).rounded(1).bg(t.border).opacity(0.5))
-        .children(ticks.map((k) => div().absolute().left(k.x).top(2).w(1).h(14).bg(t.border).opacity(0.5)))
-        .when(shown, (x) => x.child(div().absolute().left(Math.min(x0, trackW - bw)).top(5).w(bw).h(8).rounded(4).bg(color).opacity(c.state === "finished" ? 0.55 : 0.9)
-          .when(c.state !== "finished" && c.status === "working", (y) => y.loop("opacity", { from: 0.55, to: 0.95, period: 1600 }))))
-        .children(mine.slice(0, 40).map((e) => div().absolute().left(Math.max(0, Math.min(trackW - 6, xOf(e.at) - 3))).top(0).size(6).rounded(3)
-          .bg(e.k === "from" ? t.accent : e.k === "note" ? S.done : t.foreground)));
+      const track = div().relative().w(trackW).h(44).flex_none().overflow_hidden()
+        .children(ticks.map((k) => div().absolute().left(k.x).top(0).w(1).h(44).bg(t.border).opacity(0.35)))
+        .child(div().absolute().left(0).right(0).top(21).h(2).rounded(1).bg(t.border).opacity(0.6))
+        .when(shown, (x) => x.child(div().absolute().left(Math.min(x0, trackW - bw)).top(15).w(bw).h(14).rounded(4).bg(color).opacity(c.state === "finished" ? 0.5 : 0.9)
+          .when(c.state !== "finished" && c.status === "working", (y) => y.loop("opacity", { from: 0.6, to: 0.95, period: 1600 }))))
+        .children(mine.slice(0, 40).map((e) => div().absolute().left(Math.max(0, Math.min(trackW - 10, xOf(e.at) - 5))).top(17).size(10).rounded(5)
+          .border_2().border_color(this.page ? t.background : t.popover).bg(e.k === "from" ? t.accent : e.k === "note" ? S.done : t.foreground)));
       const dur = c.start ? (b - a < 60 ? "<1m" : b - a < 3600 ? `${Math.round((b - a) / 60)}m` : `${(Math.round((b - a) / 360) / 10)}h`) : "";
-      return h_flex().id(`ln-${i}`).h(36).mx(8).px(8).gap(8).items_center().rounded(6).cursor_pointer().flex_none()
+      return h_flex().id(`ln-${i}`).h(48).mx(8).px(8).gap(8).items_center().rounded(8).cursor_pointer().flex_none()
         .when(sel, (x) => x.bg(t.selected)).when(!sel, (x) => x.hover((h) => h.bg(t.hover)))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.sel = c.key; this.closed = false; cx.notify(); })
         .child(div().w(18).flex_none().flex().justify_center().child(mark(c)))
-        .child(v_flex().w(NAME).flex_none().min_w(0)
-          .child(div().truncate().text_size(TS.body).text_color(sel || c.state !== "finished" ? t.foreground : t.muted).when(c.lead, (x) => x.font_semibold()).child(c.name))
-          .child(div().truncate().text_size(TS.small).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor)))
+        .child(v_flex().w(NAME).flex_none().min_w(0).gap(2)
+          .child(div().truncate().text_size(TS.item).text_color(sel || c.state !== "finished" ? t.foreground : t.muted).font_medium().child(c.name))
+          .child(h_flex().gap(5).items_center().min_w(0).child(tile(c))
+            .child(div().flex_1().min_w(0).truncate().text_size(TS.small).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor))))
         .child(track)
         .child(div().w(DUR).flex_none().text_right().text_size(TS.meta).text_color(t.dim).child(dur));
     };
     // Timeline header: the label, the range control, and the legend on the right.
     const seg = h_flex().flex_none().p(2).gap(1).rounded(7).bg(t.surface).children(RANGES.map((r) => {
-      const cur = (this.range ?? "all") === r.id;
+      const cur = range === r.id;
       return div().id(`rg-${r.id}`).h(20).px(8).flex().items_center().rounded(5).text_size(TS.meta).cursor_pointer()
         .text_color(cur ? t.foreground : t.muted).when(cur, (e) => e.bg(t.selected)).when(!cur, (e) => e.hover((x) => x.bg(t.hover)))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.range = r.id; cx.notify(); }).child(r.name);
     }));
     const key = (swatch, text) => h_flex().flex_none().gap(4).items_center().child(swatch).child(div().child(text));
-    const dot = (color) => div().size(6).flex_none().rounded(3).bg(color);
+    const dot = (color) => div().size(8).flex_none().rounded(4).bg(color);
     const legend = h_flex().flex_none().gap(12).items_center().text_size(TS.meta).text_color(t.muted)
-      .child(key(div().w(14).h(6).flex_none().rounded(3).bg(S.working), "ran"))
-      .child(key(dot(t.foreground), "lead → it")).child(key(dot(t.accent), "its reply")).child(key(dot(S.done), "finished"));
+      .child(key(div().w(14).h(6).flex_none().rounded(2).bg(S.working), "working"))
+      .child(key(div().w(14).h(6).flex_none().rounded(2).bg(S.done).opacity(0.5), "finished"))
+      .child(key(div().w(14).h(6).flex_none().rounded(2).bg(S.blocked), "needs you"))
+      .child(key(dot(t.foreground), "lead → it")).child(key(dot(t.accent), "its reply")).child(key(dot(S.done), "done note"));
     const n = rows.length - 1;
     const bar = h_flex().h(32).px(PADX).gap(10).items_center().flex_none()
       .child(this.label(t, "Timeline"))
