@@ -8,7 +8,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agentName } from "./agentname.js";
 import { props, closeOverlay, run, theme, agents, spaces, window, exec, home, readTextFile, terminals, appHome } from "herdr";
-import { TS, C, statusMark } from "./ui.js";
+import { TS, C, statusMark, spaceName } from "./ui.js";
 
 // "Glass" -> ~/Library/Sounds/Glass.aiff if you added one, else /System/Library/Sounds/Glass.aiff; a path stays a
 // path. name: what a macOS notification can play (a file in a Sounds folder); path: what afplay plays.
@@ -108,7 +108,7 @@ export default class AgentToast extends View {
     const name = agentName(a) || a.program?.name || "Agent";
     const tab = a.tab_name && a.tab_name !== String(a.tab_index) && a.tab_name !== a.program?.name ? a.tab_name : null;
     const team = this.team(a);
-    const where = [team, a.space_name, sp?.branch, tab].filter(Boolean).join(" · ");
+    const where = [team, a.space_name ? spaceName(a.space_name) : null, sp?.branch, tab].filter(Boolean).join(" · ");
     return [
       div().relative().size(28).flex_none().flex().items_center().justify_center().rounded(7).bg(t.raised)
         .child(this.icon(t, a.program, p.level))

@@ -18,7 +18,7 @@ import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOver
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
 import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
-import { TS, C, tint, icon, statusMark, statusOf } from "./ui.js";
+import { TS, C, tint, icon, statusMark, statusOf, spaceName } from "./ui.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
 // A logo's tile: light on a dark theme (dark marks stay visible; the theme's text color is its light tone), the raised tier on a light one.
@@ -987,12 +987,12 @@ export default class Spaces extends View {
           // Orca-style: a status mark where the avatar was (spinner working, red needs you, blue finished unseen,
           // ring idle, faint dot no agent) — the same 18px column as folder icons and logos.
           .when(!tree, el => el.child(h_flex().size(18).flex_none().items_center().justify_center().child(statusMark(t, statusOf(mine)))))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(w.name))
+          .child(div().flex_shrink(0).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(spaceName(w.name)))
           // Orca's tag: the repository's main checkout (worktrees show a branch icon instead).
           .when(Boolean(g) && !g.linked && !tree, (el) => el.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border)
             .text_size(TS.tiny).text_color(t.dim).child("primary")))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
-          .child(g ? this.gitTail(g, tree, w.name, t, w.machine) : div().flex_1())
+          .child(g ? this.gitTail(g, tree, spaceName(w.name), t, w.machine) : div().flex_1())
 
           // The right-hand column is free (status sits on the left), so ⋯ lives there and covers nothing.
           .child(this.trail().when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))),

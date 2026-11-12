@@ -5,13 +5,13 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, panes, focused, theme, shared, setShared } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
-import { TS, C, field, icon, statusMark } from "./ui.js";
+import { TS, C, field, icon, statusMark, spaceName } from "./ui.js";
 
 const FILTER = "agent-board.filter";
 const ORDER = ["blocked", "idle", "working", "done"];
 const RANK = { blocked: 0, error: 0, idle: 1, working: 2, done: 3 };
 const norm = (s) => (s === "error" ? "blocked" : s);
-const label = (name) => (name === "~" || !name ? "~ Home" : name);
+const label = spaceName;
 const getFilter = () => { const f = shared(FILTER); return f === "current" || (f && Array.isArray(f.spaces)) ? f : "all"; };
 const SEARCH_FROM = 7;
 

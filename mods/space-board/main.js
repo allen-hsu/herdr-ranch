@@ -6,7 +6,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Popover } from "gpui-base";
 import { spaces, agents, panes, run, theme, props, shared, setShared, closeOverlay, exec } from "herdr";
-import { TS, C, dialogTitle, escChip, icon, statusMark, statusOf } from "./ui.js";
+import { TS, C, dialogTitle, escChip, icon, statusMark, statusOf, spaceName } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { PRCache, prColor, prTip, repoSlug } from "./prs.js";
 import { place } from "./folders.js";
@@ -87,7 +87,7 @@ export default class Board extends View {
   card(t, c) {
     const s = c.s, dragging = this.drag?.id === s.id;
     const shown = c.mine.slice(0, 3);
-    const name = s.name === "~" ? "Home" : s.name;
+    const name = spaceName(s.name);
     const branch = s.branch && s.branch !== "main" && s.branch !== "master" && s.branch !== s.name ? s.branch : null;
     const hovered = this.hover === s.id;
     return v_flex().id(`card-${s.id}`).relative().w_full().px(12).py(10).gap(4).rounded(8).cursor_pointer().flex_none()
@@ -132,7 +132,7 @@ export default class Board extends View {
   // Space picker: a dropdown in Herdr's field style; picking one shows only that space's card.
   spacePicker(t, all) {
     const cur = all.find((c) => c.s.id === this.only);
-    const label = (c) => (c.s.name === "~" ? "Home" : c.s.name);
+    const label = (c) => spaceName(c.s.name);
     const pick = (id) => (_e, cx) => { this.only = id; this.pickOpen = false; cx.notify(); };
     const row = (id, mark, text, right, on) => h_flex().id(`pk-${id ?? "all"}`).h(30).px(8).gap(8).items_center().rounded(6).cursor_pointer()
       .when(on, (e) => e.bg(t.selected)).hover((e) => e.bg(t.hover)).on_click(pick(id))

@@ -4,7 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, home, readTextFile, appHome } from "herdr";
-import { TS, C, icon, statusMark } from "./ui.js";
+import { TS, C, icon, statusMark, spaceName } from "./ui.js";
 
 // ---- context usage (added): Claude Code session -> % of context used ----
 // ~/.claude/herdr-status-snapshot.py (called from the status line) writes the percentages;
@@ -540,7 +540,7 @@ export default class Agents extends View {
           cx.notify();
         })
         .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none().text_color(t.dim))
-        .child(div().truncate().text_color(C(t).status[g.status] ?? t.dim).child(g.label === "~" ? "~ Home" : g.label))
+        .child(div().truncate().text_color(C(t).status[g.status] ?? t.dim).child(spaceName(g.label)))
         .child(div().flex_1())
         // Status summary instead of a bare count: one colored dot + number per state.
         .when(!byPriority || !open, (el) => el.child(this.summary(t, g)))

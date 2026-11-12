@@ -8,7 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, agents, panes, spaces, focused, props, run, theme, shared, setShared, terminals, openOverlay } from "herdr";
 import { folderOf, loadFolders } from "./folders.js";
 import { agentName } from "./agentname.js";
-import { TS, C, icon, statusMark } from "./ui.js";
+import { TS, C, icon, statusMark, spaceName } from "./ui.js";
 
 // Workflow order, left to right: waiting on you -> not started / idle -> in progress -> finished.
 const COLUMNS = [
@@ -20,7 +20,7 @@ const COLUMNS = [
 const RANK = { blocked: 0, error: 0, idle: 1, working: 2, done: 3 };
 const norm = (s) => (s === "error" ? "blocked" : s);
 const since = (ms) => { const s = ms / 1000; return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`; };
-const spaceLabel = (name) => (name === "~" ? "~ Home" : name || "~ Home");
+const spaceLabel = spaceName;
 
 const FILTER = "agent-board.filter";
 const getFilter = () => { const f = shared(FILTER); return f === "current" || (f && Array.isArray(f.spaces)) ? f : "all"; };

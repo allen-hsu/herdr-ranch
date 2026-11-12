@@ -8,7 +8,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, spaces, panes, agents, run, openOverlay, notify, home, shared, setShared } from "herdr";
 import { mainRoot, list, inspect, remove, prune, repoName } from "./wt.js";
-import { TS, SPACE, C, icon } from "./ui.js";
+import { TS, SPACE, C, icon, spaceName } from "./ui.js";
 
 const CACHE = "worktrees.scan"; // shared: { at, repos: [...], orphans: [...] } so pill and window agree
 const ago = (s) => { if (!s) return "–"; const d = Date.now() / 1000 - s; return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`; };
@@ -182,7 +182,7 @@ export class ResourcesWindow {
         if (wt) { repo = r.name; label = wt.branch ?? s.name; break; }
         if (path === r.root || path.startsWith(r.root + "/")) { repo = r.name; label = s.branch || "main"; break; }
       }
-      repo ??= s.name === "~" ? "Home" : s.name;
+      repo ??= spaceName(s.name);
       const terms = ps.filter((p) => p.terminal && s.tabs?.some((tb) => tb.id === p.tab)).map((p) => {
         const v = per.get(p.terminal) ?? { cpu: 0, rss: 0 };
         const name = p.program?.agent ? (p.title && p.title !== p.program?.name ? p.title : p.program.name) : (p.title || p.program?.name || "Terminal");
