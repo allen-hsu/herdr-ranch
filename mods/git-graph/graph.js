@@ -549,8 +549,8 @@ export class Graph {
       if (remote.length) rows.push(heading(`REMOTE · ${remote.length}`), ...remote.map((r) => branchRow(r, `r${r.ref}`)));
       if (!local.length && !remote.length) rows.push(div().px(14).py(6).text_size(TS.meta).text_color(t.dim).child("No branch matches."));
     }
-    return div().flex_none().px(8).pb(6).child(v_flex().id(`${this.listId}-branches`).max_h(340).py(4).overflow_y_scrollbar()
-      .rounded(9).border_1().border_color(t.border).bg(t.popover).children(rows));
+    return v_flex().id(`${this.listId}-branches`).max_h(340).flex_none().mx(8).mb(6).py(4).overflow_y_scrollbar()
+      .rounded(9).border_1().border_color(t.border).bg(t.popover).children(rows);
   }
   setRemotes(cx) { this.remotes = !this.remotes; this.refresh(cx); cx.notify(); }
 
@@ -896,8 +896,8 @@ export class Graph {
   // The dropdown under the header while a repository is open: at most 260px, scrolling.
   picker(t) {
     const { rows, height } = this.repoRows(t);
-    return div().flex_none().px(8).pb(6).child(v_flex().id(`${this.listId}-picker`).h(Math.min(height, 300)).py(4).overflow_y_scrollbar()
-      .rounded(9).border_1().border_color(t.border).bg(t.popover).children(rows));
+    return v_flex().id(`${this.listId}-picker`).h(Math.min(height, 300)).flex_none().mx(8).mb(6).py(4).overflow_y_scrollbar()
+      .rounded(9).border_1().border_color(t.border).bg(t.popover).children(rows);
   }
 
   // Opening it reads every row again, since the list stopped watching while the graph showed.
