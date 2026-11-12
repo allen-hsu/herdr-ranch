@@ -147,44 +147,70 @@ def codex_config():
 
 
 def hook_name(cmd):
-    m = re.search(r"([\w.-]+\.(?:sh|py|js|mjs|cjs|ts|cmd|bat))\b", cmd or "")
+    cmd = cmd if isinstance(cmd, str) else ""
+    m = re.search(r"([\w.-]+\.(?:sh|py|js|mjs|cjs|ts|cmd|bat))\b", cmd)
     if m:
         return m.group(1)
-    first = os.path.basename((cmd or "hook").strip().split()[0].strip("'\""))
+    parts = cmd.split()
+    first = os.path.basename(parts[0].strip("'\"")) if parts else ""
     return first[:40] or "hook"
+
+
+def hooks_in(data, src):
+    """Hook rows from one hooks.json. The file can be anything (a project's own): every level is type-checked."""
+    rows = []
+    hooks = data.get("hooks") if isinstance(data, dict) else None
+    if not isinstance(hooks, dict):
+        return rows
+    for event, groups in hooks.items():
+        if not isinstance(groups, list):
+            continue
+        for grp in groups:
+            if not isinstance(grp, dict) or not isinstance(grp.get("hooks"), list):
+                continue
+            matcher = grp.get("matcher") if isinstance(grp.get("matcher"), str) else ""
+            for h in grp["hooks"]:
+                if not isinstance(h, dict):
+                    continue
+                cmd = h.get("command") if isinstance(h.get("command"), str) else ""
+                rows.append({"event": red(str(event) + (f" · {matcher}" if matcher else ""), 80), "label": hook_name(cmd), "src": src,
+                             "full": red(cmd, 2000), "cmd": red(cmd, 80), "runs": None, "errors": 0, "timeouts": 0, "avg_ms": None, "configured": True})
+                if len(rows) >= 200:
+                    return rows
+    return rows
 
 
 def configured_hooks(cwd, cfg):
     """Hooks Codex is set up to run for this session: ~/.codex/hooks.json, the project's .codex/hooks.json and
-    config.toml's notify. Codex's session log doesn't record hook runs, so there are no counts."""
+    config.toml's notify. Codex's session log doesn't record hook runs, so there are no counts.
+    A broken or odd file is skipped: it must never stop the rest of the summary."""
     out, seen = [], set()
-    for src, path in (("user", os.path.join(CODEX_HOME, "hooks.json")), ("project", os.path.join(cwd or "", ".codex", "hooks.json"))):
-        real = os.path.realpath(path)
-        if real in seen:
-            continue
-        seen.add(real)
+    for src, path in (("user", os.path.join(CODEX_HOME, "hooks.json")), ("project", os.path.join(cwd if isinstance(cwd, str) else "", ".codex", "hooks.json"))):
         try:
-            data = json.load(open(path))
+            real = os.path.realpath(path)
+            if real in seen or not os.path.isfile(real) or os.path.getsize(real) > 1024 * 1024:
+                continue
+            seen.add(real)
+            with open(real, encoding="utf-8", errors="replace") as f:
+                out += hooks_in(json.load(f), src)
         except Exception:
             continue
-        for event, groups in (data.get("hooks") or {}).items():
-            for grp in groups or []:
-                for h in (grp or {}).get("hooks") or []:
-                    cmd = h.get("command") or ""
-                    out.append({"event": event + (f" · {grp['matcher']}" if grp.get("matcher") else ""), "label": hook_name(cmd), "src": src,
-                                "full": red(cmd, 2000), "cmd": red(cmd, 80), "runs": None, "errors": 0, "timeouts": 0, "avg_ms": None, "configured": True})
-    n = cfg.get("notify")
-    if isinstance(n, list) and n:
-        out.append({"event": "notify · " + " ".join(str(x) for x in n[1:])[:40], "label": os.path.basename(str(n[0]))[:40], "src": "config.toml",
-                    "full": red(" ".join(str(x) for x in n), 2000), "cmd": "", "runs": None, "errors": 0, "timeouts": 0, "avg_ms": None, "configured": True})
+    try:
+        n = cfg.get("notify") if isinstance(cfg, dict) else None
+        if isinstance(n, list) and n:
+            out.append({"event": "notify · " + " ".join(str(x) for x in n[1:])[:40], "label": os.path.basename(str(n[0]))[:40], "src": "config.toml",
+                        "full": red(" ".join(str(x) for x in n), 2000), "cmd": "", "runs": None, "errors": 0, "timeouts": 0, "avg_ms": None, "configured": True})
+    except Exception:
+        pass
     return out
 
 
 def mcp_servers(cfg, connected, calls, tools):
     """Configured servers (config.toml) + the ones this session actually had (world_state) + calls seen in its tool inputs."""
     rows = {}
-    for name in (cfg.get("mcp_servers") or {}):
-        rows[mcp_norm(name)] = {"name": name, "configured": True}
+    servers = cfg.get("mcp_servers") if isinstance(cfg, dict) else None
+    for name in (servers if isinstance(servers, dict) else {}):
+        rows[mcp_norm(str(name))] = {"name": str(name), "configured": True}
     for key, desc in connected.items():
         rows.setdefault(key, {"name": key[5:].replace("__", " · "), "configured": False})["instr_tok"] = len(desc or "") // 4
         rows[key]["connected"] = True
