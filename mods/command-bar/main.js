@@ -4,21 +4,17 @@
 //   and whatever is typed becomes its first message. Backspace on an empty box goes back a step.
 // The right side explains the highlighted row, so nothing here needs to be memorized.
 // Opened with ⌘K (keys.json: "mod.open:command-bar").
-import { View, div } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, setShared, notify } from "herdr";
+import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents } from "herdr";
 import { TS, C, icon, statusMark, spaceName } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { loadFolders, folderOf, place } from "./folders.js";
 
-// What "New agent" can start: argv as the role templates use them (templates/implementer-*.md).
-const KINDS = [
-  { id: "claude", name: "Claude Code", argv: ["claude", "--permission-mode", "auto"], about: "Anthropic's coding agent, in auto mode." },
-  { id: "codex", name: "Codex", argv: ["codex", "--no-daemon", "-c", "check_for_update_on_startup=false", "-s", "workspace-write", "-a", "on-request"], about: "OpenAI's coding agent (workspace-write, asks on request)." },
-  { id: "grok", name: "Grok", argv: ["grok", "--permission-mode", "auto"], about: "xAI's coding agent, in auto mode." },
-  { id: "cursor", name: "Cursor", argv: ["cursor-agent", "--trust"], about: "Cursor's agent CLI." },
-  { id: "shell", name: "Terminal", argv: null, about: "A plain shell, no agent." },
-];
+// What "New agent" can start: the agents Herdr knows are installed on this computer (the same list, icons and
+// commands as Herdr's own "+" menu), then a plain terminal.
+const KNOWN = "new-menu.agents";
+const SHELL = { key: "shell", name: "Terminal", icon: "icons/shell.svg", tint: true, run: null, about: "A plain shell, no agent." };
 const GROUPS = ["Needs you", "Agents", "Folders", "Spaces", "Actions", "Views"];
 const ROWS = 11;
 
@@ -37,6 +33,12 @@ export default class CommandBar extends View {
     this.input.focus();
     cx.timer.after(300, () => this.input.focus());
     cx.spawn(async (cx) => { this.folders = await loadFolders(); cx.notify(); });
+    // Installed agents: what Herdr last reported at once, then a fresh check.
+    this.known = shared(KNOWN)?.[""] ?? [];
+    cx.spawn(async (cx) => {
+      try { this.known = await knownAgents({}); setShared(KNOWN, { ...shared(KNOWN), "": this.known }); } catch {}
+      cx.notify();
+    });
   }
 
   hint() {
@@ -50,10 +52,16 @@ export default class CommandBar extends View {
   }
 
   // ---------- starting an agent ----------
+  kinds() {
+    const list = [...(this.known ?? []).filter((a) => a.installed && a.agent !== false), SHELL];
+    return list.sort((a, b) => (b.key === this.last) - (a.key === this.last));
+  }
+  kindIcon(t, kd, size = 14) { return kd.tint ? svg(kd.icon).size(size).flex_none().text_color(t.foreground) : image(kd.icon).size(size).flex_none(); }
+
   start(folder, kind, task) {
-    const argv = kind.argv ?? undefined, t = task.trim() || undefined;
-    const name = t ? t.slice(0, 28) : kind.argv ? kind.name : undefined;
-    localStorage.setItem("kind", kind.id);
+    const argv = kind.run ?? undefined, t = task.trim() || undefined;
+    const name = t ? t.slice(0, 28) : kind.run ? kind.name : undefined;
+    localStorage.setItem("kind", kind.key);
     this.close();
     if (folder === "here") { run("tab.new", { ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) }); return; }
     // The folder's main space (its first one): a new tab there. No space yet: a new space in the folder's path.
@@ -92,7 +100,7 @@ export default class CommandBar extends View {
       desc: `Switch to this space${s.branch ? ` (branch ${s.branch})` : ""}.`, run: () => { this.close(); run("space.select", { id: s.id }); } });
 
     const act = (name, ic, desc, fn, extra = {}) => out.push({ group: "Actions", name, mark: icon(ic, 14, t.muted), desc, verb: "Run", kw: "", ...extra, run: fn });
-    act("New agent…", "plus", "Pick a folder and an agent (Claude Code, Codex, Grok, Cursor or a plain terminal). What you type becomes its first message.", (cx) => this.setStep({}, cx), { keep: true, verb: "Continue", kw: "start launch claude codex grok cursor", hint: "" });
+    act("New agent…", "plus", "Pick a folder and an agent (any agent installed here, or a plain terminal). What you type becomes its first message.", (cx) => this.setStep({}, cx), { keep: true, verb: "Continue", kw: "start launch claude codex grok cursor", hint: "" });
     act("New team…", "users", "A lead plus helpers on one task: maker-checker, leader-workers, arena, research-build.", () => { this.close(); openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: {} }); }, { hint: "⌃⌘N", kw: "lead maker checker arena" });
     act("New worktree…", "git-branch", "A separate copy of this repo on its own branch, as a new space.", (cx) => { this.close(); cx.spawn(async () => {
       const dir = focused()?.cwd; const r = dir ? await exec("git", ["-C", dir, "rev-parse", "--show-toplevel"]).catch(() => null) : null;
@@ -136,8 +144,8 @@ export default class CommandBar extends View {
       }
       const f = this.step.folder, whereName = f === "here" ? "this space" : f.name;
       // Typing here is the task, not a filter. The agent used last time comes first.
-      return [...KINDS].sort((a, b) => (b.id === this.last) - (a.id === this.last)).map((kd) => ({ group: "Agent", name: kd.name, hint: kd.id === this.last ? "used last time" : "", mark: icon(kd.argv ? "bot" : "square", 14, t.muted),
-        desc: `${kd.about}\nStarts in ${whereName}, as a new tab.${this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: () => this.start(f, kd, kd.argv ? this.q : "") }));
+      return this.kinds().map((kd) => ({ group: "Agent", name: kd.name, hint: kd.key === this.last ? "used last time" : "", mark: this.kindIcon(t, kd),
+        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: () => this.start(f, kd, kd.run ? this.q : "") }));
     }
     const all = this.everything(t);
     if (!q) {
