@@ -13,7 +13,7 @@ agent needs them, what each one is doing and what it costs.
 
 <p align="center"><img src="docs/img/overview.png" alt="The whole window: sidebar, terminal tabs, right panel and status bar"><br><em>The whole window: sidebar, terminals, right panel, status bar.</em></p>
 
-Screenshots are illustrative mockups with sample data.
+Screenshots are illustrative mockups with sample data. To regenerate them: `docs/img/src/render.sh` (runs `gen.py`, then headless Chrome).
 
 ## Feature tour
 
