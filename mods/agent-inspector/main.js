@@ -114,7 +114,8 @@ export default class AgentInspector extends View {
   // rejected call is part of normal work: those stay in Trace (Errors filter); skill/MCP notes go to Capabilities.
   needs(t, d) {
     return [...this.liveIssues(t, d).filter((i) => i.level !== "info" && (i.kind === "context" || i.kind === "cache")),
-      ...(d.issues ?? []).filter((i) => i.level === "error" || (i.level === "warn" && i.kind === "hook"))];
+      // Only what happened lately: a failure from days ago in a long session is history, not something to act on.
+      ...(d.issues ?? []).filter((i) => (i.level === "error" || (i.level === "warn" && i.kind === "hook")) && (!i.last || d.now - i.last < 12 * 3600))];
   }
   // A small text button with an icon (used inside expanded rows).
   linkBtn(t, id, ic, label, act) {
@@ -237,7 +238,9 @@ export default class AgentInspector extends View {
       for (const [i, s] of subs.slice(-6).reverse().entries()) out.push(this.row(t, `ov-s-${i}`, statusMark(t, s.finished ? "done" : "working", { size: 10 }), s.desc || s.type || "agent", `${s.tools} tools · ${k(s.out)} out`));
     }
     // Quiet notes that aren't problems.
-    const notes = [...(d.issues ?? [])].filter((i) => i.level === "info" && !["skills", "mcp"].includes(i.kind));
+    const old = (d.issues ?? []).filter((i) => (i.level === "error" || (i.level === "warn" && i.kind === "hook")) && i.last && d.now - i.last >= 12 * 3600)
+      .map((i) => ({ ...i, text: `Earlier (${clock(i.last)}, over 12h ago): ${i.text}` }));
+    const notes = [...old, ...(d.issues ?? []).filter((i) => i.level === "info" && !["skills", "mcp"].includes(i.kind))];
     if (notes.length) {
       out.push(this.h(t, "Notes", notes.length));
       for (const n of notes) out.push(this.note(t, n.text));
