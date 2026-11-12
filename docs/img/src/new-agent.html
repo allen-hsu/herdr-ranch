@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Command bar: New agent</title>
+<!-- Illustrative mockup with sample data, rendered to docs/img/new-agent.png at 760x420 (2x). -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f1012}
+body{color:#e4e5e9;font:13px/1.35 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.r{display:flex;align-items:center}.c{display:flex;flex-direction:column}
+.g{flex:1 1 0;min-width:0}.n{flex:none}.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.dim{color:#7d818b}.mut{color:#a5a8b0}.fg{color:#e4e5e9}
+.s11{font-size:11px}.s12{font-size:12px}.b5{font-weight:500}.b6{font-weight:600}
+.spin{width:10px;height:10px;border-radius:50%;border:2px solid #e5c07b;border-right-color:transparent;flex:none}
+.spin.sm{width:8px;height:8px}
+.done{width:7px;height:7px;border-radius:50%;background:#8ab4f8;flex:none}
+.idle{width:7px;height:7px;border-radius:50%;border:1.5px solid #7d818b;flex:none}
+.need{width:16px;height:16px;border-radius:4px;background:#4a2725;color:#f0857d;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.need.sm{width:13px;height:13px;font-size:9px}
+.mk{width:16px;display:flex;justify-content:center;flex:none}
+.tile{width:18px;height:18px;border-radius:5px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tile.sm{width:14px;height:14px;border-radius:4px;font-size:9px}
+.ag{width:18px;height:18px;border-radius:5px;background:#3a3d45;display:flex;align-items:center;justify-content:center;flex:none}
+.ag.sm{width:14px;height:14px;border-radius:4px}.ag.sm>*{transform:scale(.78)}
+.ag.lg{width:24px;height:24px;border-radius:6px}.ag.lg>*{transform:scale(1.25)}
+.kbd{font-size:11px;border:1px solid #383b43;border-radius:4px;padding:1px 5px;color:#a5a8b0;flex:none}
+.panel{background:#17181b;border-radius:10px;border:1px solid #2b2d33}
+.card{background:#212328;border-radius:8px}
+.h{height:22px;padding:0 8px;font-size:11px;font-weight:600;color:#7d818b}
+.ib{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.seg{padding:2px;border-radius:7px;background:#24262b;display:flex;gap:1px}
+.seg>div{padding:0 9px;height:22px;display:flex;align-items:center;gap:5px;border-radius:5px;color:#a5a8b0;font-size:12px;white-space:nowrap}
+.seg>.on{background:#383b43;color:#e4e5e9;font-weight:500}
+.seg.sb{justify-content:space-between}.seg.sb>div{padding:0 6px}
+.btn{height:26px;padding:0 10px;border-radius:7px;background:#2c2e35;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+.chip{font-size:11px;border-radius:4px;padding:1px 6px;flex:none;white-space:nowrap}
+.bar{flex:none;height:6px;border-radius:3px;background:#26282d;overflow:hidden}
+.elbow{width:9px;height:11px;margin-top:-9px;border-left:1.5px solid #383b43;border-bottom:1.5px solid #383b43;border-bottom-left-radius:5px;flex:none}
+hl{background:#4a3d1f;color:#f1d59b;border-radius:2px}
+body{width:760px;height:420px}</style>
+</head>
+<body>
+
+<div style="width:760px;height:420px;padding:14px">
+<div class="c" style="height:100%;background:#1b1c20;border:1px solid #383b43;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:hidden">
+  <div class="r n" style="height:50px;padding:0 14px;gap:8px;border-bottom:1px solid #26282d;font-size:14px"><div class="r n" style="height:24px;padding:0 8px;gap:6px;border-radius:6px;background:#2c2e35;font-size:12px;font-weight:500">New agent</div><div class="r n" style="height:24px;padding:0 8px;gap:6px;border-radius:6px;background:#2c2e35;font-size:12px;font-weight:500"><div class="tile sm" style="background:#3b6ea8">A</div>acme-web</div><div class="g tr">Fix the flaky checkout test<span style="display:inline-block;width:1.5px;height:17px;background:#8ab4f8;vertical-align:-3px;margin-left:1px"></span></div><div class="kbd">Esc</div></div>
+  <div class="r g" style="align-items:stretch;min-height:0">
+    <div class="c n" style="width:56%;padding:6px;overflow:hidden"><div class="r h" style="height:24px;margin-top:2px">Agent</div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;background:#2c2e35"><div class="n r" style="width:18px;justify-content:center"><div class="ag "><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div></div><div class="tr b5">Claude Code</div><div class="g"></div><div class="s11 dim tr">used last time</div></div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><div class="ag "><div style="width:9px;height:9px;border:2px solid #e4e5e9;border-radius:50%"></div></div></div><div class="tr">Codex</div><div class="g"></div><div class="s11 dim tr"></div></div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><div class="ag "><div style="width:8px;height:8px;border:2px solid #e4e5e9;border-radius:2px"></div></div></div><div class="tr">Cursor</div><div class="g"></div><div class="s11 dim tr"></div></div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><div class="ag "><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #e4e5e9"></div></div></div><div class="tr">Gemini</div><div class="g"></div><div class="s11 dim tr"></div></div><div class="r h" style="height:24px;margin-top:2px">Terminal</div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><div class="ag "><div class="mono" style="font-size:9px;font-weight:700;color:#e4e5e9;letter-spacing:-1px">&gt;_</div></div></div><div class="tr">Terminal</div><div class="g"></div><div class="s11 dim tr">A plain shell, no agent.</div></div></div>
+    <div class="c g" style="padding:16px;gap:8px;border-left:1px solid #26282d;background:#17181b"><div class="s11 b6 dim">Agent</div>
+<div class="r" style="gap:8px"><div class="ag "><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="b6" style="font-size:14px">Claude Code</div></div>
+<div class="mut" style="line-height:1.55">Runs claude.<br>Starts in acme-web, as a new tab.</div>
+<div class="s11 b6 dim" style="margin-top:6px">First message</div>
+<div class="card" style="padding:8px 10px;line-height:1.5">Fix the flaky checkout test</div></div>
+  </div>
+  <div class="r n s11 dim" style="height:32px;padding:0 14px;gap:14px;border-top:1px solid #26282d"><div>Step 2 of 2 · type the task · ⌫ back</div><div class="g"></div><div>↑↓ move</div><div>↵ Start</div></div>
+</div></div>
+</body>
+</html>

@@ -1,14 +1,16 @@
-// Tells the person when a newer release is out. At most once a day, one GET to
-// GitHub's public releases API: no token, nothing about the person or their
-// repositories. "Stop checking" in the update window turns it off for good, and
-// CHECK = false turns it off before it ever asks.
+// Tells the person when a newer release is out. Off by default: it runs only
+// after "Check for updates" is ticked in the gear's settings popup. Then, at most
+// once a day, one GET to GitHub's public releases API: no token, nothing about
+// the person or their repositories. "Stop checking" in the update window unticks it.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { props, shared, setShared, closeOverlay, openOverlay, theme, settings } from "herdr";
 import { TS } from "./ui.js";
 
 export const VERSION = "0.3.3";
-const CHECK = true;
+// The opt-in switch (shared state, so every graph copy sees it). Anything but true is off.
+export const CHECK_KEY = "git-graph.updateCheck";
+export const checking = () => shared(CHECK_KEY) === true;
 const REPO = "rabeeh-ta/herdr-git-graph";
 const DAY = 24 * 60 * 60 * 1000;
 export const PROMPT = `Update the git-graph mod from github.com/${REPO}`;
@@ -23,19 +25,19 @@ export function newer(a, b) {
 
 // Kept in shared state: it lasts across restarts and every graph copy sees it.
 // A result saved for another repository (a fork, a test) counts as never checked.
-const state = () => { const s = shared("git-graph.update") ?? {}; return s.repo === REPO ? s : { off: s.off }; };
+const state = () => { const s = shared("git-graph.update") ?? {}; return s.repo === REPO ? s : {}; };
 const save = (change) => setShared("git-graph.update", { ...state(), ...change, repo: REPO });
 
 // The release to offer, or null.
 export function available() {
   const s = state();
-  if (!CHECK || s.off || !s.latest || !newer(s.latest.tag, VERSION) || s.dismissed === s.latest.tag) return null;
+  if (!checking() || !s.latest || !newer(s.latest.tag, VERSION) || s.dismissed === s.latest.tag) return null;
   return s.latest;
 }
 
 export async function check() {
   const s = state();
-  if (!CHECK || s.off || Date.now() - (s.checked ?? 0) < DAY) return;
+  if (!checking() || Date.now() - (s.checked ?? 0) < DAY) return;
   save({ checked: Date.now() }); // before asking, so the other copies don't ask too
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "herdr-git-graph" } });
@@ -77,7 +79,7 @@ export class Update {
         .child(TextView.markdown("gu-notes", latest?.notes?.trim() || "See the release page.").scrollable(true).selectable(true).size_full()))
       .child(h_flex().pt(14).gap(8).items_center()
         .child(div().id("gu-stop").text_size(TS.body).text_color(t.dim).cursor_pointer().hover((st) => st.text_color(t.foreground))
-          .on_click(() => { save({ off: true }); close(); }).child("Stop checking"))
+          .on_click(() => { setShared(CHECK_KEY, false); close(); }).child("Stop checking"))
         .child(div().flex_1())
         .child(button("gu-later", "Later", false, () => { save({ dismissed: latest?.tag }); close(); }))
         .child(button("gu-page", "Release page", false, (_e, cx) => cx.open_url(latest?.url ?? `https://github.com/${REPO}/releases`)))

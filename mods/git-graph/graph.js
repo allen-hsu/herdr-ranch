@@ -867,7 +867,7 @@ export class Graph {
   }
 
   openSettings() {
-    openOverlay({ mod: "git-graph", kind: "popup", at: "pointer", width: 240, height: 92, props: { role: "settings" } });
+    openOverlay({ mod: "git-graph", kind: "popup", at: "pointer", width: 240, height: 130, props: { role: "settings" } });
   }
 
   // Manygit's repository pane: grouped by folder, each row its branch, uncommitted

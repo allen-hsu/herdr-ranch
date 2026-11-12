@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accounts</title>
+<!-- Illustrative mockup with sample data, rendered to docs/img/accounts.png at 680x560 (2x). -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f1012}
+body{color:#e4e5e9;font:13px/1.35 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.r{display:flex;align-items:center}.c{display:flex;flex-direction:column}
+.g{flex:1 1 0;min-width:0}.n{flex:none}.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.dim{color:#7d818b}.mut{color:#a5a8b0}.fg{color:#e4e5e9}
+.s11{font-size:11px}.s12{font-size:12px}.b5{font-weight:500}.b6{font-weight:600}
+.spin{width:10px;height:10px;border-radius:50%;border:2px solid #e5c07b;border-right-color:transparent;flex:none}
+.spin.sm{width:8px;height:8px}
+.done{width:7px;height:7px;border-radius:50%;background:#8ab4f8;flex:none}
+.idle{width:7px;height:7px;border-radius:50%;border:1.5px solid #7d818b;flex:none}
+.need{width:16px;height:16px;border-radius:4px;background:#4a2725;color:#f0857d;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.need.sm{width:13px;height:13px;font-size:9px}
+.mk{width:16px;display:flex;justify-content:center;flex:none}
+.tile{width:18px;height:18px;border-radius:5px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tile.sm{width:14px;height:14px;border-radius:4px;font-size:9px}
+.ag{width:18px;height:18px;border-radius:5px;background:#3a3d45;display:flex;align-items:center;justify-content:center;flex:none}
+.ag.sm{width:14px;height:14px;border-radius:4px}.ag.sm>*{transform:scale(.78)}
+.ag.lg{width:24px;height:24px;border-radius:6px}.ag.lg>*{transform:scale(1.25)}
+.kbd{font-size:11px;border:1px solid #383b43;border-radius:4px;padding:1px 5px;color:#a5a8b0;flex:none}
+.panel{background:#17181b;border-radius:10px;border:1px solid #2b2d33}
+.card{background:#212328;border-radius:8px}
+.h{height:22px;padding:0 8px;font-size:11px;font-weight:600;color:#7d818b}
+.ib{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.seg{padding:2px;border-radius:7px;background:#24262b;display:flex;gap:1px}
+.seg>div{padding:0 9px;height:22px;display:flex;align-items:center;gap:5px;border-radius:5px;color:#a5a8b0;font-size:12px;white-space:nowrap}
+.seg>.on{background:#383b43;color:#e4e5e9;font-weight:500}
+.seg.sb{justify-content:space-between}.seg.sb>div{padding:0 6px}
+.btn{height:26px;padding:0 10px;border-radius:7px;background:#2c2e35;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+.chip{font-size:11px;border-radius:4px;padding:1px 6px;flex:none;white-space:nowrap}
+.bar{flex:none;height:6px;border-radius:3px;background:#26282d;overflow:hidden}
+.elbow{width:9px;height:11px;margin-top:-9px;border-left:1.5px solid #383b43;border-bottom:1.5px solid #383b43;border-bottom-left-radius:5px;flex:none}
+hl{background:#4a3d1f;color:#f1d59b;border-radius:2px}
+body{width:680px;height:560px}</style>
+</head>
+<body>
+<div style="width:680px;height:560px;padding:14px"><div class="c" style="height:100%;background:#1b1c20;border:1px solid #383b43;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:hidden">
+  <div class="r n" style="height:56px;padding:0 18px;gap:10px;border-bottom:1px solid #26282d"><div class="g"><div class="b6" style="font-size:15px">Accounts</div><div class="s11 dim">Which login new Claude Code and Codex agents start on</div></div><div class="ib"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.7-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6.3L3 16"/><path d="M8 16H3v5"/></svg></div><div class="kbd">Esc</div></div>
+  <div class="c g" style="padding:14px 18px;gap:16px;min-height:0">
+    <div class="c" style="gap:6px"><div class="r" style="gap:8px;height:24px"><div class="ag "><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="b6">Claude Code</div><div class="s11 dim mono">CLAUDE_CONFIG_DIR</div><div class="g"></div><div class="r s12 mut" style="gap:5px"><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Add account</div></div><div class="r" style="height:50px;padding:0 12px;gap:10px;border-radius:8px;background:#212328;border:1px solid #383b43"><div class="n" style="width:14px;height:14px;border-radius:50%;border:4px solid #8ab4f8"></div><div class="g"><div class="b5 tr">System default</div><div class="s11 dim tr">dev@example.com · Max</div></div><div class="chip b5" style="background:#253626;color:#98c379">Active</div></div><div class="r" style="height:50px;padding:0 12px;gap:10px;border-radius:8px;background:transparent;border:1px solid #26282d"><div class="n" style="width:14px;height:14px;border-radius:50%;border:1.5px solid #7d818b"></div><div class="g"><div class="b5 tr">Work</div><div class="s11 dim tr">second@example.org · Team</div></div><div class="btn s12" style="height:24px;padding:0 9px;">Use</div><div class="btn s12" style="height:24px;padding:0 9px;background:none;color:#a5a8b0">Sign in again</div><div class="btn s12" style="height:24px;padding:0 9px;background:none;color:#a5a8b0">Remove</div></div></div>
+    <div class="c" style="gap:6px"><div class="r" style="gap:8px;height:24px"><div class="ag "><div style="width:9px;height:9px;border:2px solid #e4e5e9;border-radius:50%"></div></div><div class="b6">Codex</div><div class="s11 dim mono">CODEX_HOME</div><div class="g"></div><div class="r s12 mut" style="gap:5px"><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Add account</div></div><div class="r" style="height:50px;padding:0 12px;gap:10px;border-radius:8px;background:transparent;border:1px solid #26282d"><div class="n" style="width:14px;height:14px;border-radius:50%;border:1.5px solid #7d818b"></div><div class="g"><div class="b5 tr">System default</div><div class="s11 dim tr">dev@example.com · Plus</div></div><div class="btn s12" style="height:24px;padding:0 9px;">Use</div></div><div class="r" style="height:50px;padding:0 12px;gap:10px;border-radius:8px;background:#212328;border:1px solid #383b43"><div class="n" style="width:14px;height:14px;border-radius:50%;border:4px solid #8ab4f8"></div><div class="g"><div class="b5 tr">Work</div><div class="s11 dim tr">second@example.org · Pro</div></div><div class="chip b5" style="background:#253626;color:#98c379">Active</div><div class="btn s12" style="height:24px;padding:0 9px;background:none;color:#a5a8b0">Sign in again</div><div class="btn s12" style="height:24px;padding:0 9px;background:none;color:#a5a8b0">Remove</div></div><div class="r" style="height:50px;padding:0 12px;gap:10px;border-radius:8px;background:transparent;border:1px solid #26282d"><div class="n" style="width:14px;height:14px;border-radius:50%;border:1.5px solid #7d818b"></div><div class="g"><div class="b5 tr">Side project</div><div class="s11 dim tr"><span style="color:#e5c07b">Not signed in yet</span></div></div><div class="btn s12" style="height:24px;padding:0 9px;">Sign in</div><div class="btn s12" style="height:24px;padding:0 9px;background:none;color:#a5a8b0">Remove</div></div></div>
+    <div class="c" style="gap:7px;padding-top:12px;border-top:1px solid #26282d">
+      <div class="r" style="gap:12px"><div class="g b5">When you switch while agents are running</div><div class="seg"><div class="on">Ask</div><div>Restart them</div><div>Leave them</div></div></div>
+      <div class="s11 dim">Shows the agents that can move, and you pick. Working agents are never restarted.</div>
+    </div>
+  </div>
+</div></div>
+</body>
+</html>

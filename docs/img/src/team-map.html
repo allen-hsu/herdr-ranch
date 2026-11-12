@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team Map</title>
+<!-- Illustrative mockup with sample data, rendered to docs/img/team-map.png at 1200x700 (2x). -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f1012}
+body{color:#e4e5e9;font:13px/1.35 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.r{display:flex;align-items:center}.c{display:flex;flex-direction:column}
+.g{flex:1 1 0;min-width:0}.n{flex:none}.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.dim{color:#7d818b}.mut{color:#a5a8b0}.fg{color:#e4e5e9}
+.s11{font-size:11px}.s12{font-size:12px}.b5{font-weight:500}.b6{font-weight:600}
+.spin{width:10px;height:10px;border-radius:50%;border:2px solid #e5c07b;border-right-color:transparent;flex:none}
+.spin.sm{width:8px;height:8px}
+.done{width:7px;height:7px;border-radius:50%;background:#8ab4f8;flex:none}
+.idle{width:7px;height:7px;border-radius:50%;border:1.5px solid #7d818b;flex:none}
+.need{width:16px;height:16px;border-radius:4px;background:#4a2725;color:#f0857d;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.need.sm{width:13px;height:13px;font-size:9px}
+.mk{width:16px;display:flex;justify-content:center;flex:none}
+.tile{width:18px;height:18px;border-radius:5px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tile.sm{width:14px;height:14px;border-radius:4px;font-size:9px}
+.ag{width:18px;height:18px;border-radius:5px;background:#3a3d45;display:flex;align-items:center;justify-content:center;flex:none}
+.ag.sm{width:14px;height:14px;border-radius:4px}.ag.sm>*{transform:scale(.78)}
+.ag.lg{width:24px;height:24px;border-radius:6px}.ag.lg>*{transform:scale(1.25)}
+.kbd{font-size:11px;border:1px solid #383b43;border-radius:4px;padding:1px 5px;color:#a5a8b0;flex:none}
+.panel{background:#17181b;border-radius:10px;border:1px solid #2b2d33}
+.card{background:#212328;border-radius:8px}
+.h{height:22px;padding:0 8px;font-size:11px;font-weight:600;color:#7d818b}
+.ib{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.seg{padding:2px;border-radius:7px;background:#24262b;display:flex;gap:1px}
+.seg>div{padding:0 9px;height:22px;display:flex;align-items:center;gap:5px;border-radius:5px;color:#a5a8b0;font-size:12px;white-space:nowrap}
+.seg>.on{background:#383b43;color:#e4e5e9;font-weight:500}
+.seg.sb{justify-content:space-between}.seg.sb>div{padding:0 6px}
+.btn{height:26px;padding:0 10px;border-radius:7px;background:#2c2e35;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+.chip{font-size:11px;border-radius:4px;padding:1px 6px;flex:none;white-space:nowrap}
+.bar{flex:none;height:6px;border-radius:3px;background:#26282d;overflow:hidden}
+.elbow{width:9px;height:11px;margin-top:-9px;border-left:1.5px solid #383b43;border-bottom:1.5px solid #383b43;border-bottom-left-radius:5px;flex:none}
+hl{background:#4a3d1f;color:#f1d59b;border-radius:2px}
+body{width:1200px;height:700px}</style>
+</head>
+<body>
+<div class="r" style="width:1200px;height:700px;align-items:stretch"><div class="c g panel" style="margin:8px;overflow:hidden">
+  <div class="r n" style="height:48px;padding:0 16px;gap:12px;border-bottom:1px solid #26282d">
+    <div class="b6" style="font-size:15px">Team Map</div>
+    <div class="btn" style="background:#24262b">Add CSV export <svg class="n" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    <div class="dim">billing-api · 5 members · 24m</div><div class="g"></div>
+    <div class="btn"><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e4e5e9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New team…</div><div class="kbd">⌃⌘T</div><div class="ib"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+  </div>
+  <div class="r g" style="align-items:stretch;min-height:0">
+    <div class="c g">
+      <div class="r n" style="height:44px;padding:0 14px;gap:12px"><div class="s11 b6 dim">Timeline</div><div class="seg"><div>10m</div><div>1h</div><div>6h</div><div class="on">All</div></div><div class="g"></div>
+        <div class="r s11 mut" style="gap:14px"><div class="r" style="gap:6px"><div style="width:14px;height:6px;border-radius:2px;background:#e5c07b"></div>working</div><div class="r" style="gap:6px"><div style="width:14px;height:6px;border-radius:2px;background:#8ab4f8;opacity:.5"></div>finished</div><div class="r" style="gap:6px"><div style="width:14px;height:6px;border-radius:2px;background:#f0857d"></div>needs you</div><div class="r" style="gap:6px"><div style="width:10px;height:10px;border-radius:50%;border:2px solid #e4e5e9"></div>message</div></div></div>
+      <div class="r n s11 dim" style="height:26px;border-top:1px solid #26282d;border-bottom:1px solid #26282d"><div class="n b6" style="width:230px;padding-left:14px">Members</div><div class="r g" style="margin-right:14px"><div class="g">14:02</div><div class="g">14:08</div><div class="g">14:14</div><div class="g">14:20</div><div class="g">14:26</div></div></div>
+      <div class="r" style="height:56px;border-bottom:1px solid #212328;">
+  <div class="r n" style="width:230px;padding:0 10px 0 14px;gap:8px"><div class="mk"><div class="need">!</div></div><div class="g"><div class="b5 tr">Add CSV export</div><div class="r s11 dim" style="gap:5px;margin-top:2px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div>Lead · Claude Code</div></div></div>
+  <div class="g" style="height:44px;position:relative;margin-right:14px"><div style="position:absolute;left:0;right:0;top:21px;height:2px;background:#212328"></div><div style="position:absolute;left:0%;width:12%;top:15px;height:14px;border-radius:4px;background:#e5c07b;opacity:0.9"></div><div style="position:absolute;left:30%;width:7%;top:15px;height:14px;border-radius:4px;background:#e5c07b;opacity:0.9"></div><div style="position:absolute;left:66%;width:10%;top:15px;height:14px;border-radius:4px;background:#e5c07b;opacity:0.9"></div><div style="position:absolute;left:86%;width:14%;top:15px;height:14px;border-radius:4px;background:#f0857d;opacity:0.9"></div><div style="position:absolute;left:calc(12% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#17181b;border:2px solid #e4e5e9;"></div><div style="position:absolute;left:calc(37% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#17181b;border:2px solid #e4e5e9;"></div><div style="position:absolute;left:calc(76% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#17181b;border:2px solid #e4e5e9;"></div></div>
+</div><div class="r" style="height:56px;border-bottom:1px solid #212328;">
+  <div class="r n" style="width:230px;padding:0 10px 0 14px;gap:8px"><div class="mk"><div class="spin"></div></div><div class="g"><div class="b5 tr">Implement export endpoint</div><div class="r s11 dim" style="gap:5px;margin-top:2px"><div class="ag sm"><div style="width:9px;height:9px;border:2px solid #e4e5e9;border-radius:50%"></div></div>Implementer · Codex</div></div></div>
+  <div class="g" style="height:44px;position:relative;margin-right:14px"><div style="position:absolute;left:0;right:0;top:21px;height:2px;background:#212328"></div><div style="position:absolute;left:13%;width:42%;top:15px;height:14px;border-radius:4px;background:#e5c07b;opacity:0.9"></div><div style="position:absolute;left:77%;width:23%;top:15px;height:14px;border-radius:4px;background:#e5c07b;opacity:0.9"></div><div style="position:absolute;left:calc(55% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#17181b;border:2px solid #e4e5e9;"></div></div>
+</div><div class="r" style="height:56px;border-bottom:1px solid #212328;background:#1d1e22">
+  <div class="r n" style="width:230px;padding:0 10px 0 14px;gap:8px"><div class="mk"><div class="done"></div></div><div class="g"><div class="b5 tr">Review export endpoint</div><div class="r s11 dim" style="gap:5px;margin-top:2px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div>Reviewer · Claude Code</div></div></div>
+  <div class="g" style="height:44px;position:relative;margin-right:14px"><div style="position:absolute;left:0;right:0;top:21px;height:2px;background:#212328"></div><div style="position:absolute;left:56%;width:11%;top:15px;height:14px;border-radius:4px;background:#8ab4f8;opacity:0.5"></div><div style="position:absolute;left:calc(67% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#e4e5e9;border:2px solid #8ab4f8;box-shadow:0 0 0 4px rgba(138,180,248,.25)"></div></div>
+</div><div class="r" style="height:56px;border-bottom:1px solid #212328;">
+  <div class="r n" style="width:230px;padding:0 10px 0 14px;gap:8px"><div class="mk"><div class="done"></div></div><div class="g"><div class="b5 tr">Explore: existing report code</div><div class="r s11 dim" style="gap:5px;margin-top:2px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div>Subagent · Explore</div></div></div>
+  <div class="g" style="height:44px;position:relative;margin-right:14px"><div style="position:absolute;left:0;right:0;top:21px;height:2px;background:#212328"></div><div style="position:absolute;left:3%;width:9%;top:15px;height:14px;border-radius:4px;background:#8ab4f8;opacity:0.5"></div><div style="position:absolute;left:calc(12% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#17181b;border:2px solid #e4e5e9;"></div></div>
+</div><div class="r" style="height:56px;border-bottom:1px solid #212328;">
+  <div class="r n" style="width:230px;padding:0 10px 0 14px;gap:8px"><div class="mk"><div class="idle"></div></div><div class="g"><div class="b5 tr">Write export docs</div><div class="r s11 dim" style="gap:5px;margin-top:2px"><div class="ag sm"><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #e4e5e9"></div></div>Researcher · Gemini</div></div></div>
+  <div class="g" style="height:44px;position:relative;margin-right:14px"><div style="position:absolute;left:0;right:0;top:21px;height:2px;background:#212328"></div><div style="position:absolute;left:40%;width:14%;top:15px;height:14px;border-radius:4px;background:#8ab4f8;opacity:0.5"></div><div style="position:absolute;left:calc(54% - 6px);top:16px;width:12px;height:12px;border-radius:50%;background:#17181b;border:2px solid #e4e5e9;"></div></div>
+</div>
+      <div class="g"></div>
+      <div class="r n s11 dim" style="padding:10px 14px;border-top:1px solid #26282d;gap:8px"><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>Follows the focused agent · click a bar or a marker for details</div>
+    </div>
+    <div class="c n" style="width:350px;border-left:1px solid #26282d;background:#1b1c20">
+  <div class="r n" style="height:44px;padding:0 12px;gap:8px;border-bottom:1px solid #26282d"><div class="ag "><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="g"><div class="b6 tr">Review export endpoint</div></div><div class="s11 dim">Reviewer</div><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+  <div class="c g" style="padding:12px;gap:8px;min-height:0;overflow:hidden">
+    <div class="r s11 b6 dim" style="margin-top:4px"><div class="g">Now</div><div style="font-weight:400"></div></div>
+    <div class="card r" style="padding:9px 11px;gap:9px"><div class="done"></div><div class="g"><div class="b5">Finished</div><div class="s11 dim">at 14:21 · 5m of work</div></div></div>
+    <div class="r s11 b6 dim" style="margin-top:4px"><div class="g">Context 42%</div><div style="font-weight:400">84k of 200k</div></div>
+    <div class="bar"><div style="width:42%;height:100%;background:#8ab4f8"></div></div>
+    <div class="r s11 b6 dim" style="margin-top:4px"><div class="g">Task it was given</div><div style="font-weight:400"></div></div>
+    <div class="mut" style="line-height:1.45">Review the new /exports endpoint: streaming, CSV escaping, and who may call it.</div>
+    <div class="r s11 b6 dim" style="margin-top:4px"><div class="g">Last reply</div><div style="font-weight:400"></div></div>
+    <div class="card" style="padding:9px 11px;line-height:1.45;border:1px solid #4a3d1f;background:#2a2418"><span class="b6" style="color:#e5c07b">CHANGES</span> · 2 blocking, 1 nit. Values starting with "=" are not escaped, and the route is missing the billing:read check. Tests pass (14 of 14).</div>
+    <div class="r s11 b6 dim" style="margin-top:4px"><div class="g">Latest messages</div><div style="font-weight:400">2 of 3</div></div>
+    <div class="c" style="gap:3px;align-items:flex-end"><div class="s11 dim">Lead · 14:16</div><div style="max-width:270px;padding:7px 10px;border-radius:10px;line-height:1.45;background:#2b3a55">Review the export endpoint: streaming, escaping, permissions.</div></div>
+    <div class="c" style="gap:3px;align-items:flex-start"><div class="s11 dim">Reviewer · 14:21</div><div style="max-width:270px;padding:7px 10px;border-radius:10px;line-height:1.45;background:#24262b">Two blocking findings, details in my reply.</div></div>
+  </div>
+  <div class="r n" style="padding:10px 12px;border-top:1px solid #26282d;gap:8px"><div class="btn">Go to agent</div><div class="g"></div><div class="s11 dim">Click the marker again to close</div></div>
+</div>
+  </div>
+</div></div>
+</body>
+</html>

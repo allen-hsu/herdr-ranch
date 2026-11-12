@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Herdr with herdr-ranch: whole window</title>
+<!-- Illustrative mockup with sample data, rendered to docs/img/overview.png at 1440x900 (2x). -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f1012}
+body{color:#e4e5e9;font:13px/1.35 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.r{display:flex;align-items:center}.c{display:flex;flex-direction:column}
+.g{flex:1 1 0;min-width:0}.n{flex:none}.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.dim{color:#7d818b}.mut{color:#a5a8b0}.fg{color:#e4e5e9}
+.s11{font-size:11px}.s12{font-size:12px}.b5{font-weight:500}.b6{font-weight:600}
+.spin{width:10px;height:10px;border-radius:50%;border:2px solid #e5c07b;border-right-color:transparent;flex:none}
+.spin.sm{width:8px;height:8px}
+.done{width:7px;height:7px;border-radius:50%;background:#8ab4f8;flex:none}
+.idle{width:7px;height:7px;border-radius:50%;border:1.5px solid #7d818b;flex:none}
+.need{width:16px;height:16px;border-radius:4px;background:#4a2725;color:#f0857d;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.need.sm{width:13px;height:13px;font-size:9px}
+.mk{width:16px;display:flex;justify-content:center;flex:none}
+.tile{width:18px;height:18px;border-radius:5px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tile.sm{width:14px;height:14px;border-radius:4px;font-size:9px}
+.ag{width:18px;height:18px;border-radius:5px;background:#3a3d45;display:flex;align-items:center;justify-content:center;flex:none}
+.ag.sm{width:14px;height:14px;border-radius:4px}.ag.sm>*{transform:scale(.78)}
+.ag.lg{width:24px;height:24px;border-radius:6px}.ag.lg>*{transform:scale(1.25)}
+.kbd{font-size:11px;border:1px solid #383b43;border-radius:4px;padding:1px 5px;color:#a5a8b0;flex:none}
+.panel{background:#17181b;border-radius:10px;border:1px solid #2b2d33}
+.card{background:#212328;border-radius:8px}
+.h{height:22px;padding:0 8px;font-size:11px;font-weight:600;color:#7d818b}
+.ib{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.seg{padding:2px;border-radius:7px;background:#24262b;display:flex;gap:1px}
+.seg>div{padding:0 9px;height:22px;display:flex;align-items:center;gap:5px;border-radius:5px;color:#a5a8b0;font-size:12px;white-space:nowrap}
+.seg>.on{background:#383b43;color:#e4e5e9;font-weight:500}
+.seg.sb{justify-content:space-between}.seg.sb>div{padding:0 6px}
+.btn{height:26px;padding:0 10px;border-radius:7px;background:#2c2e35;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+.chip{font-size:11px;border-radius:4px;padding:1px 6px;flex:none;white-space:nowrap}
+.bar{flex:none;height:6px;border-radius:3px;background:#26282d;overflow:hidden}
+.elbow{width:9px;height:11px;margin-top:-9px;border-left:1.5px solid #383b43;border-bottom:1.5px solid #383b43;border-bottom-left-radius:5px;flex:none}
+hl{background:#4a3d1f;color:#f1d59b;border-radius:2px}
+body{width:1440px;height:900px}</style>
+</head>
+<body>
+
+<div class="c" style="width:1440px;height:900px;padding:8px 8px 0;gap:6px">
+<div class="r g" style="gap:8px;align-items:stretch;min-height:0">
+  
+<div class="c n" style="width:268px;background:#17181b;border-radius:10px;min-height:0">
+  <div class="c n" style="padding:10px 8px 6px;gap:8px">
+    <div class="r" style="gap:8px;padding:0 6px;height:24px"><div class="r n" style="gap:8px;margin-right:6px"><div style="width:12px;height:12px;border-radius:50%;background:#3a3d45"></div><div style="width:12px;height:12px;border-radius:50%;background:#3a3d45"></div><div style="width:12px;height:12px;border-radius:50%;background:#3a3d45"></div></div><div style="width:18px;height:18px;border-radius:5px;background:#e4e5e9" class="n"></div><div class="g b6">Herdr</div><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg></div>
+    <div class="r mut" style="height:30px;padding:0 10px;gap:8px;border-radius:8px;background:#24262b"><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><div class="g tr s12">Search or run a command</div><div class="kbd">⌘K</div></div>
+  </div>
+  <div class="c g" style="padding:0 8px;gap:10px;min-height:0;overflow:hidden">
+    <div class="c" style="gap:6px">
+      <div class="r h" style="padding:0 8px"><div class="g">Folders</div><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div>
+      <div class="seg sb" style="margin:0 2px"><div class="on">All</div><div>Working <span class="dim s11">2</span></div><div>Needs you <span style="color:#f0857d" class="s11">1</span></div><div>Done <span class="dim s11">3</span></div></div>
+    </div>
+    <div class="c" style="gap:1px">
+      <div class="r h"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M8 3h8l-1 6 3 4H6l3-4Z"/></svg><div class="g" style="margin-left:5px">Pinned</div><div style="font-weight:400">1</div></div>
+      <div class="r" style="height:28px;margin-left:0px;padding:0 8px;gap:8px;border-radius:6px;color:#a5a8b0;"><div class="mk"><div class="done"></div></div><div class="g tr">Review PR #214</div><div class="s11 dim n">41m</div></div>
+    </div>
+    <div class="c" style="gap:2px">
+      <div class="r h" style="color:#f0857d"><div class="g">Needs you</div><div style="font-weight:400">1</div></div>
+      <div class="r" style="height:44px;padding:0 8px;gap:8px;border-radius:7px;background:#2a1e1f"><div class="need">!</div><div class="c g" style="gap:1px"><div class="tr">Add CSV export</div><div class="s11 mut tr">billing-api · permission to run Bash</div></div></div>
+    </div>
+    <div class="c" style="gap:1px">
+      <div class="r" style="height:30px;padding:0 8px;gap:8px"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><div class="tile " style="background:#3b6ea8">A</div><div class="g b5 tr">acme-web</div><div class="s11 dim">4</div></div>
+      <div class="r mut" style="height:28px;margin-left:20px;padding:0 8px;gap:7px"><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg><div class="g tr">acme-web</div><div class="chip" style="background:#3a321f;color:#e5c07b">3 changes</div></div>
+      <div class="r" style="height:28px;margin-left:40px;padding:0 8px;gap:8px;border-radius:6px;background:#2c2e35;"><div class="mk"><div class="spin"></div></div><div class="g tr">Fix flaky checkout test</div><div class="s11 dim n">now</div></div>
+      <div class="r s12 mut" style="height:24px;margin-left:62px;padding-right:8px;gap:7px"><div class="elbow"></div><div class="n r" style="width:12px;justify-content:center"><svg class="n" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#e5c07b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 4 4-4 4M12 17h7"/></svg></div><div class="g tr">npm run test:watch</div><div class="s11 dim n">4m</div></div>
+      <div class="r" style="height:28px;margin-left:40px;padding:0 8px;gap:8px;border-radius:6px;color:#a5a8b0;"><div class="mk"><div class="done"></div></div><div class="g tr">Review PR #214</div><div class="s11 dim n">41m</div></div>
+      <div class="r s12 dim" style="height:24px;margin-left:40px;padding:0 8px;gap:8px"><div class="mk"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div><div class="g">4 finished · older than 12h</div></div>
+      <div class="r mut" style="height:28px;margin-left:20px;padding:0 8px;gap:7px"><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><div class="g tr mono s12">feat/csv-button</div><div class="chip r" style="gap:4px;background:#24262b;color:#a5a8b0"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#98c379" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>#221</div></div>
+      <div class="r" style="height:28px;margin-left:40px;padding:0 8px;gap:8px;border-radius:6px;color:#a5a8b0;"><div class="mk"><div class="idle"></div></div><div class="g tr">Draft export button</div><div class="s11 dim n">3h</div></div>
+      <div class="r" style="height:30px;padding:0 8px;gap:8px"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><div class="tile " style="background:#2f8f83">B</div><div class="g b5 tr">billing-api</div><div class="s11 dim">2</div></div>
+      <div class="r mut" style="height:28px;margin-left:20px;padding:0 8px;gap:7px"><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg><div class="g tr">billing-api</div><div class="chip r" style="gap:4px;background:#24262b;color:#a5a8b0"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#e5c07b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>#87</div></div>
+      <div class="r" style="height:28px;margin-left:40px;padding:0 8px;gap:8px;border-radius:6px;"><div class="mk"><div class="need">!</div></div><div class="g tr">Add CSV export</div><div class="s11 dim n">6m</div></div>
+      <div class="r" style="height:28px;margin-left:40px;padding:0 8px;gap:8px;border-radius:6px;"><div class="mk"><div class="spin"></div></div><div class="g tr">Migrate invoices table</div><div class="s11 dim n">2m</div></div>
+      <div class="r" style="height:30px;padding:0 8px;gap:8px"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><div class="tile " style="background:#b06a3b">D</div><div class="g b5 tr">docs-site</div><div class="s11 dim">1</div></div>
+    </div>
+    <div class="c" style="gap:1px">
+      <div class="r h">Recent</div>
+      <div class="r mut" style="height:28px;margin-left:20px;padding:0 8px;gap:7px"><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg><div class="g tr">Playground</div></div>
+      <div class="r" style="height:28px;margin-left:40px;padding:0 8px;gap:8px;border-radius:6px;color:#a5a8b0;"><div class="mk"><div class="done"></div></div><div class="g tr">Try the new CLI flags</div><div class="s11 dim n">2h</div></div>
+    </div>
+  </div>
+  <div class="c n" style="padding:8px;gap:4px;border-top:1px solid #26282d">
+    <div class="r" style="height:32px;padding:0 10px;gap:8px;border-radius:8px;background:#24262b"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e4e5e9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><div class="g b5">New agent</div></div>
+    <div class="r" style="height:28px;gap:2px"><div class="ib"><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></div><div class="ib"><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.5a5 5 0 0 1 4.5 5"/></svg></div><div class="g"></div><div class="ib"><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a6 6 0 0 1 11 0"/></svg></div><div class="ib"><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg></div><div class="ib"><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></div></div>
+  </div>
+</div>
+  <div class="c g" style="gap:6px;min-height:0">
+    <div class="r n" style="height:30px;gap:4px"><div class="r" style="height:28px;max-width:230px;padding:0 10px;gap:8px;border-radius:7px;background:#24262b;border:1px solid #2b2d33"><div class="spin"></div><div class="b5 tr">Fix flaky checkout test</div><svg class="n" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div><div class="r mut" style="height:28px;max-width:200px;padding:0 10px;gap:8px"><div class="done"></div><div class="tr">Review PR #214</div></div><div class="r mut" style="height:28px;max-width:200px;padding:0 10px;gap:8px"><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 4 4-4 4M12 17h7"/></svg><div class="tr">zsh</div></div><div class="ib" style="width:26px;height:26px"><svg class="n" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+    <div class="c g panel" style="min-height:0">
+      <div class="r n" style="height:38px;padding:0 14px;gap:10px;border-bottom:1px solid #26282d"><div class="spin"></div><div class="b6">Fix flaky checkout test</div><div class="dim">acme-web · main · Claude Code</div></div>
+      <div class="g mono" style="padding:18px 20px;font-size:12.5px;line-height:1.75;color:#c9ccd3;white-space:nowrap;overflow:hidden">
+<div class="dim">❯ The checkout test fails about one run in five on CI. Find out why and fix it.</div>
+<div>● I'll look at the test and the code it drives first.</div>
+<div class="dim" style="padding-left:18px">Read tests/checkout.spec.ts</div>
+<div class="dim" style="padding-left:18px">Read src/cart/session.ts</div>
+<div>● The test clicks "Pay" right after a fixed 300 ms wait, but the cart total comes</div>
+<div>&nbsp; from an async request. When that request is slow the button is still disabled.</div>
+<div>● Replacing the fixed wait with a wait for the total to render.</div>
+<div class="dim" style="padding-left:18px">Edit tests/checkout.spec.ts <span style="color:#98c379">+18</span> <span style="color:#f0857d">−4</span></div>
+<div>● Running the test 20 times to check it is stable now.</div>
+<div class="dim" style="padding-left:18px">Bash npm test -- checkout --repeat-each=20</div>
+<div style="padding-left:18px;color:#98c379">&nbsp; 14 passed</div>
+<div style="margin-top:14px;color:#e5c07b">✻ Running tests… 38s · 1 background command</div></div>
+      <div class="r n mono dim" style="margin:0 14px 14px;height:40px;border-radius:8px;border:1px solid #383b43;padding:0 12px;font-size:12.5px">❯</div>
+    </div>
+  </div>
+  <div class="c n panel" style="width:400px;min-height:0"><div class="r n" style="height:40px;padding:0 8px;gap:2px;border-bottom:1px solid #26282d"><div class="ib" style="width:32px;height:32px;position:relative"><svg class="n" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/></svg></div><div class="ib" style="width:32px;height:32px;position:relative"><svg class="n" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e4e5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><div style="position:absolute;left:6px;right:6px;bottom:-4px;height:2px;border-radius:1px;background:#e4e5e9"></div></div><div class="ib" style="width:32px;height:32px;position:relative"><svg class="n" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><div style="position:absolute;top:3px;right:2px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:#e5c07b;color:#17181b;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">3</div></div><div class="ib" style="width:32px;height:32px;position:relative"><svg class="n" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg></div><div class="ib" style="width:32px;height:32px;position:relative"><svg class="n" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="3"/><path d="M5 9v6"/><circle cx="5" cy="18" r="3"/><path d="M12 3v18"/><circle cx="19" cy="6" r="3"/><path d="M16 15.7A9 9 0 0 0 19 9"/></svg></div><div class="g"></div><div class="ib"><svg class="n" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg></div></div><div class="r n" style="height:38px;padding:0 8px;gap:2px"><div style="padding:4px 9px;border-radius:6px;background:#2c2e35;font-weight:500">Overview</div><div style="padding:4px 9px;border-radius:6px;color:#a5a8b0">Trace</div><div style="padding:4px 9px;border-radius:6px;color:#a5a8b0">Capabilities</div><div style="padding:4px 9px;border-radius:6px;color:#a5a8b0">Config</div></div>
+<div class="c g" style="padding:8px 14px 14px;gap:14px;min-height:0">
+  <div class="card r" style="padding:10px 12px;gap:10px"><div class="spin"></div><div class="g"><div class="b6">Running Bash</div><div class="s11 dim tr">npm test -- checkout</div></div><div class="s11 mut">38s</div></div>
+  
+  <div class="c" style="gap:5px"><div class="r s11 b6 dim"><div class="g">Context</div><div style="font-weight:400">38% · 76k of 200k</div></div><div class="bar"><div style="width:38%;height:100%;background:#8ab4f8"></div></div><div class="mut" style="font-size:11.5px">Grows about 5k per turn: roughly 22 more turns before it compacts.</div></div>
+  <div class="c" style="gap:5px"><div class="r s11 b6 dim"><div class="g">Prompt cache</div><div style="font-weight:400">warm · 4m left</div></div><div class="mut" style="font-size:11.5px">Reply now about $0.04. After it expires about $0.41.</div></div>
+  <div class="c" style="gap:5px"><div class="r s11 b6 dim"><div class="g">Spend</div><div style="font-weight:400">session $6.82</div></div><div class="mut" style="font-size:11.5px">Last 14 turns about $5.10 · typical turn about $0.36</div></div>
+  <div class="c" style="gap:5px"><div class="r s11 b6 dim"><div class="g">Last turn</div><div style="font-weight:400">5m11s · $0.92</div></div><div class="r" style="height:6px;border-radius:3px;overflow:hidden;gap:1px"><div style="width:68%;height:100%;background:#7aa2f7"></div><div style="width:29%;height:100%;background:#98c379"></div><div style="width:3%;height:100%;background:#c678dd"></div></div><div class="s11 dim">model 3m32s · tools 1m29s · hooks 9.7s</div></div>
+  
+</div></div>
+</div>
+<div class="r n s11 mut" style="height:28px;padding:0 6px 2px;gap:16px">
+  <div class="r" style="gap:6px"><div>Claude</div><div style="width:40px;height:3px;border-radius:2px;background:#2c2e35"><div style="width:14%;height:100%;border-radius:2px;background:#c9ccd3"></div></div><div class="fg">14%</div><div class="dim">5h · resets in 2h 10m</div></div><div class="r" style="gap:6px"><div>Codex</div><div style="width:40px;height:3px;border-radius:2px;background:#2c2e35"><div style="width:8%;height:100%;border-radius:2px;background:#9aa0ac"></div></div><div class="fg">8%</div><div class="dim">5h</div></div><div class="r" style="gap:6px"><div>Cursor</div><div style="width:40px;height:3px;border-radius:2px;background:#2c2e35"><div style="width:3%;height:100%;border-radius:2px;background:#98c379"></div></div><div class="fg">3%</div><div class="dim">month</div></div>
+  <div class="g"></div>
+  <div class="r" style="height:20px;padding:0 7px;gap:6px;border-radius:5px;background:#1d1e22"><svg class="n" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><div>3 worktrees · 2.4 GB · <span style="color:#e5c07b">1 cleanable</span></div></div>
+  <div class="r fg" style="height:20px;padding:0 7px;gap:6px;border-radius:5px;background:#1d1e22"><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><div>This computer</div><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7d818b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+  <div class="r" style="gap:6px"><div class="fg">7 agents</div><div style="width:6px;height:6px;border-radius:50%;background:#e5c07b"></div><div>2 working</div><div style="width:6px;height:6px;border-radius:50%;background:#f0857d"></div><div>1 needs you</div></div>
+</div>
+</div>
+</body>
+</html>

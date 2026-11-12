@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Command bar</title>
+<!-- Illustrative mockup with sample data, rendered to docs/img/command-bar.png at 760x520 (2x). -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f1012}
+body{color:#e4e5e9;font:13px/1.35 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.r{display:flex;align-items:center}.c{display:flex;flex-direction:column}
+.g{flex:1 1 0;min-width:0}.n{flex:none}.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.dim{color:#7d818b}.mut{color:#a5a8b0}.fg{color:#e4e5e9}
+.s11{font-size:11px}.s12{font-size:12px}.b5{font-weight:500}.b6{font-weight:600}
+.spin{width:10px;height:10px;border-radius:50%;border:2px solid #e5c07b;border-right-color:transparent;flex:none}
+.spin.sm{width:8px;height:8px}
+.done{width:7px;height:7px;border-radius:50%;background:#8ab4f8;flex:none}
+.idle{width:7px;height:7px;border-radius:50%;border:1.5px solid #7d818b;flex:none}
+.need{width:16px;height:16px;border-radius:4px;background:#4a2725;color:#f0857d;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.need.sm{width:13px;height:13px;font-size:9px}
+.mk{width:16px;display:flex;justify-content:center;flex:none}
+.tile{width:18px;height:18px;border-radius:5px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tile.sm{width:14px;height:14px;border-radius:4px;font-size:9px}
+.ag{width:18px;height:18px;border-radius:5px;background:#3a3d45;display:flex;align-items:center;justify-content:center;flex:none}
+.ag.sm{width:14px;height:14px;border-radius:4px}.ag.sm>*{transform:scale(.78)}
+.ag.lg{width:24px;height:24px;border-radius:6px}.ag.lg>*{transform:scale(1.25)}
+.kbd{font-size:11px;border:1px solid #383b43;border-radius:4px;padding:1px 5px;color:#a5a8b0;flex:none}
+.panel{background:#17181b;border-radius:10px;border:1px solid #2b2d33}
+.card{background:#212328;border-radius:8px}
+.h{height:22px;padding:0 8px;font-size:11px;font-weight:600;color:#7d818b}
+.ib{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.seg{padding:2px;border-radius:7px;background:#24262b;display:flex;gap:1px}
+.seg>div{padding:0 9px;height:22px;display:flex;align-items:center;gap:5px;border-radius:5px;color:#a5a8b0;font-size:12px;white-space:nowrap}
+.seg>.on{background:#383b43;color:#e4e5e9;font-weight:500}
+.seg.sb{justify-content:space-between}.seg.sb>div{padding:0 6px}
+.btn{height:26px;padding:0 10px;border-radius:7px;background:#2c2e35;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+.chip{font-size:11px;border-radius:4px;padding:1px 6px;flex:none;white-space:nowrap}
+.bar{flex:none;height:6px;border-radius:3px;background:#26282d;overflow:hidden}
+.elbow{width:9px;height:11px;margin-top:-9px;border-left:1.5px solid #383b43;border-bottom:1.5px solid #383b43;border-bottom-left-radius:5px;flex:none}
+hl{background:#4a3d1f;color:#f1d59b;border-radius:2px}
+body{width:760px;height:520px}</style>
+</head>
+<body>
+
+<div style="width:760px;height:520px;padding:14px">
+<div class="c" style="height:100%;background:#1b1c20;border:1px solid #383b43;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:hidden">
+  <div class="r n" style="height:50px;padding:0 14px;gap:8px;border-bottom:1px solid #26282d;font-size:14px"><svg class="n" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><div class="g">te<span style="display:inline-block;width:1.5px;height:17px;background:#8ab4f8;vertical-align:-3px;margin-left:1px"></span></div><div class="kbd">Esc</div></div>
+  <div class="r g" style="align-items:stretch;min-height:0">
+    <div class="c n" style="width:56%;padding:6px;overflow:hidden"><div class="r h" style="height:24px;margin-top:2px">Agents</div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;background:#2c2e35"><div class="n r" style="width:18px;justify-content:center"><div class="spin"></div></div><div class="tr b5">Fix flaky checkout <hl>te</hl>st</div><div class="g"></div><div class="s11 dim tr">acme-web · working</div></div><div class="r h" style="height:24px;margin-top:2px">Folders</div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><div class="tile " style="background:#b06a3b">D</div></div><div class="tr">docs-si<hl>te</hl></div><div class="g"></div><div class="s11 dim tr">1 space</div></div><div class="r h" style="height:24px;margin-top:2px">Actions</div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.5a5 5 0 0 1 4.5 5"/></svg></div><div class="tr">New <hl>te</hl>am…</div><div class="g"></div><div class="s11 dim tr">⌃⌘N</div></div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 4 4-4 4M12 17h7"/></svg></div><div class="tr">New <hl>te</hl>rminal tab</div><div class="g"></div><div class="s11 dim tr"></div></div><div class="r h" style="height:24px;margin-top:2px">Views</div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.5a5 5 0 0 1 4.5 5"/></svg></div><div class="tr"><hl>Te</hl>am Map</div><div class="g"></div><div class="s11 dim tr">⌃⌘T</div></div><div class="r" style="height:32px;padding:0 8px;gap:9px;border-radius:7px;"><div class="n r" style="width:18px;justify-content:center"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><div class="tr">Herdr command palet<hl>te</hl></div><div class="g"></div><div class="s11 dim tr"></div></div></div>
+    <div class="c g" style="padding:16px;gap:8px;border-left:1px solid #26282d;background:#17181b"><div class="s11 b6 dim">Agents</div>
+<div class="r" style="gap:8px"><div class="ag "><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="b6" style="font-size:14px">Fix flaky checkout test</div></div>
+<div class="mut" style="line-height:1.55">Go to this agent's terminal (Claude Code in acme-web).</div>
+<div class="card c" style="padding:10px 12px;gap:6px;margin-top:6px">
+  <div class="r" style="gap:8px"><div class="spin"></div><div class="g b5">Running Bash</div><div class="s11 dim">38s</div></div>
+  <div class="s11 dim mono tr">npm test -- checkout</div>
+  <div class="bar" style="height:4px"><div style="width:38%;height:100%;background:#8ab4f8"></div></div>
+  <div class="s11 dim">Context 38% · branch main</div>
+</div></div>
+  </div>
+  <div class="r n s11 dim" style="height:32px;padding:0 14px;gap:14px;border-top:1px solid #26282d"><div>↑↓ move</div><div>↵ Open</div><div class="g"></div><div>6 results</div></div>
+</div></div>
+</body>
+</html>

@@ -11,13 +11,15 @@ agent needs them, what each one is doing and what it costs.
 > Status: a personal setup that is being opened up. It is tested on macOS only, and several mods are edited
 > copies of mods that ship with Herdr (see [Credits and licenses](#credits-and-licenses)).
 
-<!-- TODO screenshot: docs/img/overview.png (the whole window: sidebar, terminals, right panel, status bar) -->
+<p align="center"><img src="docs/img/overview.png" alt="The whole window: sidebar, terminal tabs, right panel and status bar"><br><em>The whole window: sidebar, terminals, right panel, status bar.</em></p>
+
+Screenshots are illustrative mockups with sample data.
 
 ## Feature tour
 
 ### Sidebar
 
-<!-- TODO screenshot: docs/img/sidebar.png -->
+<p align="center"><img src="docs/img/sidebar.png" alt="Sidebar with status filter, Pinned and Needs you sections, folders, spaces and agents" width="300"><br><em>The sidebar: status filter, Pinned and Needs you, then folders with their spaces and agents.</em></p>
 
 - **Folders, spaces, agents.** Spaces are grouped into folders (drag a space onto a folder, or give the folder
   path rules so it collects matching spaces). Worktree spaces sit under their checkout. Each space lists its
@@ -36,7 +38,9 @@ agent needs them, what each one is doing and what it costs.
 
 ### Command bar (⌘K)
 
-<!-- TODO screenshot: docs/img/command-bar.png -->
+<p align="center"><img src="docs/img/command-bar.png" alt="Command bar with grouped results and a preview" width="620"><br><em>The command bar: agents, folders, actions and views in one list, with a preview of the highlighted row.</em></p>
+
+<p align="center"><img src="docs/img/new-agent.png" alt="New agent step of the command bar" width="620"><br><em>New agent: pick the folder, then the agent; what you typed becomes its first message.</em></p>
 
 One box that filters agents (agents that need you first), folders, spaces, actions and views; the right side
 explains the highlighted row. (`command-bar`)
@@ -53,7 +57,7 @@ explains the highlighted row. (`command-bar`)
 
 Five icon tabs (`stack-tabs`) in Herdr's own panel:
 
-<!-- TODO screenshot: docs/img/panel-inspector.png -->
+<p align="center"><img src="docs/img/panel-inspector.png" alt="Inspector, Overview tab" width="270"> <img src="docs/img/inspector-trace.png" alt="Inspector, Trace tab" width="270"> <img src="docs/img/files-search.png" alt="Files panel searching inside files" width="270"><br><em>Inspector Overview, Inspector Trace, and Files searching inside files.</em></p>
 
 - **Files** (`files-plus`): a lazy file browser for the focused pane's folder with read-only previews, and
   search by file name or inside files (the latter needs `rg`).
@@ -71,8 +75,9 @@ Five icon tabs (`stack-tabs`) in Herdr's own panel:
 
 ### Full pages
 
-<!-- TODO screenshot: docs/img/board.png -->
-<!-- TODO screenshot: docs/img/team-map.png -->
+<p align="center"><img src="docs/img/board.png" alt="Board, by space"><br><em>Board, by space.</em></p>
+
+<p align="center"><img src="docs/img/team-map.png" alt="Team Map with the details drawer open"><br><em>Team Map, with the details of one teammate open.</em></p>
 
 - **Board** (⌃⌘B, `space-board`). *By space*: every space as a card in Todo / In progress / In review / Done;
   placed automatically from agent state and open PRs until you drag it; cards can be pinned. *By agent*: one
@@ -93,7 +98,7 @@ Five icon tabs (`stack-tabs`) in Herdr's own panel:
 
 ### Accounts
 
-<!-- TODO screenshot: docs/img/accounts.png -->
+<p align="center"><img src="docs/img/accounts.png" alt="Accounts dialog" width="560"><br><em>The Accounts dialog.</em></p>
 
 More than one Claude Code or Codex login (`accounts`, `lib/accounts.py`). The Accounts dialog adds an account,
 picks the one new agents start on, signs in again or removes one. An added account is a folder used as
@@ -224,7 +229,7 @@ Every network call in the code:
 | `mods/usage-bar/usage.py:44` | GET `api.anthropic.com/api/oauth/usage` | Claude Code's OAuth token |
 | `mods/usage-bar/usage.py:176` | GET `chatgpt.com/backend-api/wham/usage` | the Codex access token and account id |
 | `mods/usage-bar/usage.py:210` | GET `cursor.com/api/usage-summary` | cursor-agent's token as a session cookie |
-| `mods/git-graph/update.js:41` | GET `api.github.com/repos/rabeeh-ta/herdr-git-graph/releases/latest`, at most daily | nothing about you; can be turned off in its update window |
+| `mods/git-graph/update.js:43` | GET `api.github.com/repos/rabeeh-ta/herdr-git-graph/releases/latest`, at most daily. **Off by default**: it runs only after you tick "Check for updates" in the Git graph's settings (the gear) | nothing about you |
 | `integrations/requesters/slack-post.py:40-48` | `slack.com/api/…`, only when you click a configured requester | your Slack user token and the message |
 | `lib/prs.js:35`, `mods/pr-panel/github.js:23,35`, `mods/pr-diff/main.js:23`, `mods/worktrees/wtviews.js:61` | `gh api graphql`, `gh pr diff`, `gh pr view` | whatever your `gh` sign-in sends to GitHub |
 | `mods/git-graph/repos.js:73`, `mods/git-graph/git.js:341-356`, `mods/pr-panel/launch.js:34,114`, `mods/worktrees/wt.js:106` | `git fetch` / `pull` / `push` to your own remotes | your git credentials, to your remotes |
@@ -259,11 +264,10 @@ This repository has no license of its own yet. Code that started elsewhere:
 
 | Here | Origin | License |
 |---|---|---|
-| `mods/git-graph`, `tests/git-graph`, `docs/git-graph-top-bar.md` | [rabeeh-ta/herdr-git-graph](https://github.com/rabeeh-ta/herdr-git-graph) v0.3.3, since modified | MIT (`licenses/git-graph-MIT.txt`) |
+| `mods/git-graph`, `tests/git-graph` | [rabeeh-ta/herdr-git-graph](https://github.com/rabeeh-ta/herdr-git-graph) v0.3.3, since modified | MIT (`licenses/git-graph-MIT.txt`) |
 | `mods/space-folders` | [jankeesvw/herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) @63a78b2, since modified; itself a clone of Herdr's `spaces` mod 0.1.10 | MIT or Apache-2.0 for the upstream author's part (`licenses/space-folders-*.txt`); the Herdr part: see below |
 | `lib/folders.js` | folder matching ported from herdr-space-folders | MIT |
 | `lib/icons/*.svg`, `lib/team.svg`, `lib/more.svg`, `lib/folder-open.svg`, most of `mods/git-graph/icons` | [Lucide](https://lucide.dev) | ISC (`licenses/lucide-ISC.txt`) |
-| `mods/agents-ctx` | clone of Herdr's `agents` mod 0.1.14, modified | not established |
 | `mods/changes-plus` | clone of Herdr's `changes` mod 0.1.14, modified | not established |
 | `mods/tabs-plus` | clone of Herdr's `tabs` mod, modified | not established |
 | `mods/files-plus` | clone of Herdr's `files` mod, modified | not established |

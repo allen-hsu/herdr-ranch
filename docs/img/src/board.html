@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Board</title>
+<!-- Illustrative mockup with sample data, rendered to docs/img/board.png at 1200x720 (2x). -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f1012}
+body{color:#e4e5e9;font:13px/1.35 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.r{display:flex;align-items:center}.c{display:flex;flex-direction:column}
+.g{flex:1 1 0;min-width:0}.n{flex:none}.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.dim{color:#7d818b}.mut{color:#a5a8b0}.fg{color:#e4e5e9}
+.s11{font-size:11px}.s12{font-size:12px}.b5{font-weight:500}.b6{font-weight:600}
+.spin{width:10px;height:10px;border-radius:50%;border:2px solid #e5c07b;border-right-color:transparent;flex:none}
+.spin.sm{width:8px;height:8px}
+.done{width:7px;height:7px;border-radius:50%;background:#8ab4f8;flex:none}
+.idle{width:7px;height:7px;border-radius:50%;border:1.5px solid #7d818b;flex:none}
+.need{width:16px;height:16px;border-radius:4px;background:#4a2725;color:#f0857d;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.need.sm{width:13px;height:13px;font-size:9px}
+.mk{width:16px;display:flex;justify-content:center;flex:none}
+.tile{width:18px;height:18px;border-radius:5px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.tile.sm{width:14px;height:14px;border-radius:4px;font-size:9px}
+.ag{width:18px;height:18px;border-radius:5px;background:#3a3d45;display:flex;align-items:center;justify-content:center;flex:none}
+.ag.sm{width:14px;height:14px;border-radius:4px}.ag.sm>*{transform:scale(.78)}
+.ag.lg{width:24px;height:24px;border-radius:6px}.ag.lg>*{transform:scale(1.25)}
+.kbd{font-size:11px;border:1px solid #383b43;border-radius:4px;padding:1px 5px;color:#a5a8b0;flex:none}
+.panel{background:#17181b;border-radius:10px;border:1px solid #2b2d33}
+.card{background:#212328;border-radius:8px}
+.h{height:22px;padding:0 8px;font-size:11px;font-weight:600;color:#7d818b}
+.ib{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.seg{padding:2px;border-radius:7px;background:#24262b;display:flex;gap:1px}
+.seg>div{padding:0 9px;height:22px;display:flex;align-items:center;gap:5px;border-radius:5px;color:#a5a8b0;font-size:12px;white-space:nowrap}
+.seg>.on{background:#383b43;color:#e4e5e9;font-weight:500}
+.seg.sb{justify-content:space-between}.seg.sb>div{padding:0 6px}
+.btn{height:26px;padding:0 10px;border-radius:7px;background:#2c2e35;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+.chip{font-size:11px;border-radius:4px;padding:1px 6px;flex:none;white-space:nowrap}
+.bar{flex:none;height:6px;border-radius:3px;background:#26282d;overflow:hidden}
+.elbow{width:9px;height:11px;margin-top:-9px;border-left:1.5px solid #383b43;border-bottom:1.5px solid #383b43;border-bottom-left-radius:5px;flex:none}
+hl{background:#4a3d1f;color:#f1d59b;border-radius:2px}
+body{width:1200px;height:720px}</style>
+</head>
+<body>
+<div class="r" style="width:1200px;height:720px;align-items:stretch"><div class="c g panel" style="margin:8px">
+  <div class="r n" style="height:48px;padding:0 16px;gap:12px;border-bottom:1px solid #26282d">
+    <div class="b6" style="font-size:15px">Board</div>
+    <div class="seg"><div class="on">By space</div><div>By agent</div></div>
+    <div class="btn" style="background:#24262b">All spaces <svg class="n" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+    <div class="dim">9 spaces · drag a card to move it</div><div class="g"></div><div class="kbd">⌃⌘B</div><div class="ib"><svg class="n" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+  </div>
+  <div class="r g" style="padding:12px 4px;align-items:stretch;min-height:0"><div class="c g" style="padding:0 12px;gap:8px;"><div class="r s11 b6 mut" style="height:28px;gap:7px"><div class="idle"></div><div class="g">Todo</div><div class="dim" style="font-weight:400">2</div></div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">docs-site</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#b06a3b">D</div><div class="n">docs-site</div><div class="dim mono tr">main</div></div>
+  
+  <div class="r" style="height:20px;gap:6px"><div class="g"></div><div class="s11 dim">2d</div></div>
+</div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">Playground</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#6f63c9">P</div><div class="n">Playground</div><div class="dim mono tr">no repo</div></div>
+  <div class="c" style="border-top:1px solid #2c2e35;padding-top:5px"><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="g tr mut">Try the new CLI flags</div><div class="n r" style="width:14px;justify-content:center"><div class="idle"></div></div></div></div>
+  <div class="r" style="height:20px;gap:6px"><div class="g"></div><div class="s11 dim">5d</div></div>
+</div></div><div class="c g" style="padding:0 12px;gap:8px;border-left:1px solid #26282d"><div class="r s11 b6 mut" style="height:28px;gap:7px"><div class="spin sm"></div><div class="g">In progress</div><div class="dim" style="font-weight:400">3</div></div><div class="c" style="padding:10px;border-radius:8px;background:#2a1e1f;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">billing-api</div><svg class="n" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a5a8b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M8 3h8l-1 6 3 4H6l3-4Z"/></svg></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#2f8f83">B</div><div class="n">billing-api</div><div class="dim mono tr">feat/csv-export</div></div>
+  <div class="c" style="border-top:1px solid #2c2e35;padding-top:5px"><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="g tr ">Add CSV export</div><div class="n r" style="width:14px;justify-content:center"><div class="need sm">!</div></div></div><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:9px;height:9px;border:2px solid #e4e5e9;border-radius:50%"></div></div><div class="g tr ">Migrate invoices table</div><div class="n r" style="width:14px;justify-content:center"><div class="spin sm"></div></div></div></div>
+  <div class="r" style="height:20px;gap:6px"><div class="g"></div><div class="chip" style="color:#f0857d;background:#4a2725">needs you</div></div>
+</div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">acme-web</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#3b6ea8">A</div><div class="n">acme-web</div><div class="dim mono tr">main</div></div>
+  <div class="c" style="border-top:1px solid #2c2e35;padding-top:5px"><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="g tr ">Fix flaky checkout test</div><div class="n r" style="width:14px;justify-content:center"><div class="spin sm"></div></div></div><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="g tr mut">Review PR #214</div><div class="n r" style="width:14px;justify-content:center"><div class="done"></div></div></div></div>
+  <div class="r" style="height:20px;gap:6px"><div class="g"></div><div class="s11 dim">now</div></div>
+</div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">search-index</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#b06a3b">D</div><div class="n">docs-site</div><div class="dim mono tr">feat/search-index</div></div>
+  <div class="c" style="border-top:1px solid #2c2e35;padding-top:5px"><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:8px;height:8px;border:2px solid #e4e5e9;border-radius:2px"></div></div><div class="g tr ">Index headings for search</div><div class="n r" style="width:14px;justify-content:center"><div class="spin sm"></div></div></div></div>
+  <div class="r" style="height:20px;gap:6px"><div class="g"></div><div class="s11 dim">3m</div></div>
+</div></div><div class="c g" style="padding:0 12px;gap:8px;border-left:1px solid #26282d"><div class="r s11 b6 mut" style="height:28px;gap:7px"><div class="done" style="background:#c678dd"></div><div class="g">In review</div><div class="dim" style="font-weight:400">2</div></div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">csv-button</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#3b6ea8">A</div><div class="n">acme-web</div><div class="dim mono tr">feat/csv-button</div></div>
+  <div class="c" style="border-top:1px solid #2c2e35;padding-top:5px"><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:8px;height:8px;background:#e4e5e9;transform:rotate(45deg);border-radius:1.5px"></div></div><div class="g tr mut">Draft export button</div><div class="n r" style="width:14px;justify-content:center"><div class="idle"></div></div></div></div>
+  <div class="r" style="height:20px;gap:6px"><div class="chip r" style="gap:4px;background:#2c2e35;color:#a5a8b0"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#98c379" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>#221 · checks pass</div><div class="g"></div><div class="s11 dim">3h</div></div>
+</div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">rate-limits</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#2f8f83">B</div><div class="n">billing-api</div><div class="dim mono tr">fix/rate-limits</div></div>
+  <div class="c" style="border-top:1px solid #2c2e35;padding-top:5px"><div class="r s12" style="height:22px;gap:7px"><div class="ag sm"><div style="width:9px;height:9px;border:2px solid #e4e5e9;border-radius:50%"></div></div><div class="g tr mut">Tighten rate limits</div><div class="n r" style="width:14px;justify-content:center"><div class="done"></div></div></div></div>
+  <div class="r" style="height:20px;gap:6px"><div class="chip r" style="gap:4px;background:#2c2e35;color:#a5a8b0"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f0857d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>#87 · 1 failing</div><div class="g"></div><div class="s11 dim">41m</div></div>
+</div></div><div class="c g" style="padding:0 12px;gap:8px;border-left:1px solid #26282d"><div class="r s11 b6 mut" style="height:28px;gap:7px"><div class="done" style="background:#98c379"></div><div class="g">Done</div><div class="dim" style="font-weight:400">2</div></div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">dark-mode</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#3b6ea8">A</div><div class="n">acme-web</div><div class="dim mono tr">merged</div></div>
+  
+  <div class="r" style="height:20px;gap:6px"><div class="chip r" style="gap:4px;background:#2c2e35;color:#a5a8b0"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#c678dd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>#209 · merged</div><div class="g"></div><div class="s11 dim">1d</div></div>
+</div><div class="c" style="padding:10px;border-radius:8px;background:#212328;gap:7px">
+  <div class="r" style="gap:7px"><div class="g b5 tr">api-reference</div></div>
+  <div class="r s11 mut" style="gap:6px"><div class="tile sm" style="background:#b06a3b">D</div><div class="n">docs-site</div><div class="dim mono tr">merged</div></div>
+  
+  <div class="r" style="height:20px;gap:6px"><div class="chip r" style="gap:4px;background:#2c2e35;color:#a5a8b0"><svg class="n" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#c678dd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>#52 · merged</div><div class="g"></div><div class="s11 dim">3d</div></div>
+</div></div></div>
+</div></div>
+</body>
+</html>
