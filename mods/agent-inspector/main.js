@@ -309,32 +309,33 @@ export default class AgentInspector extends View {
         .child(v_flex().id(`c-m-tx-${i}`).max_h(360).overflow_y_scrollbar().px(12).pb(10).text_size(TS.body)
           .child(this.openFile.text == null ? div().text_color(t.dim).child("Reading…") : TextView.markdown(`c-m-md-${i}`, this.openFile.text))));
     }
-    if (d.agent === "codex") { out.push(this.note(t, "Codex sessions don't record hooks or MCP servers in their log.")); return out; }
+    const codex = d.agent === "codex";
     // Hooks by what they are, not their command line (the full command is in the tooltip).
     const groups = new Map();
     for (const x of c.hooks ?? []) {
       const key = `${x.label}|${x.src}`;
       const g = groups.get(key) ?? { label: x.label, src: x.src, events: new Set(), runs: 0, errors: 0, timeouts: 0, total: 0, full: x.full };
-      g.errs = [...(g.errs ?? []), ...(x.errs ?? [])];
+      g.errs = [...(g.errs ?? []), ...(x.errs ?? [])]; g.configured = Boolean(x.configured);
       g.events.add(x.event); g.runs += x.runs; g.errors += x.errors; g.timeouts += x.timeouts; g.total += (x.avg_ms ?? 0) * x.runs;
       groups.set(key, g);
     }
     const hooks = [...groups.values()].sort((a, b) => (b.errors + b.timeouts) - (a.errors + a.timeouts) || b.runs - a.runs);
-    out.push(this.h(t, "Hooks", hooks.length || null));
-    if (!hooks.length) out.push(this.note(t, "No hooks ran in this session."));
+    out.push(this.h(t, codex ? "Hooks set up" : "Hooks", hooks.length || null));
+    if (codex && hooks.length) out.push(this.note(t, "Codex doesn't log hook runs, so these are the hooks configured for this session (no counts or errors)."));
+    if (!hooks.length) out.push(this.note(t, codex ? "No hooks configured." : "No hooks ran in this session."));
     for (const [i, g] of hooks.entries()) {
       const bad = g.errors + g.timeouts;
       const key = `${g.label}|${g.src}`, open = this.openHook.has(key);
       out.push(h_flex().id(`c-h-${i}`).px(SPACE.panel).py(5).gap(8).items_center().text_size(TS.meta).rounded(6).cursor_pointer().hover((e) => e.bg(t.hover))
         .on_click((_e, cx) => { open ? this.openHook.delete(key) : this.openHook.add(key); cx.notify(); })
         .child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim))
-        .child(div().size(7).rounded(4).flex_none().bg(bad ? st.blocked : C(t).ok))
+        .child(div().size(7).rounded(4).flex_none().bg(bad ? st.blocked : g.configured ? st.idle : C(t).ok))
         .child(v_flex().flex_1().min_w(0).gap(1)
           .child(h_flex().gap(6).items_center().min_w(0)
             .child(div().min_w(0).truncate().text_color(t.foreground).child(g.label))
             .child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(TS.tiny).text_color(t.dim).child(g.src)))
           .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child([...g.events].join(" · "))))
-        .child(div().flex_none().text_color(bad ? st.blocked : t.dim).child(`${g.runs}× · ${ms(Math.round(g.total / Math.max(1, g.runs)))}${g.errors ? ` · ${g.errors} err` : ""}${g.timeouts ? ` · ${g.timeouts} timeout` : ""}`)));
+        .child(div().flex_none().text_color(bad ? st.blocked : t.dim).child(g.configured ? "configured" : `${g.runs}× · ${ms(Math.round(g.total / Math.max(1, g.runs)))}${g.errors ? ` · ${g.errors} err` : ""}${g.timeouts ? ` · ${g.timeouts} timeout` : ""}`)));
       if (open) {
         const box = v_flex().mx(SPACE.panel).mb(6).p(10).gap(8).rounded(8).bg(t.surface).text_size(TS.small);
         const label = (s) => div().text_size(11).font_semibold().text_color(t.dim).child(s);
@@ -344,7 +345,7 @@ export default class AgentInspector extends View {
             .child(div().text_color(st.blocked).child(`${e.timeout ? "timed out" : `exit ${e.exit ?? "?"}`}${e.at ? ` · ${clock(e.at)}` : ""}`))
             .child(div().text_color(t.foreground).child(e.msg || "(no output)")))));
         box.child(v_flex().gap(2).child(label("Runs on")).child(div().text_color(t.muted).child([...g.events].join(" · "))));
-        box.child(v_flex().gap(2).child(label(g.src === "settings" ? "Command (from settings.json)" : `Command (plugin: ${g.src})`))
+        box.child(v_flex().gap(2).child(label(g.src === "settings" ? "Command (from settings.json)" : g.configured ? `Command (${g.src === "user" ? "~/.codex/hooks.json" : g.src === "project" ? "project .codex/hooks.json" : g.src})` : `Command (plugin: ${g.src})`))
           .child(div().p(8).rounded(6).bg(t.background).text_color(t.muted).font_family(settings().font_family ?? "monospace").text_size(TS.small).child(g.full ?? "")));
         out.push(box);
       }
@@ -555,14 +556,16 @@ export default class AgentInspector extends View {
 
   mcp(t, d) {
     const m = d.config?.mcp ?? {};
-    if (d.agent === "codex") return [this.note(t, "Codex sessions don't record MCP servers in their log.")];
+    const codex = d.agent === "codex";
     const tot = m.totals ?? {};
     const out = [v_flex().px(SPACE.panel).pt(12).gap(2)
       .child(div().text_size(TS.body).text_color(t.foreground).child(`${tot.servers ?? 0} MCP servers · ${tot.connected ?? 0} connected · ${tot.tools ?? 0} tools`))
-      .child(div().text_size(TS.small).text_color(t.dim).child(`${tot.loaded ?? 0} tools loaded with full schemas, ${tot.called ?? 0} used (${tot.calls ?? 0} calls). ~${k(tot.context_tok)} tokens of context: instructions + tool names + loaded schemas.`))];
+      .child(div().text_size(TS.small).text_color(t.dim).child(codex
+        ? `${tot.called ?? 0} tools used (${tot.calls ?? 0} calls). Servers come from ~/.codex/config.toml plus Codex's built-in ones; “connected” means this session had them. Codex doesn't log tool counts or schema sizes.`
+        : `${tot.loaded ?? 0} tools loaded with full schemas, ${tot.called ?? 0} used (${tot.calls ?? 0} calls). ~${k(tot.context_tok)} tokens of context: instructions + tool names + loaded schemas.`))];
     const st = C(t).status;
     const color = (s) => s.status === "failed" ? st.blocked : s.status === "needs auth" || s.status === "pending" ? st.working : s.calls ? st.done : t.dim;
-    out.push(this.h(t, "Servers", "tools · loaded · calls"));
+    out.push(this.h(t, "Servers", codex ? "calls" : "tools · loaded · calls"));
     for (const [i, s] of (m.servers ?? []).entries()) {
       const open = this.openSrv.has(s.key);
       const ctx = s.instr_tok + s.list_tok + s.def_tok;
@@ -571,13 +574,16 @@ export default class AgentInspector extends View {
         .child(div().w(7).h(7).rounded(4).flex_none().bg(color(s)))
         .child(v_flex().flex_1().min_w(0).gap(1)
           .child(div().truncate().text_color(t.foreground).child(s.name))
-          .child(div().truncate().text_size(TS.tiny).text_color(s.status === "connected" ? t.dim : color(s)).child(s.status === "connected" ? (s.calls ? "used" : "connected, not used") : s.status)))
-        .child(div().flex_none().text_color(t.muted).child(`${s.tools} · ${s.loaded} · ${s.calls}`))
+          .child(div().truncate().text_size(TS.tiny).text_color(s.status === "connected" ? t.dim : color(s)).child((s.status === "connected" ? (s.calls ? "used" : "connected, not used") : s.status) + (s.builtin ? " · built into Codex" : ""))))
+        .child(div().flex_none().text_color(t.muted).child(codex ? String(s.calls) : `${s.tools} · ${s.loaded} · ${s.calls}`))
         .child(div().flex_none().w(44).text_right().text_color(ctx > 2000 ? t.working : t.dim).tooltip("Context this server costs (approx.)").child(`~${k(ctx)}`)));
       if (open) {
         const sub = (txt) => div().pl(SPACE.panel + 27).pr(SPACE.panel).py(1).text_size(TS.small).text_color(t.muted).child(txt);
-        out.push(sub(`Context: ~${k(s.instr_tok)} instructions · ~${k(s.list_tok)} tool names · ~${k(s.def_tok)} schemas`));
-        out.push(sub(`Tools: ${s.tools} available, ${s.upfront} loaded up front, ${s.loaded - s.upfront} loaded on demand, ${s.called} called${s.errors ? `, ${s.errors} errors` : ""}`));
+        if (codex) out.push(sub(s.status === "connected" ? `Instructions in context: ~${k(s.instr_tok)} tokens · ${s.called} tool${s.called === 1 ? "" : "s"} called` : "Set in config.toml, but this session didn't have it (not started, failed, or needs sign-in)."));
+        else {
+          out.push(sub(`Context: ~${k(s.instr_tok)} instructions · ~${k(s.list_tok)} tool names · ~${k(s.def_tok)} schemas`));
+          out.push(sub(`Tools: ${s.tools} available, ${s.upfront} loaded up front, ${s.loaded - s.upfront} loaded on demand, ${s.called} called${s.errors ? `, ${s.errors} errors` : ""}`));
+        }
         for (const x of s.top ?? []) out.push(h_flex().px(SPACE.panel).pl(SPACE.panel + 27).py(1).gap(8).items_center().text_size(TS.small)
           .child(h_flex().flex_1().min_w(0).gap(4).items_center().child(icon("wrench", 12, t.dim)).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(x.tool)))
           .child(div().flex_none().text_color(t.dim).child(`${x.n}×`))
@@ -587,7 +593,7 @@ export default class AgentInspector extends View {
       }
     }
     for (const [i, s] of (m.pending ?? []).entries()) out.push(this.row(t, `mc-p-${i}`, "pending", s, null, t.working));
-    out.push(this.note(t, "Most MCP tools are deferred: only their names sit in context until the agent loads a schema (ToolSearch). Click a server for details."));
+    if (!codex) out.push(this.note(t, "Most MCP tools are deferred: only their names sit in context until the agent loads a schema (ToolSearch). Click a server for details."));
     return out;
   }
 

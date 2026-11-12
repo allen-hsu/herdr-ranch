@@ -18,7 +18,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 18
+VERSION = 20
 # $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
 # From the Claude API reference, 2026-11. Unknown models: no cost shown.
 PRICES = {

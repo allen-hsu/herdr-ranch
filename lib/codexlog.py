@@ -8,7 +8,7 @@ find_rollout(): the file the codex process has open (lsof), else the newest roll
 folder after the terminal was created. parse() returns the same shape as inspect.py's Claude parser.
 (Identical copies in mods/agent-inspector and mods/agent-board.)
 """
-import glob, json, os, re, subprocess, time
+import collections, glob, json, os, re, subprocess, time
 from datetime import datetime
 
 HOME = os.path.expanduser("~")
@@ -129,6 +129,78 @@ def live(path):
     return {"task": task, "tool": tool, "text": text, "ctx": pct, "model": model, "agent": "codex"}
 
 
+CODEX_HOME = os.path.join(HOME, ".codex")
+
+
+def mcp_norm(name):
+    """config name -> the form in tool names: chrome-devtools -> mcp__chrome_devtools."""
+    return "mcp__" + re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
+def codex_config():
+    try:
+        import tomllib
+        with open(os.path.join(CODEX_HOME, "config.toml"), "rb") as f:
+            return tomllib.load(f)
+    except Exception:
+        return {}
+
+
+def hook_name(cmd):
+    m = re.search(r"([\w.-]+\.(?:sh|py|js|mjs|cjs|ts|cmd|bat))\b", cmd or "")
+    if m:
+        return m.group(1)
+    first = os.path.basename((cmd or "hook").strip().split()[0].strip("'\""))
+    return first[:40] or "hook"
+
+
+def configured_hooks(cwd, cfg):
+    """Hooks Codex is set up to run for this session: ~/.codex/hooks.json, the project's .codex/hooks.json and
+    config.toml's notify. Codex's session log doesn't record hook runs, so there are no counts."""
+    out, seen = [], set()
+    for src, path in (("user", os.path.join(CODEX_HOME, "hooks.json")), ("project", os.path.join(cwd or "", ".codex", "hooks.json"))):
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
+        seen.add(real)
+        try:
+            data = json.load(open(path))
+        except Exception:
+            continue
+        for event, groups in (data.get("hooks") or {}).items():
+            for grp in groups or []:
+                for h in (grp or {}).get("hooks") or []:
+                    cmd = h.get("command") or ""
+                    out.append({"event": event + (f" · {grp['matcher']}" if grp.get("matcher") else ""), "label": hook_name(cmd), "src": src,
+                                "full": red(cmd, 2000), "cmd": red(cmd, 80), "runs": None, "errors": 0, "timeouts": 0, "avg_ms": None, "configured": True})
+    n = cfg.get("notify")
+    if isinstance(n, list) and n:
+        out.append({"event": "notify · " + " ".join(str(x) for x in n[1:])[:40], "label": os.path.basename(str(n[0]))[:40], "src": "config.toml",
+                    "full": red(" ".join(str(x) for x in n), 2000), "cmd": "", "runs": None, "errors": 0, "timeouts": 0, "avg_ms": None, "configured": True})
+    return out
+
+
+def mcp_servers(cfg, connected, calls, tools):
+    """Configured servers (config.toml) + the ones this session actually had (world_state) + calls seen in its tool inputs."""
+    rows = {}
+    for name in (cfg.get("mcp_servers") or {}):
+        rows[mcp_norm(name)] = {"name": name, "configured": True}
+    for key, desc in connected.items():
+        rows.setdefault(key, {"name": key[5:].replace("__", " · "), "configured": False})["instr_tok"] = len(desc or "") // 4
+        rows[key]["connected"] = True
+    out = []
+    for key, r in rows.items():
+        mine = calls.get(key) or collections.Counter()
+        out.append({"name": r["name"], "key": key, "status": "connected" if r.get("connected") else "not connected",
+                    "tools": 0, "upfront": 0, "loaded": 0, "called": len(mine), "calls": sum(mine.values()), "errors": 0,
+                    "top": [{"tool": t, "n": n, "avg_ms": None, "errors": 0} for t, n in mine.most_common(8)],
+                    "instr_tok": r.get("instr_tok", 0), "def_tok": 0, "list_tok": 0, "builtin": not r["configured"]})
+    out.sort(key=lambda x: (-(x["calls"] > 0), x["status"] != "connected", x["builtin"], x["name"]))
+    return {"servers": out, "failed": [], "pending": [], "deferred_tools": 0,
+            "totals": {"servers": len(out), "connected": sum(x["status"] == "connected" for x in out), "tools": 0, "loaded": 0,
+                       "called": sum(x["called"] for x in out), "calls": sum(x["calls"] for x in out), "context_tok": sum(x["instr_tok"] for x in out)}}
+
+
 def union_len(iv):
     tot, cur = 0.0, None
     for a, b in sorted(iv):
@@ -189,6 +261,7 @@ def parse(path):
     agents_md, skills_n, skills_tok, base_tok = [], 0, 0, 0
     last_at = None
 
+    mcp_connected, mcp_calls = {}, {}  # mcp__server -> instructions; mcp__server -> Counter(tool)
     last_in = last_out = None  # last input to the model (prompt, tool output); last model output
 
     def close_llm(c):
@@ -224,6 +297,11 @@ def parse(path):
             continue
         if t == "turn_context":
             turn_ctx = p
+            continue
+        if t == "world_state":
+            for key, desc in (((p.get("state") or {}).get("tools")) or {}).items():
+                if isinstance(key, str) and key.startswith("mcp__"):
+                    mcp_connected[key] = desc if isinstance(desc, str) else ""
             continue
         if pt == "message" and p.get("role") in ("user", "developer"):
             raw = text_of(p.get("content"))
@@ -261,6 +339,13 @@ def parse(path):
             step = {"k": "tool", "name": name, "label": tool_label(name, p.get("input") or p.get("arguments") or p.get("action")), "at": at}
             pending[p.get("call_id")] = step
             model_out(cur, at, {"k": "tool", "name": name, "label": step["label"]})
+            # MCP tools are called from inside the tool's input (e.g. the exec script): count mcp__<server>__<tool> names.
+            raw_in = p.get("input") or p.get("arguments") or ""
+            raw_in = raw_in if isinstance(raw_in, str) else json.dumps(raw_in, ensure_ascii=False)
+            for full in set(re.findall(r"mcp__[A-Za-z0-9_]+", raw_in + " " + str(name))):
+                srv = max((k for k in mcp_connected if full.startswith(k + "__")), key=len, default=None)
+                if srv:
+                    mcp_calls.setdefault(srv, collections.Counter())[full[len(srv) + 2:]] += 1
             if cur is not None:
                 cur["steps"].append(step)
                 close_llm(cur)
@@ -321,6 +406,7 @@ def parse(path):
         del tl["ms"]
     big.sort(reverse=True)
     lvl = {"error": 0, "warn": 1, "info": 2}
+    cfg = codex_config()
     sandbox = (turn_ctx.get("sandbox_policy") or {}).get("type")
     mode = f"{turn_ctx.get('approval_policy') or '?'} · sandbox {sandbox or '?'}"
     return {
@@ -333,7 +419,7 @@ def parse(path):
             "effort": turn_ctx.get("effort"), "cli_version": meta.get("cli_version"), "originator": meta.get("originator"),
             "memory": agents_md, "memory_tok": sum(m["tokens"] for m in agents_md),
             "skills": {"available": skills_n, "available_tok": skills_tok, "used": []},
-            "hooks": [], "mcp": {"servers": [], "failed": [], "pending": [], "deferred_tools": 0}, "agent_types": 0,
+            "hooks": configured_hooks(meta.get("cwd"), cfg), "mcp": mcp_servers(cfg, mcp_connected, mcp_calls, tools), "agent_types": 0,
         },
         "issues": sorted(issues.values(), key=lambda i: (lvl.get(i["level"], 3), -(i["last"] or 0))),
         "tools": sorted(tools.values(), key=lambda x: -x["result_tok"]),
