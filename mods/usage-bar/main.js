@@ -33,7 +33,7 @@ export default class UsageBar extends View {
   }
 
   bar(t, pct, color) {
-    const w = 64;
+    const w = 44;
     return div().w(w).h(5).rounded(3).bg(t.border).flex_none()
       .child(div().h(5).rounded(3).bg(color).w(Math.max(1, Math.round((w * Math.min(pct, 100)) / 100))));
   }
@@ -42,34 +42,33 @@ export default class UsageBar extends View {
     return pct >= 90 ? C(t).status.blocked : pct >= 70 ? C(t).status.working : t.accent;
   }
 
-  provider(t, id, icon, tint, info, now, staleHint, named = false) {
+  // One provider: icon, bar, percent. Everything else (each window, when it resets, why it's stale) is in the tooltip.
+  provider(t, id, ic, tint, info, now, staleHint, name) {
     const ws = info?.windows ?? [];
-    const head = h_flex().id(id).gap(6).items_center().flex_none().child(tint ? svg(icon).size(13).text_color(tint) : image(icon).size(13));
-    if (!ws.length) return head.child(div().text_color(t.dim).child(staleHint));
-    const [main, ...rest] = ws;
-    const stale = info.stale;
-    const c = stale ? t.dim : this.color(t, main.percent);
-    let el = head
+    const dim = !ws.length || info.stale;
+    const head = h_flex().id(id).gap(6).items_center().flex_none().when(dim, (e) => e.opacity(0.55))
+      .child(tint ? svg(ic).size(13).text_color(tint) : image(ic).size(13));
+    if (!ws.length) return head.child(div().text_color(t.dim).child("–")).tooltip(`${name}: no usage numbers (${staleHint}).`);
+    const main = ws[0];
+    const c = info.stale ? t.dim : this.color(t, main.percent);
+    const lines = ws.map((w) => `${w.name}: ${Math.round(w.percent)}% used${w.resets_at ? `, resets in ${left(w.resets_at, now)}` : ""}`);
+    const tip = [name, ...lines, info.stale ? `Old numbers: ${staleHint}.` : null, info.error ? `Last refresh failed (${info.error}); showing the last good numbers.` : null].filter(Boolean).join("\n");
+    return head
       .child(this.bar(t, main.percent, c))
-
-      .child(div().text_color(stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))
-      .when(!named || stale, (e) => e.child(div().text_color(t.dim).child(stale ? staleHint : left(main.resets_at, now))));
-    if (!named) for (const w of rest) el = el.child(div().text_color(t.dim).child(`· ${Math.round(w.percent)}% ${w.name}`));
-    if (info.error) el = el.child(icon("triangle-alert", 12, C(t).status.blocked)).tooltip(`Last refresh failed (${info.error}); showing the last good numbers.`);
-    else if (!stale) el = el.tooltip(ws.map((w) => `${w.name}: ${Math.round(w.percent)}% used${w.resets_at ? `, resets in ${left(w.resets_at, now)}` : ""}`).join("\n"));
-    return el;
+      .child(div().w(28).text_right().text_color(info.stale ? t.dim : t.foreground).child(`${Math.round(main.percent)}%`))
+      .when(Boolean(info.error), (e) => e.child(icon("triangle-alert", 12, C(t).status.blocked)))
+      .tooltip(tip);
   }
 
   render() {
     const t = theme();
     const now = this.data?.now ?? Date.now() / 1000;
-    return h_flex().id("usage-bar").size_full().px(12).gap(14).items_center().justify_end()
+    return h_flex().id("usage-bar").size_full().px(10).gap(16).items_center().justify_end()
       .text_size(TS.meta).bg(t.chrome).text_color(t.muted)
-      .child(div().text_color(t.dim).child("Used"))
-      .child(this.provider(t, "u-claude", "icons/claude.svg", null, this.data?.claude, now, "unavailable"))
-      .child(this.provider(t, "u-codex", "icons/codex.svg", null, this.data?.codex, now, "stale · run Codex to refresh"))
-      .child(this.provider(t, "u-grok", "icons/grok.svg", t.foreground, this.data?.grok, now, "run Grok to refresh"))
-      .child(this.provider(t, "u-cursor", "icons/cursor.svg", t.foreground, this.data?.cursor, now, "unavailable", true))
+      .child(this.provider(t, "u-claude", "icons/claude.svg", null, this.data?.claude, now, "unavailable", "Claude"))
+      .child(this.provider(t, "u-codex", "icons/codex.svg", null, this.data?.codex, now, "run Codex to refresh", "Codex"))
+      .child(this.provider(t, "u-grok", "icons/grok.svg", t.foreground, this.data?.grok, now, "run Grok to refresh", "Grok"))
+      .child(this.provider(t, "u-cursor", "icons/cursor.svg", t.foreground, this.data?.cursor, now, "unavailable", "Cursor"))
       .child(div().id("u-refresh").px(4).py(2).flex().items_center().rounded(4).cursor_pointer().text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
         .tooltip("Refresh now")

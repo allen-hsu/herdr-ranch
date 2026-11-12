@@ -281,7 +281,7 @@
           "id": "status",
           "type": "block",
           "size": {
-            "weight": 1
+            "px": 330
           },
           "content": {
             "mod": "workspace-status"
@@ -291,7 +291,7 @@
           "id": "worktrees",
           "type": "block",
           "size": {
-            "px": 230
+            "px": 250
           },
           "content": {
             "mod": "worktrees",
@@ -304,7 +304,7 @@
           "id": "usage",
           "type": "block",
           "size": {
-            "px": 900
+            "weight": 1
           },
           "content": {
             "mod": "usage-bar"
