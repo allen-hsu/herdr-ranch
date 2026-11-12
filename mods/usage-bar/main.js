@@ -1,5 +1,5 @@
 // Orca-style account usage line: "Used  [Claude] ▓▓░ 1% 6d 9h · 0% Fable   [Codex] ...".
-// Numbers come from ./usage.py (Claude: usage API, cached 5 min; Codex: local rollout files).
+// Numbers come from ./usage.py (Claude, Codex, Cursor: each provider's usage endpoint, cached 5 min; Codex falls back to local rollout files).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { exec, appHome, theme, shared } from "herdr";

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Write a sanitized Claude Code status-line snapshot for Herdr's Mission Control agents panel.
+"""Write a sanitized Claude Code status-line snapshot for the herdr-ranch agent views (context % and cost).
 
-Called from ~/.claude/statusline-command.sh with the status-line JSON on stdin.
+Called from your Claude Code status-line script with the status-line JSON on stdin.
 Keeps only numbers (context %, 5h/7d usage %) keyed by session id. No prompts, paths or tokens.
-Output: ~/.cache/herdr-claude-status/claude-statusline.json (format read by collector.py claude_cache).
+Output: ~/.cache/herdr-claude-status/claude-statusline.json (read by lib/agentrows.js, lib/live.py and
+mods/agent-inspector/inspect.py).
 """
 import json, os, sys, time, tempfile
 

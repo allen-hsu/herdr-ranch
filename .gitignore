@@ -3,3 +3,6 @@ __pycache__/
 .DS_Store
 jsconfig.json
 *.d.ts
+node_modules/
+# local agent traces / settings
+.claude/

@@ -2,14 +2,18 @@
 """Usage numbers for the Herdr usage bar. Prints one JSON object to stdout.
 
 Claude: GET https://api.anthropic.com/api/oauth/usage with Claude Code's own OAuth token, read
-from the macOS keychain item "Claude Code-credentials" (the user agreed to this on 2026-11-10).
+from the macOS keychain item "Claude Code-credentials".
 The token is only sent to api.anthropic.com and never written anywhere. Results (percentages and
 reset times only) are cached in ~/.cache/herdr-claude-status/usage.json for MIN_INTERVAL seconds.
 
-Codex: the newest rate_limits record in ~/.codex/sessions rollout files (local, no credentials).
+Codex: GET https://chatgpt.com/backend-api/wham/usage with the token in ~/.codex/auth.json (sent only to
+chatgpt.com); when that gives nothing, the newest rate_limits record in ~/.codex/sessions rollout files (local).
+
+Cursor: GET https://cursor.com/api/usage-summary with cursor-agent's token from the keychain item
+"cursor-access-token" (sent only to cursor.com). Grok: no source yet (always empty).
 
 Accounts (lib/accounts.py): the numbers are the ACTIVE account's. Claude Code keeps an added account's login in
-the keychain item "Claude Code-credentials-" + the first 8 hex of sha256(its config folder) (agreed 2026-11-12);
+the keychain item "Claude Code-credentials-" + the first 8 hex of sha256(its config folder);
 Codex keeps it in <account folder>/auth.json. Each account has its own cache file, and "account" in the output
 is its short name (the part of the email before @) when it is not the system login.
 """
@@ -165,7 +169,7 @@ def get_json(url, headers):
 
 
 def codex_live(home=None):
-    # Token from ~/.codex/auth.json, or the active account folder's auth.json (user-approved 2026-11-10);
+    # Token from ~/.codex/auth.json, or the active account folder's auth.json;
     # sent only to chatgpt.com.
     tokens = json.load(open(os.path.join(home or os.path.expanduser("~/.codex"), "auth.json"))).get("tokens") or {}
     if not tokens.get("access_token"):
@@ -190,7 +194,7 @@ def codex_live(home=None):
 
 
 def cursor_live():
-    # Token from the keychain item cursor-access-token (cursor-agent's sign-in; user-approved 2026-11-10).
+    # Token from the keychain item cursor-access-token (cursor-agent's sign-in).
     # Sent only to cursor.com, as the dashboard session cookie (same as Orca does).
     import base64, urllib.parse
     raw = subprocess.run(["security", "find-generic-password", "-s", "cursor-access-token", "-w"],

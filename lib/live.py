@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What each agent is doing right now, for the agent board and agent toasts (shared lib). Local files only, no network.
+"""What each agent is doing right now, for the Team Map and agent toasts (shared lib). Local files only, no network.
 
 Usage: live.py t8 t11 ...   -> {"t8": {...}, "t11": {...}}
 Per Claude Code agent (terminal -> pid -> ~/.claude/sessions/<pid>.json -> transcript tail):

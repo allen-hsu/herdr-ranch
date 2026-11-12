@@ -1,4 +1,4 @@
-"""Codex CLI session support for the Herdr agent inspector / board. Local files only, no network.
+"""Codex CLI session support for the Herdr agent inspector and the other agent views. Local files only, no network.
 
 Codex writes one rollout file per session: ~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl with
 records {timestamp, type, payload}: session_meta, turn_context, response_item (message / reasoning /
@@ -6,7 +6,7 @@ custom_tool_call / function_call / *_output), event_msg (task_started / task_com
 item_completed / ...), token_usage_record.
 find_rollout(): the file the codex process has open (lsof), else the newest rollout started in the same
 folder after the terminal was created. parse() returns the same shape as inspect.py's Claude parser.
-(Identical copies in mods/agent-inspector and mods/agent-board.)
+Shared lib (herdr-ranch/lib): install.sh copies it into each mod that lists it in lib.json.
 """
 import collections, glob, json, os, re, subprocess, time
 from datetime import datetime

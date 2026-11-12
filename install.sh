@@ -175,5 +175,5 @@ if [ "$DRY" = 0 ] && [ "$HAVE_HERDR" = 1 ]; then
     if herdr-app check "$d" >/dev/null 2>&1; then say "ok   $n"; else say "FAIL $n"; fail=1; fi
   done
   [ "$fail" = 0 ] || { echo "Some mods failed herdr-app check; see: herdr-app check <mod folder>" >&2; exit 1; }
-  echo "Done. Board: ⌃⌘B (or the Board button top right)."
+  echo "Done. Board: ⌃⌘B (or the Board button at the bottom of the sidebar). Command bar: ⌘K."
 fi

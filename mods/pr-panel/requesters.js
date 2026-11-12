@@ -1,6 +1,6 @@
 // Pluggable "request review" buttons. The panel knows nothing about Slack or any other service:
 // buttons come from ~/.config/herdr-app/pr-panel.json, e.g.
-//   { "requesters": [ { "id": "hermes", "label": "Ask Hermes", "type": "command", "confirm": true,
+//   { "requesters": [ { "id": "slack-bot", "label": "Ask reviewer bot", "type": "command", "confirm": true,
 //                       "argv": ["python3", "~/.config/herdr-app/ranch/requesters/slack-post.py"] } ] }
 // type "command": runs argv (no shell) with the PR in env vars HERDR_PR_URL, HERDR_PR_REPO,
 // HERDR_PR_NUMBER, HERDR_PR_TITLE, HERDR_PR_BRANCH. Optional JSON on stdout:

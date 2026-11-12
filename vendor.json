@@ -1,4 +1,4 @@
 {
-  "_doc": "Third-party mods installed as-is at a pinned commit (fetched into ~/.cache/herdr-ranch/vendor). Mods we change live in forks/ instead (see forks/README.md).",
+  "_doc": "Third-party mods installed as-is at a pinned commit (fetched into ~/.cache/herdr-ranch/vendor). Mods we change live in mods/ (origins: licenses/README.md).",
   "mods": []
 }

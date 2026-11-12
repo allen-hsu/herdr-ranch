@@ -1,106 +1,277 @@
 # herdr-ranch
 
-A workspace for running many coding agents (Claude Code, Codex) across projects in the
-[Herdr](https://herdr.dev) desktop app: an agent board, a PR panel that hands work to agents,
-an agent inspector (health / config / trace / cost), and an account usage bar.
+A set of mods, one layout and helper scripts for the [Herdr](https://herdr.dev) desktop app that turn it into a
+workspace for running many coding agents (Claude Code, Codex, and others) across several projects. It adds a
+sidebar organised by folder and status, a command bar, an agent inspector, a pull-request panel, a board, agent
+teams, account switching and usage meters.
 
-One layout (Focus): the sidebar (folders → spaces → agents, or agents by status), the active tab, and the right
-panel (Files · Changes · Git · PRs · Inspector). **Board** (top right, or ⌃⌘B) opens every space as a card in
-Todo / In progress / In review / Done over the window — drag cards between columns (kept), drop on Pinned, click
-to go there; Esc or × closes it without touching anything underneath.
+It is for people who already use Herdr with `hc` (herdr-core) and want one window in which they can see which
+agent needs them, what each one is doing and what it costs.
 
-Bottom bar: worktree resource manager pill, then Claude / Codex / Grok / Cursor plan usage with reset times.
+> Status: a personal setup that is being opened up. It is tested on macOS only, and several mods are edited
+> copies of mods that ship with Herdr (see [Credits and licenses](#credits-and-licenses)).
 
-## Install
+<!-- TODO screenshot: docs/img/overview.png (the whole window: sidebar, terminals, right panel, status bar) -->
+
+## Feature tour
+
+### Sidebar
+
+<!-- TODO screenshot: docs/img/sidebar.png -->
+
+- **Folders, spaces, agents.** Spaces are grouped into folders (drag a space onto a folder, or give the folder
+  path rules so it collects matching spaces). Worktree spaces sit under their checkout. Each space lists its
+  agents with a status mark, context bar and the time since its state changed. Spaces in no folder are listed
+  under **Recent**. (`space-folders`)
+- **Status filter.** All / Working / Needs you / Done in the header shows the same tree with only the agents
+  in that state.
+- **Needs you / Finished / Pinned.** With no filter on, pinned agents, agents waiting for you and agents that
+  finished while you were elsewhere are repeated in sections at the top.
+- **12-hour fold.** Agents that finished or went idle more than 12 hours ago fold into one line per space.
+- **Background-work indicator.** Under a Claude Code agent: the `hc` sub-agents it started and its running
+  background subagents and background shell commands. (`lib/agentrows.js`, `lib/subs.py`)
+- **Top and bottom.** A brand row and a "Search or run a command" row at the top; at the bottom "New agent",
+  then buttons for Board, Team Map, Accounts, Add machine and Settings. (`sidebar-foot`)
+- Per-space PR badge and uncommitted-change count; hover a repo row for New worktree / Clean up / New team.
+
+### Command bar (⌘K)
+
+<!-- TODO screenshot: docs/img/command-bar.png -->
+
+One box that filters agents (agents that need you first), folders, spaces, actions and views; the right side
+explains the highlighted row. (`command-bar`)
+
+- **Go to** an agent or a space.
+- **Actions:** New agent, New team, New worktree, Add machine, Accounts, New space, New terminal tab, Split
+  right, Toggle sidebar, Toggle details panel, and "Compact this agent's context" for a focused Claude agent.
+- **Views:** Board, Team Map, the four Inspector tabs, Changes, Git graph, Pull requests, Files, Resource
+  Manager, Accounts, Settings, Keybinds, Herdr's own command palette.
+- **New agent flow:** pick a folder (or "This space"), pick one of the agents Herdr reports as installed (or a
+  plain terminal); whatever you typed becomes its first message. Backspace on an empty box goes back a step.
+
+### Right panel
+
+Five icon tabs (`stack-tabs`) in Herdr's own panel:
+
+<!-- TODO screenshot: docs/img/panel-inspector.png -->
+
+- **Files** (`files-plus`): a lazy file browser for the focused pane's folder with read-only previews, and
+  search by file name or inside files (the latter needs `rg`).
+- **Inspector** (`agent-inspector`), for the focused Claude Code or Codex agent:
+  - *Overview*: what it is doing now, what needs you, how long the context will last, cache and session cost.
+  - *Trace*: per turn, a summary, time split and a waterfall of LLM calls, tools and hooks, with per-call detail.
+  - *Capabilities*: skills, MCP servers and tools: what it could use, what it used, what each costs in context.
+  - *Config*: model and mode, memory files, hooks by name with their health.
+- **Changes** (`changes-plus`): uncommitted changes with coloured diff rows.
+- **Pull requests** (`pr-panel`, `pr-diff`): tabs Mine / To review / Space / Issues, PRs grouped by whose move
+  it is. Buttons start an agent in a worktree (Fix CI, Fix comments, AI review, Ask Claude), show the diff, or
+  open GitHub; optional "request review" buttons run a command you configure.
+- **Git graph** (`git-graph`): commit graph with a branch picker, checkout with a stash prompt, compare two
+  branches, PR badges with CI state, and fetch / pull / push and other git actions behind a confirmation.
+
+### Full pages
+
+<!-- TODO screenshot: docs/img/board.png -->
+<!-- TODO screenshot: docs/img/team-map.png -->
+
+- **Board** (⌃⌘B, `space-board`). *By space*: every space as a card in Todo / In progress / In review / Done;
+  placed automatically from agent state and open PRs until you drag it; cards can be pinned. *By agent*: one
+  card per agent in Needs you / Working / Finished / Idle.
+- **Team Map** (⌃⌘T, `agent-team`): a sequence diagram of the focused agent's team: one column per teammate
+  (agents it started with `hc run`, Claude subagents, sessions it messaged) with a status card, and each
+  message as an arrow.
+
+### Agent teams
+
+- **Templates** (`templates/`): role prompts for `hc run`: implementer, reviewer and researcher for Claude,
+  Codex, Grok, Cursor and Gemini (not every combination). Installed into `~/.config/herdr-core/templates`.
+- **Playbooks** (`teams/`): instructions for a lead agent in four patterns: Maker / Checker, Leader / Workers,
+  Arena, Research → Build.
+- **Launcher** (⌃⌘N, `team-launch`): type the task and press Enter. It starts a lead Claude Code in auto mode
+  with the playbook; only its `hc` calls are pre-approved. The lead makes `team/…` worktrees and starts the
+  members. "More options…" shows pattern, repo and who plays each role (defaults from `agent-team.json`).
+
+### Accounts
+
+<!-- TODO screenshot: docs/img/accounts.png -->
+
+More than one Claude Code or Codex login (`accounts`, `lib/accounts.py`). The Accounts dialog adds an account,
+picks the one new agents start on, signs in again or removes one. An added account is a folder used as
+`CLAUDE_CONFIG_DIR` / `CODEX_HOME` whose contents, apart from the login, are symlinks to `~/.claude` /
+`~/.codex`, so settings and conversations are shared. After a switch, idle or finished agents can be restarted
+on the new account and their conversation resumed (`claude --resume` / `codex resume`); working agents are
+left alone.
+
+### Status bar
+
+- **Usage meters** (`usage-bar`): plan usage and reset times for Claude, Codex and Cursor for the active
+  account. A Grok slot exists but has no data source.
+- **Worktrees pill** (`worktrees`): worktree count, disk used and how many can be cleaned. It opens the
+  **Resource Manager**: CPU and memory per repo, worktree and terminal, disk use, and a guarded clean-up list.
+
+### Notifications
+
+`agent-toast` replaces the toast for agent events: which agent, Finished or Needs you, space, branch and tab.
+When Herdr is not the front app it posts a macOS notification through `Herdr Notify.app` (click focuses the
+agent), falling back to `osascript`. Sounds are set in `agent-toast.json`.
+
+### Worktrees
+
+Dialogs for New worktree (from a base branch, an existing branch or a PR), Delete (showing what would be lost)
+and Clean up. New worktrees go to `~/.herdr/worktrees/<repo>/<branch>`; files listed in `.worktreeinclude` are
+copied and `orca.yaml` `worktree.sharedDirectories` are linked.
+
+A one-line index of every mod is in [docs/MODS.md](docs/MODS.md).
+
+## Requirements
+
+- macOS (the only platform this is tested on; keychain access, notifications and sounds are macOS-specific).
+- The Herdr app, started at least once so `~/.config/herdr-app` exists, with `herdr-app` and herdr-core's
+  `hc` on your `PATH`.
+- `git`, `python3`, `rsync` (the installer refuses to run without them).
+- Optional: `gh` signed in (PR panel, PR badges, worktree from a PR), `rg` (search inside files), `swiftc`
+  from the Xcode command line tools (Herdr Notify.app), Node.js (tests), and the agent CLIs you use: `claude`,
+  `codex`, `grok`, `cursor-agent`, `gemini`.
+
+## Install, update, uninstall
 
 ```sh
-git clone git@github.com:allen-hsu/herdr-ranch.git ~/Documents/personal/herdr-ranch
-cd ~/Documents/personal/herdr-ranch
-./install.sh --dry-run      # what it would change
-./install.sh                # install / update (re-run after every pull)
-./install.sh --statusline   # also wire the Claude Code status-line snapshot (context %, cost)
+git clone <this repository> herdr-ranch
+cd herdr-ranch
+./install.sh --dry-run      # show what would change
+./install.sh                # install, or update after a pull
+./install.sh --statusline   # also add the snapshot hook to your Claude Code status-line script
 ```
 
-The installer builds every mod in `mods/` (adding the `lib/` files it lists), copies
-`layouts/` into `~/.config/herdr-app`, fetches any pinned mods in `vendor.json`, puts integration scripts in `~/.config/herdr-app/ranch/`,
-merges `config.example/keys.json` into your `keys.json` (your existing keys always win), and runs
-`herdr-app check` on every mod. New mod folders are moved in atomically so Herdr never auto-docks
-them. Edit here, then re-run `./install.sh`; don't edit the copies in `~/.config/herdr-app`.
+Then switch Herdr to the **focus** layout. Edit files in this repo and re-run the installer; do not edit the
+installed copies.
 
-Personal config stays in `~/.config/herdr-app` and is never committed — start from `config.example/`:
-- `pr-panel.json` — review-request buttons on PR cards (pluggable `command` requesters)
-- `slack-review.json` — channel / bot ids for `integrations/requesters/slack-post.py`
-- `agent-toast.json` — alert sounds for done / needs-you (macOS sound names like Glass, or file paths); set them and turn off Herdr's own alert sound (Settings > Alerts) so each alert plays once
+What `install.sh` writes (`$APP` is `~/.config/herdr-app`, or `$HERDR_APP_HOME`):
 
-## What's in it
-
-| Mod | What it does |
+| Where | What |
 |---|---|
-| `space-board` | The Board overlay: spaces as cards in Todo / In progress / In review / Done; drag between columns (shared board.columns, ↺ auto to undo), Pinned row, search; auto placement from agents (working / needs you) and open PRs. |
-| `agent-board` | (Not in the layout any more.) Kanban of all agents. Each card: project · branch, your last prompt, what it is doing *now* (tool call / question / reply, from transcript tails), context bar, cost. Space filter via `agent-board-picker` (All / Current / folders / spaces). Click → Focus. |
-| `agent-inspector` | For the focused agent: **Skills** (which skills really loaded, by the model or by your /command, when, how many tokens; skills you named that never loaded; per-turn ⚡ chips in Trace), **MCP** (every server: connected / needs sign-in / failed, tools available · loaded · called, context cost), **Health** (hook errors and timeouts, tool errors, permission blocks incl. auto-mode classifier, MCP failures, compactions, cache drops), **Config** (memory/rules files, skills listed vs loaded, hooks that ran, MCP servers, mode, model), **Trace** (per turn: thinking, tool calls with duration / size / who approved), **Cost** (context added per tool and turn, subagents). Claude Code and Codex. |
-| `pr-panel` + `pr-diff` | Mine / To review / Space / Issues. PRs grouped by whose move it is. Buttons start an agent in a worktree: Fix CI, Fix comments, AI review, Ask Claude (with the diff beside it), Diff, plus configurable requesters (e.g. Slack). Fork PRs are never checked out. |
-| `usage-bar` | Plan usage: Claude (OAuth usage API), Codex (usage API, falls back to local logs), Cursor (usage summary), Grok slot. |
-| `agents-ctx` | Herdr's agent list (cloned) + context badge, team chip, background subagents. |
-| `tabs-plus` | Herdr's tab bar (cloned): a tab shows its agent's name, as the sidebar does, unless you renamed it. |
-| `changes-plus` | Herdr's shipped Changes panel (0.1.14) with GitHub-like colored diffs. A frozen clone: re-clone and re-apply `diffRow` when Herdr updates `changes`. |
-| `agent-team` | **Team map** window (⌃⌘T, or the hover button on an agent in the sidebar): a sequence diagram of the agent's team — one column per teammate (Herdr agents started with `hc run`: Claude Code / Codex / Grok / Cursor / Gemini; Claude subagents; sessions it messaged) with a live status card, each message an arrow, starts dashed, completions marked. |
-| Team runs | **⌃⌘N** (or a repo row's team button in the sidebar, or the Team map's **New team…**): one line — type the task, Enter. The repo is where you are, Maker / Checker is the default, roles read as one line ("Claude builds → Codex reviews"); **More options…** opens every field: pick Maker/Checker, Leader/Workers, Arena or Research → Build, write the task, choose the repo and who plays each role (defaults from `agent-team.json`: implementer Claude → Codex → Grok → Cursor, reviewer Codex → Claude → Grok — never the maker's vendor first, researcher Gemini → Grok → Claude). Starts a lead Claude Code (auto mode; only its `hc run/send/wait/read/get/ls/templates/kill/interrupt` calls are pre-approved, git and the rest go through the auto-mode classifier) with the pattern's playbook (`teams/`); it makes `team/…` worktrees and starts members from the role templates (`templates/` → `~/.config/herdr-core/templates`, usable by any agent: `hc run reviewer-codex "…"`). Members report with `hc send`; nothing is pushed or merged without asking. |
-| `agent-toast` | Replaces Herdr's notification look (layout root `"toast"`). Agent toasts say which agent: Finished / Needs you, its session name, space · branch · tab, what you last asked, and its last reply or the question / tool it is waiting on. Other notifications look as before. When Herdr isn't the front app it posts a macOS notification instead through `Herdr Notify.app` (built from `integrations/notifier` by install.sh: Herdr's icon, click jumps to the agent; osascript fallback). |
-| `layout-switch`, `stack-tabs`, `title-strip` | Top-right layout switcher + panel toggle; tab strip for stack nodes (`sync_panels` registers its tabs in Herdr's per-space panel memory); plain title strip. |
+| `$APP/mods/<name>/` | every folder in `mods/`, plus the `lib/` files its `lib.json` lists (replaced on each run) |
+| `$APP/layouts/focus.json` | the layout |
+| `$APP/ranch/icons/`, `$APP/ranch/requesters/`, `$APP/ranch/teams/` | Lucide icons, the Slack requester, team playbooks |
+| `~/.config/herdr-core/templates/*.md` | the role templates |
+| `~/.claude/herdr-status-snapshot.py` | status-line snapshot helper (only used once your status line calls it) |
+| `~/Applications/Herdr Notify.app` | built with `swiftc`, ad-hoc signed, using the icon of the installed Herdr.app; skipped without `swiftc` |
+| `$APP/keys.json` | keys from `config.example/keys.json` are merged in; a key you already bound is kept and reported |
+| your status-line script | only with `--statusline`: one line added after `input=$(cat)`, backup saved as `<script>.bak-ranch` |
+| `~/.cache/herdr-ranch/` | checkouts of mods pinned in `vendor.json` (none at present) |
 
-The right panel *is* Herdr's own `panel` / `panel-body`, so the tab bar's Files and Changes buttons open
-tabs in the same panel instead of a second column.
+It never writes your personal config. Copy what you need from `config.example/` into `$APP`:
+`pr-panel.json` (review-request buttons), `slack-review.json` (channel and bot for the Slack requester),
+`agent-toast.json` (sounds), `agent-team.json` (which agent plays which role).
 
-| `worktrees` | Git worktrees, Orca-style. Status-bar pill (count · disk · cleanable) → **Resource Manager**: CPU / memory per repo → worktree → terminal with sparklines, disk use, and a clean-up list (select all cleanable, guarded delete; 🗑 pre-selects everything safe). Dialogs for New worktree (base / existing branch / PR; copies `.worktreeinclude`, links orca.yaml `worktree.sharedDirectories`), Delete, Clean up — opened by any mod via `openOverlay({ mod: "worktrees", props: { wt, root, ... } })`. |
+Files the mods create while running: `$APP/ranch/accounts.json` and `$APP/ranch/accounts/` (accounts),
+`~/.config/herdr-space-folders.json` (folders), `~/.cache/herdr-claude-status/` (usage and status-line caches),
+`~/.herdr/worktrees/` (worktrees).
 
-| `space-folders` | Sidebar: spaces grouped into folders; per space an agent status dot (bold when finished unseen), dirty count and PR badge; hover a repo row for New worktree / Clean up, a worktree row for Delete (opens the `worktrees` dialogs). |
-| `git-graph` | Commit graph: branch picker (any local/remote branch), checkout with a stash prompt, compare two branches (head ^base, ahead/behind, swap), PR badges with CI state (click reveals the PR), GitHub-like diff colors; the Uncommitted row opens Changes. Tests: `npm test`. |
+There is no uninstall script. To remove everything: switch to another layout, delete the paths in the table
+above (for `mods/`, the folders named like those in this repo's `mods/`), remove the merged keys from
+`keys.json`, and restore `<script>.bak-ranch` if you used `--statusline`. Mods removed from this repo are not
+removed from `$APP/mods` by an update; delete them by hand.
 
-`space-folders` and `git-graph` started from open-source mods and are now our own code; origins and
-licenses in `licenses/`.
+### Key bindings added
 
-## Data and credentials
+| Key | Does |
+|---|---|
+| ⌘K | command bar |
+| ⌃⌘B | Board page |
+| ⌃⌘T | Team Map page |
+| ⌃⌘N | New team |
+| ⌃⌘G | show or hide the right panel |
+| ⌥↓ / ⌥↑, ⌃⇧PageDown / ⌃⇧PageUp | next / previous space (focus layout only) |
 
-Everything reads local files except where noted. Tokens are read from where each CLI keeps them and
-sent only to that vendor; caches under `~/.cache/herdr-claude-status/` hold numbers and redacted
-snippets, owner-only (0700/0600).
+## Developing a mod
 
-| Feature | Reads | Sends to |
+Herdr's mod API is described in `~/.config/herdr-app/AGENTS.md`.
+
+```sh
+scripts/dev.sh <mod>     # build one mod with its lib files, install it, run `herdr-app check` on it
+npm test                 # git-graph unit tests (tests/git-graph)
+```
+
+- One concern per mod. Mods cannot import each other; they talk through overlay props and `shared` keys.
+- Code used by two mods goes in `lib/`. A mod lists the lib files it needs in `lib.json`, and the installer
+  copies them into the installed mod. A mod's Python that imports a `lib/` module must list it too.
+- `herdr-app check <mod folder>` must pass (both scripts run it).
+- No personal ids or paths in code; they belong in `~/.config/herdr-app/*.json`, with an example in
+  `config.example/`.
+
+## Privacy and safety
+
+The mods read local files and run local programs. They do not collect or upload your transcripts. They do make
+network requests, all listed here.
+
+What is read on your machine:
+
+- Agent transcripts and session files: `~/.claude/projects`, `~/.claude/sessions`, `~/.codex/sessions`, and
+  the same under added account folders (inspector, sidebar, toasts, Team Map). Text shown from them is
+  redacted for secret-looking strings.
+- `~/.claude` and `~/.codex` config (settings, hooks, MCP, skills) for the Inspector's Config and Capabilities.
+- Logins, for the usage meters only: the keychain items `Claude Code-credentials` (and
+  `Claude Code-credentials-<hash>` for added accounts) and `cursor-access-token`, and the Codex token in
+  `auth.json`. The Accounts dialog reads only the e-mail and plan, and stores no credential.
+- The keychain item `herdr-slack-review` / `user-token`, only if you set up the Slack requester.
+- Git repositories behind your spaces, through `git`; process and disk figures through `ps`, `du`, `lsof`.
+
+Every network call in the code:
+
+| Where | Request | Sends |
 |---|---|---|
-| Agent board / inspector | `~/.claude/projects`, `~/.claude/sessions`, `~/.codex/sessions` | nothing |
-| Context % / cost | status-line snapshot written by `herdr-status-snapshot.py` | nothing |
-| Claude usage | keychain `Claude Code-credentials` | api.anthropic.com |
-| Codex usage | `~/.codex/auth.json` | chatgpt.com |
-| Cursor usage | keychain `cursor-access-token` | cursor.com |
-| PR panel | your `gh` login | api.github.com |
-| Slack requester | keychain `herdr-slack-review` / `user-token` | slack.com |
+| `mods/usage-bar/usage.py:44` | GET `api.anthropic.com/api/oauth/usage` | Claude Code's OAuth token |
+| `mods/usage-bar/usage.py:176` | GET `chatgpt.com/backend-api/wham/usage` | the Codex access token and account id |
+| `mods/usage-bar/usage.py:210` | GET `cursor.com/api/usage-summary` | cursor-agent's token as a session cookie |
+| `mods/git-graph/update.js:41` | GET `api.github.com/repos/rabeeh-ta/herdr-git-graph/releases/latest`, at most daily | nothing about you; can be turned off in its update window |
+| `integrations/requesters/slack-post.py:40-48` | `slack.com/api/…`, only when you click a configured requester | your Slack user token and the message |
+| `lib/prs.js:35`, `mods/pr-panel/github.js:23,35`, `mods/pr-diff/main.js:23`, `mods/worktrees/wtviews.js:61` | `gh api graphql`, `gh pr diff`, `gh pr view` | whatever your `gh` sign-in sends to GitHub |
+| `mods/git-graph/repos.js:73`, `mods/git-graph/git.js:341-356`, `mods/pr-panel/launch.js:34,114`, `mods/worktrees/wt.js:106` | `git fetch` / `pull` / `push` to your own remotes | your git credentials, to your remotes |
 
-## Layout of this repo
+The three usage endpoints are the ones each vendor's own client uses; they are not documented public APIs and
+may change or be disallowed by a vendor's terms. Tokens are sent only to their own vendor and are not written
+to disk; cached results (percentages and reset times) are stored in `~/.cache/herdr-claude-status/`.
 
-```
-mods/              our mods (one folder per mod, copied into ~/.config/herdr-app/mods)
-lib/               code shared by several mods: agentrows.js (agent rows + their data), prs.js (GitHub PR badges), folders.js (space-folders
-                   state), codexlog.py (Codex sessions), live.py (what each agent is doing now). A mod lists what it needs in lib.json; the
-                   installer copies those files into the installed mod (Herdr mods can't import across mods)
-layouts/           overview.json, focus.json
-vendor.json        third-party mods installed unchanged at a pinned commit (none right now)
-integrations/      notifier (Herdr Notify.app, Swift); claude-statusline snapshot helper; review requesters (Slack) + Slack app manifest
-config.example/    pr-panel.json, slack-review.json, keys.json (merged by install.sh)
-templates/         hc role templates (implementer / reviewer / researcher × agent)
-teams/             lead playbooks for the four team patterns
-scripts/dev.sh     install one mod now while developing: scripts/dev.sh <name>
-tests/             node tests (npm test)
-licenses/          origins and licenses of code that started elsewhere
-docs/              security reviews, notes
-```
+Things that act on your behalf: PR buttons and the team launcher start agents (the team lead in Claude Code's
+auto mode); the Accounts switch can close and restart idle agents; worktree clean-up deletes folders after a
+confirmation; git-graph can push, delete branches and reset after a confirmation. PR and issue text is never
+pasted into a prompt: the agent is given the repo, number and URL and told to treat what it reads as data.
 
-Rules that keep it maintainable:
-- One concern per mod; mods talk through overlay props and `shared` keys, never by importing each other.
-  Contracts: `worktrees` dialogs (`{ wt, root, path?, on? }`), `pr-panel.reveal` / `pr-panel.listening`.
-- Code needed by two mods goes in `lib/`, never copied by hand.
-- A feature that can stand alone becomes its own mod rather than growing an existing one.
-- UI labels in English; no personal ids or paths in code (they go in `~/.config/herdr-app/*.json`).
+## Limitations and known gaps
 
-Known gaps: conversation full-text search, one prompt → several agents, Code layout, multiple
-Claude accounts; Grok usage.
+- Tested on macOS only. Keychain reads, notifications and sounds have no other implementation.
+- Codex does not log hook runs, tool counts or schema sizes, so the Inspector shows configured hooks without
+  counts or errors and a plainer trace for Codex.
+- Context % and cost for Claude agents need the status-line snapshot hook (`--statusline`).
+- Switching account restarts agents (idle or finished ones only) rather than moving a live session.
+- Usage: no Grok data; Claude, Codex and Cursor depend on undocumented endpoints.
+- Several mods are frozen copies of Herdr's shipped mods and do not pick up Herdr's updates.
+- `git-graph` still checks the upstream project's releases, although the copy here has diverged.
+- No uninstall script; no full-text search over conversations.
+- Tests cover only `git-graph`.
+
+## Credits and licenses
+
+This repository has no license of its own yet. Code that started elsewhere:
+
+| Here | Origin | License |
+|---|---|---|
+| `mods/git-graph`, `tests/git-graph`, `docs/git-graph-top-bar.md` | [rabeeh-ta/herdr-git-graph](https://github.com/rabeeh-ta/herdr-git-graph) v0.3.3, since modified | MIT (`licenses/git-graph-MIT.txt`) |
+| `mods/space-folders` | [jankeesvw/herdr-space-folders](https://github.com/jankeesvw/herdr-space-folders) @63a78b2, since modified; itself a clone of Herdr's `spaces` mod 0.1.10 | MIT or Apache-2.0 for the upstream author's part (`licenses/space-folders-*.txt`); the Herdr part: see below |
+| `lib/folders.js` | folder matching ported from herdr-space-folders | MIT |
+| `lib/icons/*.svg`, `lib/team.svg`, `lib/more.svg`, `lib/folder-open.svg`, most of `mods/git-graph/icons` | [Lucide](https://lucide.dev) | ISC (`licenses/lucide-ISC.txt`) |
+| `mods/agents-ctx` | clone of Herdr's `agents` mod 0.1.14, modified | not established |
+| `mods/changes-plus` | clone of Herdr's `changes` mod 0.1.14, modified | not established |
+| `mods/tabs-plus` | clone of Herdr's `tabs` mod, modified | not established |
+| `mods/files-plus` | clone of Herdr's `files` mod, modified | not established |
+
+**Unclear:** the four clones of Herdr's shipped mods, and the Herdr-derived part of `space-folders`, are
+Herdr's code. No license for them is included in this repository, and their redistribution terms have not been
+checked. `Herdr Notify.app` also uses the Herdr name and, at build time, the installed app's icon.
+
+Ideas, not code: the usage line, resource manager, accounts and worktree conventions follow
+Orca; the command bar follows Arc and Raycast; git-graph's multi-repository
+view follows [manygit](https://github.com/rabeeh-ta/manygit).
+
+Herdr is a product of its own authors; this project is not affiliated with it.
