@@ -5,8 +5,8 @@
 //   Config       - what shapes it: model and mode, memory files, hooks (by name, with their health)
 // Data: ./inspect.py (local transcripts only).
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
-import { exec, appHome, focused, agents, theme, run } from "herdr";
+import { v_flex, h_flex, TextView } from "gpui-base";
+import { exec, appHome, focused, agents, theme, run, readTextFile, home, settings } from "herdr";
 import { TS, SPACE, C, tint, icon, statusMark } from "./ui.js";
 import { agentName } from "./agentname.js";
 
@@ -34,6 +34,8 @@ export default class AgentInspector extends View {
     this.open = new Set([0]); // expanded turns in Trace (the latest starts open)
     this.openSpan = new Set(); // expanded waterfall rows in Trace
     this.openSrv = new Set(); // expanded servers in MCP
+    this.openHook = new Set(); // expanded hooks in Config
+    this.openFile = null; // memory file shown inline in Config: { path, text }
     this.load(cx);
     cx.timer.every(5000, (cx) => this.load(cx));
     // Follow focus quickly: a string compare every 250 ms, a redraw only when the focused agent changes.
@@ -113,6 +115,12 @@ export default class AgentInspector extends View {
   needs(t, d) {
     return [...this.liveIssues(t, d).filter((i) => i.level !== "info" && (i.kind === "context" || i.kind === "cache")),
       ...(d.issues ?? []).filter((i) => i.level === "error" || (i.level === "warn" && i.kind === "hook"))];
+  }
+  // A small text button with an icon (used inside expanded rows).
+  linkBtn(t, id, ic, label, act) {
+    return h_flex().id(id).px(6).py(2).gap(4).items_center().rounded(5).cursor_pointer().text_color(t.muted)
+      .hover((e) => e.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => { cx.stop_propagation(); act(); })
+      .child(icon(ic, 12, t.dim)).child(label);
   }
   lvlColor(t, l) { const c = C(t).status; return l === "error" ? c.blocked : l === "warn" ? c.working : t.dim; }
 
@@ -275,18 +283,39 @@ export default class AgentInspector extends View {
     const out = [];
     // Things that rarely change: one line each, no tables.
     out.push(this.h(t, "Session"));
-    out.push(this.note(t, [d.model_name || d.model, c.effort ? `effort ${c.effort}` : null, `${c.permission_mode || "default"} mode`, c.output_style ? `${c.output_style} style` : null,
+    out.push(this.note(t, [d.model_name || d.model, c.effort ? `effort ${c.effort}` : null, d.agent === "codex" ? c.permission_mode : `${c.permission_mode || "default"} mode`, c.output_style ? `${c.output_style} style` : null,
       c.cli_version ? `${d.agent === "codex" ? "codex" : "claude"} ${c.cli_version}` : null].filter(Boolean).join(" · ")));
     out.push(this.note(t, `System prompt ~${k(c.system_prompt_tok)} · context at the first reply ${k(d.first_ctx)}${c.agent_types ? ` · ${c.agent_types} subagent types` : ""}`));
     out.push(this.h(t, "Memory & rules", c.memory?.length ? `~${k(c.memory_tok)} tokens` : null));
     if (!c.memory?.length) out.push(this.note(t, "No CLAUDE.md / AGENTS.md / rules loaded."));
-    for (const [i, m] of (c.memory ?? []).entries()) out.push(this.row(t, `c-m-${i}`, icon("file", 12, t.dim), m.path, `~${k(m.tokens)} · ${m.how}`));
+    for (const [i, m] of (c.memory ?? []).entries()) {
+      const open = this.openFile?.path === m.path;
+      const full = m.path.replace(/^~(?=\/|$)/, home());
+      out.push(h_flex().id(`c-m-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta).rounded(6).cursor_pointer()
+        .hover((e) => e.bg(t.hover)).tooltip(open ? "Hide" : "Show this file here")
+        .on_click((_e, cx) => {
+          if (open) { this.openFile = null; cx.notify(); return; }
+          this.openFile = { path: m.path, text: null }; cx.notify();
+          cx.spawn(async (cx) => { const text = await readTextFile(full).catch(() => null); if (this.openFile?.path === m.path) { this.openFile.text = text ?? "(can't read this file)"; cx.notify(); } });
+        })
+        .child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(m.path))
+        .child(div().flex_none().text_color(t.dim).child(`~${k(m.tokens)} · ${m.how}`)));
+      if (open) out.push(v_flex().mx(SPACE.panel).mb(6).rounded(8).bg(t.surface)
+        .child(h_flex().px(10).pt(8).gap(6).items_center().text_size(TS.small)
+          .child(div().flex_1())
+          .child(this.linkBtn(t, `c-m-ed-${i}`, "external-link", "Open", () => exec("open", [full])))
+          .child(this.linkBtn(t, `c-m-rv-${i}`, "folder", "Show in Finder", () => exec("open", ["-R", full]))))
+        .child(v_flex().id(`c-m-tx-${i}`).max_h(360).overflow_y_scrollbar().px(12).pb(10).text_size(TS.body)
+          .child(this.openFile.text == null ? div().text_color(t.dim).child("Reading…") : TextView.markdown(`c-m-md-${i}`, this.openFile.text))));
+    }
     if (d.agent === "codex") { out.push(this.note(t, "Codex sessions don't record hooks or MCP servers in their log.")); return out; }
     // Hooks by what they are, not their command line (the full command is in the tooltip).
     const groups = new Map();
     for (const x of c.hooks ?? []) {
       const key = `${x.label}|${x.src}`;
       const g = groups.get(key) ?? { label: x.label, src: x.src, events: new Set(), runs: 0, errors: 0, timeouts: 0, total: 0, full: x.full };
+      g.errs = [...(g.errs ?? []), ...(x.errs ?? [])];
       g.events.add(x.event); g.runs += x.runs; g.errors += x.errors; g.timeouts += x.timeouts; g.total += (x.avg_ms ?? 0) * x.runs;
       groups.set(key, g);
     }
@@ -295,8 +324,10 @@ export default class AgentInspector extends View {
     if (!hooks.length) out.push(this.note(t, "No hooks ran in this session."));
     for (const [i, g] of hooks.entries()) {
       const bad = g.errors + g.timeouts;
-      out.push(h_flex().id(`c-h-${i}`).px(SPACE.panel).py(5).gap(8).items_center().text_size(TS.meta).rounded(6).hover((e) => e.bg(t.hover))
-        .tooltip(`${[...g.events].join(", ")}\n${g.full ?? ""}`)
+      const key = `${g.label}|${g.src}`, open = this.openHook.has(key);
+      out.push(h_flex().id(`c-h-${i}`).px(SPACE.panel).py(5).gap(8).items_center().text_size(TS.meta).rounded(6).cursor_pointer().hover((e) => e.bg(t.hover))
+        .on_click((_e, cx) => { open ? this.openHook.delete(key) : this.openHook.add(key); cx.notify(); })
+        .child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim))
         .child(div().size(7).rounded(4).flex_none().bg(bad ? st.blocked : C(t).ok))
         .child(v_flex().flex_1().min_w(0).gap(1)
           .child(h_flex().gap(6).items_center().min_w(0)
@@ -304,6 +335,19 @@ export default class AgentInspector extends View {
             .child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(TS.tiny).text_color(t.dim).child(g.src)))
           .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child([...g.events].join(" · "))))
         .child(div().flex_none().text_color(bad ? st.blocked : t.dim).child(`${g.runs}× · ${ms(Math.round(g.total / Math.max(1, g.runs)))}${g.errors ? ` · ${g.errors} err` : ""}${g.timeouts ? ` · ${g.timeouts} timeout` : ""}`)));
+      if (open) {
+        const box = v_flex().mx(SPACE.panel).mb(6).p(10).gap(8).rounded(8).bg(t.surface).text_size(TS.small);
+        const label = (s) => div().text_size(11).font_semibold().text_color(t.dim).child(s);
+        const errs = (g.errs ?? []).sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, 3);
+        if (errs.length) box.child(v_flex().gap(6).child(label(errs.length > 1 ? `Last ${errs.length} failures` : "Last failure"))
+          .children(errs.map((e) => v_flex().gap(2)
+            .child(div().text_color(st.blocked).child(`${e.timeout ? "timed out" : `exit ${e.exit ?? "?"}`}${e.at ? ` · ${clock(e.at)}` : ""}`))
+            .child(div().text_color(t.foreground).child(e.msg || "(no output)")))));
+        box.child(v_flex().gap(2).child(label("Runs on")).child(div().text_color(t.muted).child([...g.events].join(" · "))));
+        box.child(v_flex().gap(2).child(label(g.src === "settings" ? "Command (from settings.json)" : `Command (plugin: ${g.src})`))
+          .child(div().p(8).rounded(6).bg(t.background).text_color(t.muted).font_family(settings().font_family ?? "monospace").text_size(TS.small).child(g.full ?? "")));
+        out.push(box);
+      }
     }
     return out;
   }

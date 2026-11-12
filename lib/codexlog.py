@@ -129,6 +129,56 @@ def live(path):
     return {"task": task, "tool": tool, "text": text, "ctx": pct, "model": model, "agent": "codex"}
 
 
+def union_len(iv):
+    tot, cur = 0.0, None
+    for a, b in sorted(iv):
+        if cur is None or a > cur[1]:
+            if cur:
+                tot += cur[1] - cur[0]
+            cur = [a, b]
+        else:
+            cur[1] = max(cur[1], b)
+    return tot + (cur[1] - cur[0] if cur else 0)
+
+
+def turn_row(x):
+    """Same shape as Claude's turns in inspect.py: summary, time split and waterfall spans (offsets in seconds)."""
+    t0 = x["at"]
+    steps = x["steps"][-60:]
+    spans = []
+    calls = x.get("calls", [])
+    if t0:
+        llms = [sp for sp in x.get("spans", []) if sp["k"] == "llm"]
+        for j, sp in enumerate(llms):
+            tools = [g["name"] for g in sp["got"] if g["k"] == "tool"]
+            what = " → ".join(filter(None, ["thinking" if any(g["k"] == "thinking" for g in sp["got"]) else "",
+                                            "reply" if any(g["k"] == "text" for g in sp["got"]) else "", ", ".join(tools[:3])]))
+            spans.append({"k": "llm", "name": f"LLM #{j + 1}", "label": what, "s": sp["t0"] - t0, "e": sp["t1"] - t0, "call": j if j < len(calls) else None})
+        for j, st in enumerate(steps):
+            if st.get("t0") and st["k"] == "tool":
+                spans.append({"k": "tool", "name": st["name"], "label": st.get("label") or "", "s": st["t0"] - t0,
+                              "e": (st["t1"] - t0) if st.get("t1") else None, "step": j, "err": bool(st.get("error")), "tok": st.get("tok")})
+    steps = [{k: v for k, v in st.items() if k not in ("t0", "t1")} for st in steps]
+    total = (x["ms"] or 0) / 1000
+    total = max([total] + [sp["e"] for sp in spans if sp["e"] is not None])
+    for sp in spans:
+        if sp["e"] is None:
+            sp["e"], sp["open"] = total, True
+        sp["s"] = max(0.0, round(sp["s"], 3)); sp["e"] = round(max(sp["e"], sp["s"]), 3)
+    spans.sort(key=lambda sp: (sp["s"], sp["k"] != "llm"))
+    llm = [(sp["s"], sp["e"]) for sp in spans if sp["k"] == "llm"]
+    busy = union_len(llm + [(sp["s"], sp["e"]) for sp in spans if sp["k"] != "llm"])
+    model_s = union_len(llm)
+    inn = sum(c["new"] for c in calls); cached = sum(c["cache_read"] for c in calls)
+    return {"at": t0, "ms": int(total * 1000) if t0 else x["ms"], "prompt": x["prompt"], "ctx_delta": (x["ctx1"] or 0) - (x["ctx0"] or x["ctx1"] or 0),
+            "out": x["out"], "hooks": 0, "steps": steps, "calls": calls[-30:], "spans": spans[:120],
+            "split": {"model": round(model_s, 2), "tools": round(busy - model_s, 2), "you": 0, "other": round(max(0.0, total - busy), 2)} if spans else None,
+            "sum": {"calls": len(calls), "tools": sum(1 for s in steps if s["k"] == "tool"), "in_new": inn, "in_cached": cached,
+                    "hit": round(cached / (inn + cached) * 100, 1) if inn + cached else None, "out": sum(c["out"] for c in calls),
+                    "think": sum(c["think"] for c in calls), "cost": None, "errors": sum(1 for s in steps if s.get("error")), "misses": 0},
+            "skills": [], "missed": []}
+
+
 def parse(path):
     meta, turn_ctx = {}, {}
     turns, cur = [], None
@@ -138,6 +188,25 @@ def parse(path):
     out_tok = cached = 0
     agents_md, skills_n, skills_tok, base_tok = [], 0, 0, 0
     last_at = None
+
+    last_in = last_out = None  # last input to the model (prompt, tool output); last model output
+
+    def close_llm(c):
+        """The model's stretch since its last input: one LLM span (from the input to its last output)."""
+        if c is None or not c.get("llm") or c["llm"][1] is None:
+            return
+        c["spans"].append({"k": "llm", "t0": c["llm"][0], "t1": c["llm"][1], "got": c["got"][:6]})
+        c["llm"], c["got"] = None, []
+
+    def model_out(c, at, what):
+        nonlocal last_out
+        last_out = at or last_out
+        if c is None or not at:
+            return
+        if c.get("llm") is None:
+            c["llm"] = [last_in or at, None]
+        c["llm"][1] = at
+        c["got"].append(what)
 
     def issue(level, kind, key, text, at):
         i = issues.setdefault(key, {"level": level, "kind": kind, "text": text, "count": 0, "last": None})
@@ -169,23 +238,32 @@ def parse(path):
                 continue
         u = user_prompt(p)
         if u and (cur is None or cur.get("prompt") != red(u, 140) or (at and cur.get("at") and at - cur["at"] > 2)):
-            cur = {"at": at, "prompt": red(u, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": []}
+            close_llm(cur)
+            cur = {"at": at, "prompt": red(u, 140), "ms": None, "ctx0": last_ctx, "ctx1": last_ctx, "out": 0, "hooks": 0, "steps": [],
+                   "spans": [], "calls": [], "llm": [at, None], "got": []}
             turns.append(cur)
+            last_in = at
             continue
         if pt == "task_complete" and cur is not None and cur.get("at") and at:
             cur["ms"] = int((at - cur["at"]) * 1000)
+            close_llm(cur)
+        if pt == "message" and p.get("role") == "assistant":
+            model_out(cur, at, {"k": "text", "chars": len(text_of(p.get("content")))})
         if pt == "turn_aborted":
             issue("warn", "turn", ("aborted",), "A turn was interrupted / aborted", at)
         if pt == "reasoning" and cur is not None:
             cur["steps"].append({"k": "think", "name": "reasoning"})
+            model_out(cur, at, {"k": "thinking", "chars": 0})
         if pt in ("custom_tool_call", "function_call", "local_shell_call"):
             name = p.get("name") or pt
             tl = tools.setdefault(name, {"name": name, "calls": 0, "result_tok": 0, "errors": 0, "ms": 0})
             tl["calls"] += 1
             step = {"k": "tool", "name": name, "label": tool_label(name, p.get("input") or p.get("arguments") or p.get("action")), "at": at}
             pending[p.get("call_id")] = step
+            model_out(cur, at, {"k": "tool", "name": name, "label": step["label"]})
             if cur is not None:
                 cur["steps"].append(step)
+                close_llm(cur)
         if pt in ("custom_tool_call_output", "function_call_output", "local_shell_call_output"):
             o = p.get("output")
             txt = o if isinstance(o, str) else text_of(o) if isinstance(o, list) else json.dumps(o or "", ensure_ascii=False)
@@ -194,11 +272,13 @@ def parse(path):
             name = step["name"] if step else "?"
             tl = tools.setdefault(name, {"name": name, "calls": 0, "result_tok": 0, "errors": 0, "ms": 0})
             tl["result_tok"] += n
+            last_in = at or last_in
             if step:
                 step["tok"] = n
                 if step.get("at") and at:
                     step["ms"] = int((at - step["at"]) * 1000)
                     tl["ms"] += step["ms"]
+                    step["t0"], step["t1"] = step["at"], at
                 step.pop("at", None)
                 big.append((n, name, step.get("label", "")))
             m = re.search(r"(?:exit code|Process exited with code)[:\s]+(\d+)", txt, re.I)
@@ -216,9 +296,26 @@ def parse(path):
             cached = tot.get("cached_input_tokens") or cached
             if cur is not None:
                 cur["ctx1"] = c
-                cur["out"] = (p["info"].get("last_token_usage") or {}).get("output_tokens", 0) + cur["out"]
+                lu = p["info"].get("last_token_usage") or {}
+                cur["out"] = lu.get("output_tokens", 0) + cur["out"]
+                inp, hit = lu.get("input_tokens") or 0, lu.get("cached_input_tokens") or 0
+                cur["calls"].append({"at": at, "ms": None, "model": turn_ctx.get("model"), "effort": turn_ctx.get("effort"), "ttl": None,
+                                     "new": max(0, inp - hit), "cache_write": 0, "cache_read": hit, "hit": round(hit / inp * 100, 1) if inp else None,
+                                     "miss": False, "out": lu.get("output_tokens") or 0, "think": lu.get("reasoning_output_tokens") or 0,
+                                     "sent": [], "unrecorded": 0, "got": [], "cost": None, "total": inp, "comp": None})
+    close_llm(cur)
+    # Right now: a tool still running, the model working (input newer than its last output), or idle.
+    live_steps = [s for s in pending.values() if s.get("at")]
+    if live_steps:
+        st = max(live_steps, key=lambda x: x["at"])
+        doing = {"state": "tool", "name": st["name"], "label": st.get("label") or "", "since": st["at"]}
+    elif last_in and (not last_out or last_in > last_out) and not (turns and turns[-1].get("ms")):
+        doing = {"state": "model", "since": last_in}
+    else:
+        doing = {"state": "idle", "since": last_at}
     for s in pending.values():
-        s.pop("at", None)
+        if s.get("at"):
+            s["t0"] = s.pop("at")
     for tl in tools.values():
         tl["avg_ms"] = tl["ms"] // max(1, tl["calls"])
         del tl["ms"]
@@ -242,8 +339,8 @@ def parse(path):
         "tools": sorted(tools.values(), key=lambda x: -x["result_tok"]),
         "compactions": [],
         "big": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb in big[:8]],
-        "turns": [{"at": x["at"], "ms": x["ms"], "prompt": x["prompt"], "ctx_delta": (x["ctx1"] or 0) - (x["ctx0"] or x["ctx1"] or 0),
-                   "out": x["out"], "hooks": 0, "steps": x["steps"][-60:]} for x in turns[-15:]][::-1],
+        "turns": [turn_row(x) for x in turns[-15:]][::-1],
+        "doing": doing, "price": None, "in_ctx": [{"tok": n, "tool": nm, "label": lb} for n, nm, lb in big[:5]],
         "subagents": [],
         "session": meta.get("id"), "cwd": (meta.get("cwd") or "").replace(HOME, "~"),
     }

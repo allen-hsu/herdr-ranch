@@ -12,13 +12,13 @@ Answers four questions from the transcript:
 Plus cost / context % / window / model from the status-line snapshot. Prints one JSON object.
 Token figures marked approximate are chars/4. Secret-looking strings are redacted.
 """
-import collections, glob, json, os, re, subprocess, sys, tempfile, time
+import collections, glob, hashlib, json, os, pickle, re, subprocess, sys, tempfile, time
 from datetime import datetime
 
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 16
+VERSION = 18
 # $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
 # From the Claude API reference, 2026-11. Unknown models: no cost shown.
 PRICES = {
@@ -255,7 +255,7 @@ class Agg:
 
     def hook(self, a, at):
         key = (a.get("hookEvent"), a.get("hookName"), a.get("command"))
-        h = self.hooks.setdefault(key, {"event": a.get("hookEvent"), "name": a.get("hookName"), "cmd": short_cmd(a.get("command")), "label": hook_label(a.get("command"))[0], "src": hook_label(a.get("command"))[1], "full": red(a.get("command"), 300),
+        h = self.hooks.setdefault(key, {"event": a.get("hookEvent"), "name": a.get("hookName"), "cmd": short_cmd(a.get("command")), "label": hook_label(a.get("command"))[0], "src": hook_label(a.get("command"))[1], "full": red(a.get("command"), 2000),
                                         "runs": 0, "errors": 0, "timeouts": 0, "ms": 0, "max_ms": 0, "injected": 0})
         h["runs"] += 1
         try:
@@ -265,6 +265,10 @@ class Agg:
         h["ms"] += d
         h["max_ms"] = max(h["max_ms"], d)
         t = a.get("type")
+        if t in ("hook_non_blocking_error", "hook_blocking_error", "hook_cancelled"):
+            h.setdefault("errs", []).append({"at": at, "exit": a.get("exitCode"), "timeout": t == "hook_cancelled",
+                                             "msg": red(a.get("stderr") or a.get("stdout") or "", 400)})
+            h["errs"] = h["errs"][-3:]
         if t == "hook_non_blocking_error" or t == "hook_blocking_error":
             h["errors"] += 1
             self.issue("error", "hook", ("hook", key), f"Hook {a.get('hookName')} failed (exit {a.get('exitCode')}): {red(a.get('stderr'), 140)}", at)
@@ -275,7 +279,22 @@ class Agg:
             h["injected"] += 1
 
 
-def parse(path):
+STATE_VARS = ['g', 'turns', 'cur', 'first_ctx', 'last_ctx', 'out_tok', 'cache_read', 'cache_write', 'last_asst_ts', 'cache_ttl', 'pending', 'skill_by_id', 'slash', 'restored', 'big', 'last_in', 'last_any', 'reqs', 'blobs', 'calls', 'id2tool', 'shapes']
+
+
+def parse(path, st=None, offset=0):
+    """Read the transcript from `offset` on, continuing from a saved state `st` (both from the last run), so a
+    growing session costs only its new lines. Returns (data, state, offset). The state is saved before the
+    summary is built, so building it may change things freely."""
+    if st is not None:
+        g, turns, cur, first_ctx, last_ctx, out_tok, cache_read, cache_write, last_asst_ts, cache_ttl, pending, skill_by_id, slash, \
+            restored, big, last_in, last_any, reqs, blobs, calls, id2tool, shapes = (st[k] for k in STATE_VARS)
+        return _parse(path, offset, g, turns, cur, first_ctx, last_ctx, out_tok, cache_read, cache_write, last_asst_ts, cache_ttl, pending,
+                      skill_by_id, slash, restored, big, last_in, last_any, reqs, blobs, calls, id2tool, shapes)
+    return _parse(path, 0, *_fresh())
+
+
+def _fresh():
     g = Agg()
     turns = []
     cur = None
@@ -290,7 +309,20 @@ def parse(path):
     last_in = last_any = None  # last prompt or tool result; last record of any kind
     # Per API call (Claude Code records each request: api-request + api-request-blob; responses carry requestRef).
     reqs, blobs, calls, id2tool, shapes = {}, {}, {}, {}, {}
-    for line in open(path, encoding="utf-8", errors="replace"):
+    return (g, turns, cur, first_ctx, last_ctx, out_tok, cache_read, cache_write, last_asst_ts, cache_ttl, pending, skill_by_id, slash,
+            restored, big, last_in, last_any, reqs, blobs, calls, id2tool, shapes)
+
+
+def _parse(path, offset, g, turns, cur, first_ctx, last_ctx, out_tok, cache_read, cache_write, last_asst_ts, cache_ttl, pending,
+           skill_by_id, slash, restored, big, last_in, last_any, reqs, blobs, calls, id2tool, shapes):
+    fh = open(path, "rb")
+    fh.seek(offset)
+    while True:
+        raw = fh.readline()
+        if not raw or not raw.endswith(b"\n"):  # end, or a line still being written: stop before it
+            break
+        offset += len(raw)
+        line = raw.decode("utf-8", "replace")
         try:
             r = json.loads(line)
         except ValueError:
@@ -565,6 +597,10 @@ def parse(path):
                 pending[b.get("id")] = step
                 if cur is not None:
                     cur["steps"].append(step)
+    fh.close()
+    state = pickle.dumps(dict(zip(STATE_VARS, (g, turns, cur, first_ctx, last_ctx, out_tok, cache_read, cache_write, last_asst_ts, cache_ttl,
+                                               pending, skill_by_id, slash, restored, big, last_in, last_any, reqs, blobs, calls, id2tool, shapes))),
+                         protocol=pickle.HIGHEST_PROTOCOL)
     for s in pending.values():
         if s.get("at"):
             s["t0"] = s.pop("at")
@@ -592,7 +628,7 @@ def parse(path):
     for tl in g.tools.values():
         tl["avg_ms"] = tl["ms"] // max(1, tl["calls"])
         del tl["ms"]
-    return {
+    data = {
         "first_ctx": first_ctx, "ctx": last_ctx, "out": out_tok, "cache_read": cache_read, "cache_write": cache_write,
         "model": g.model, "cache_until": (last_asst_ts + cache_ttl) if last_asst_ts else None, "cache_ttl": cache_ttl,
         "prompt_count": len(turns),
@@ -615,6 +651,7 @@ def parse(path):
         "doing": now_state,
         "turns": [turn_row(x, reqs, calls, blobs, id2tool, shapes, mem_tok) for x in turns[-15:]][::-1],
     }
+    return data, state, offset
 
 
 ASKS_USER = {"AskUserQuestion", "ExitPlanMode"}  # time spent here is the agent waiting for you
@@ -749,6 +786,35 @@ def subagents(path, sid):
     return res
 
 
+def head_sig(path):
+    with open(path, "rb") as f:
+        return hashlib.sha1(f.read(4096)).hexdigest()
+
+
+def parse_incremental(path, sid, st):
+    """Continue from the saved parser state when the file only grew (same file, same first 4 KB);
+    otherwise parse from the start. The state lives next to the JSON cache, owner-only."""
+    sfile = os.path.join(CACHE_DIR, "inspect-%s.state" % sid)
+    sig = head_sig(path)
+    saved = None
+    try:
+        with open(sfile, "rb") as f:
+            saved = pickle.load(f)
+        if not (saved.get("v") == VERSION and saved.get("ino") == st.st_ino and saved.get("sig") == sig and saved.get("offset", 0) <= st.st_size):
+            saved = None
+    except Exception:
+        saved = None
+    if saved:
+        data, state, offset = parse(path, pickle.loads(saved["state"]), saved["offset"])
+    else:
+        data, state, offset = parse(path)
+    fd, tmp = tempfile.mkstemp(dir=CACHE_DIR, prefix=".inspect-")
+    with os.fdopen(fd, "wb") as f:
+        pickle.dump({"v": VERSION, "ino": st.st_ino, "sig": sig, "offset": offset, "state": state}, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp, sfile)
+    return data
+
+
 def main():
     if len(sys.argv) < 2 or not re.fullmatch(r"[A-Za-z0-9_-]+", sys.argv[1]):
         out(ok=False, error="usage")
@@ -806,7 +872,7 @@ def main():
     except Exception:
         pass
     if data is None:
-        data = parse(path)
+        data = parse_incremental(path, sid, st)
         data["subagents"] = subagents(path, sid)
         fd, tmp = tempfile.mkstemp(dir=CACHE_DIR, prefix=".inspect-")  # created 0600
         with os.fdopen(fd, "w") as f:
