@@ -10,7 +10,7 @@ import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, 
 import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { loadFolders, folderOf, place } from "./folders.js";
-import { providerOf, accountsInfo, activeName, openAccounts } from "./accounts.js";
+import { providerOf, accountsInfo, activeName, openAccounts, syncAccounts } from "./accounts.js";
 
 // What "New agent" can start: the agents Herdr knows are installed on this computer (the same list, icons and
 // commands as Herdr's own "+" menu), then a plain terminal.
@@ -67,7 +67,10 @@ export default class CommandBar extends View {
     // The account list is read when the bar opens; a start before it arrived waits for it (never the wrong login).
     const pv = kind.run ? providerOf(kind) : null;
     if (pv && !this.acct) { cx.spawn(async (cx) => { await this.acctLoad; this.start(folder, kind, task, cx); }); return; }
-    const argv = kind.run ? [...(pv ? this.acct?.[pv]?.env ?? [] : []), ...kind.run] : undefined, t = task.trim() || undefined;
+    const env = pv ? this.acct?.[pv]?.env ?? [] : [];
+    // An added account: bring its setup (trusted folders, MCP servers) up to date first, then start.
+    if (env.length && !this.synced) { cx.spawn(async (cx) => { await syncAccounts(pv); this.synced = true; this.start(folder, kind, task, cx); }); return; }
+    const argv = kind.run ? [...env, ...kind.run] : undefined, t = task.trim() || undefined;
     const name = t ? t.slice(0, 28) : kind.run ? kind.name : undefined;
     localStorage.setItem("kind", kind.key);
     this.close();

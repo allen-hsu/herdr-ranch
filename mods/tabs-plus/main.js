@@ -5,6 +5,7 @@ import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props, nextCommand } from "herdr";
 import { agentName } from "./agentname.js";
 import { TS, C, tint, icon, statusMark, togglePage } from "./ui.js";
+import { movePending } from "./accountswitch.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -19,6 +20,8 @@ export default class Tabs extends View {
   init(_props, cx) {
     // Keys for the full pages (keys.json: "tabs-plus.board", "tabs-plus.team"): this bar is always shown, so it answers.
     cx.spawn(async () => { for (;;) { const c = String(await nextCommand()).split(".").pop(); if (c === "board" || c === "team") togglePage(c); } });
+    // Agents that were busy when the account was switched move once they are free (lib/accountswitch.js).
+    cx.timer.every(15000, (cx) => { if (Object.keys(shared("accounts.pending") ?? {}).length && !this.moving) { this.moving = true; cx.spawn(async () => { try { await movePending(); } finally { this.moving = false; } }); } });
     // ranch: a tab whose agent finishes (or needs you) while you look elsewhere pulses: finished for a few
     // seconds, needs-you until you open it.
     this.prev = {};

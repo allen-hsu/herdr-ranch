@@ -5,10 +5,10 @@
 // onto the new account (./switch.js), by the setting at the bottom: Ask / Restart them / Leave them.
 // The data and every change go through ./accounts.py (lib/accounts.py): this mod never sees a credential.
 import { View, div, image } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, run, theme, props, closeOverlay, appHome, notify, setShared } from "herdr";
-import { TS, SPACE, C, tint, icon, statusMark, dialogTitle, escChip, spaceName } from "./ui.js";
-import { switchPlan, restartAgents } from "./switch.js";
+import { TS, SPACE, C, tint, icon, statusMark, dialogTitle, escChip, spaceName, field } from "./ui.js";
+import { switchPlan, restartAgents, setPending } from "./accountswitch.js";
 
 const PROVIDERS = [
   { id: "claude", name: "Claude Code", icon: "icons/claude.svg", signIn: ["claude"], how: "Sign in when Claude Code asks (or type /login)." },
@@ -17,7 +17,7 @@ const PROVIDERS = [
 const MODES = [["ask", "Ask"], ["restart", "Restart them"], ["leave", "Leave them"]];
 const MODE_HELP = {
   ask: "Shows the agents that can move, and you pick.",
-  restart: "Idle and finished agents continue their conversation on the new account, in a new tab. Busy ones are left alone.",
+  restart: "Idle, finished and stopped agents continue their conversation on the new account, in a new tab. Busy ones follow once they are free.",
   leave: "Running agents stay on the account they started with. Only new agents use the new one.",
 };
 
@@ -29,6 +29,8 @@ export default class Accounts extends View {
     this.working = false; // a change is being made
     this.confirm = null;  // { provider, id }: "Remove?" shown on that row
     this.plan = null;     // { provider, name, env, items }: the Ask list after a switch
+    this.adding = null;   // provider id whose "name the new account" row is open
+    this.newName = null;  // its InputState
     this.note = null;     // what the last action did, one line
     this.load(cx);
     // A sign-in finished in another tab shows up by itself (a small local read; redraws only when something changed).
@@ -81,9 +83,22 @@ export default class Accounts extends View {
     notify({ title: `Sign in to ${p.name} in the new tab`, body: `${p.how} Then open Accounts again: the email shows once you're in.` });
     this.close();
   }
+  // "Add account" first asks what to call it: the name becomes the account's folder (accounts/claude-work), which
+  // can't be renamed later, because the login is tied to that path.
+  askName(p, cx) {
+    if (this.adding === p.id) { this.adding = null; cx.notify(); return; }
+    this.adding = p.id;
+    this.newName = InputState.new({ value: "", placeholder: "Name it, e.g. work or personal  (Enter to add)" });
+    this.newName.on("submit", (_e, cx) => this.add(p, cx));
+    this.newName.focus();
+    cx.timer.after(200, () => { if (this.adding === p.id) this.newName?.focus(); });
+    cx.notify();
+  }
   add(p, cx) {
+    const name = (this.newName?.value() ?? "").trim();
     this.act(cx, async (cx) => {
-      const r = await this.py(["add", p.id]);
+      const r = await this.py(name ? ["add", p.id, name] : ["add", p.id]);
+      this.adding = null;
       if (r.error || !Array.isArray(r.env)) throw new Error(r.error ?? "no folder");
       this.signIn(p, r.env, cx);
     });
@@ -114,19 +129,22 @@ export default class Accounts extends View {
       let items = [];
       try { items = await switchPlan(p.id, id); } catch {}
       const able = items.filter((x) => !x.skip);
-      if (!items.length) { this.note = said; return; }
-      if (mode === "leave") { this.note = `${said} ${items.length} running agent${items.length > 1 ? "s stay" : " stays"} on the old account.`; return; }
+      if (!items.length) { setPending(p.id, id, [], []); this.note = said; return; }
+      if (mode === "leave") { setPending(p.id, id, [], []); this.note = `${said} ${items.length} running agent${items.length > 1 ? "s stay" : " stays"} on the old account.`; return; }
       if (mode === "restart") {
         const done = await restartAgents(p.id, r.env ?? [], able);
-        this.note = `${said} ${this.outcome(done.length, items.length - done.length)}`;
+        setPending(p.id, id, r.env ?? [], items); // the busy ones follow when they are free
+        const later = items.filter((x) => x.later).length;
+        this.note = `${said} ${this.outcome(done.length, items.length - done.length - later)}${later ? ` ${later} busy agent${later > 1 ? "s" : ""} will move when free.` : ""}`;
         return;
       }
       this.note = said;
-      this.plan = { provider: p, name, env: r.env ?? [], items };
+      setPending(p.id, id, [], []); // an older switch's waiting list no longer applies
+      this.plan = { provider: p, id, name, env: r.env ?? [], items };
     });
   }
   outcome(moved, left) {
-    return [moved ? `${moved} agent${moved > 1 ? "s" : ""} restarted on it.` : "No agent was restarted.", left ? `${left} left on the old account (busy, or nothing to resume).` : ""].filter(Boolean).join(" ");
+    return [moved ? `${moved} agent${moved > 1 ? "s" : ""} restarted on it.` : "No agent was restarted.", left ? `${left} left on the old account (nothing to resume).` : ""].filter(Boolean).join(" ");
   }
   restartPicked(cx) {
     const plan = this.plan;
@@ -134,7 +152,9 @@ export default class Accounts extends View {
     this.act(cx, async () => {
       const picked = plan.items.filter((x) => x.on && !x.skip);
       const done = await restartAgents(plan.provider.id, plan.env, picked);
-      this.note = this.outcome(done.length, plan.items.length - done.length);
+      setPending(plan.provider.id, plan.id, plan.env, plan.items); // the busy ones follow when they are free
+      const later = plan.items.filter((x) => x.later).length;
+      this.note = `${this.outcome(done.length, plan.items.length - done.length - later)}${later ? ` ${later} busy agent${later > 1 ? "s" : ""} will move when free.` : ""}`;
     });
   }
 
@@ -156,7 +176,7 @@ export default class Accounts extends View {
     const title = isDefault ? "System default" : who.email ?? (who.signedIn ? "Signed in" : "Not signed in yet");
     const sub = isDefault
       ? [who.email ?? (who.signedIn ? "signed in" : "not signed in"), who.plan, p.id === "claude" ? "~/.claude" : "~/.codex"]
-      : [who.signedIn ? who.plan : `open "Sign in" to finish`, a.added ? `added ${a.added}` : null];
+      : [who.signedIn ? who.plan : `open "Sign in" to finish`, a.id, a.added ? `added ${a.added}` : null];
     const asking = this.confirm?.provider === p.id && this.confirm?.id === id;
     return v_flex().when(!last, (e) => e.border_b(1).border_color(t.border))
       .child(h_flex().min_h(48).px(SPACE.card).py(6).gap(8).items_center()
@@ -181,10 +201,14 @@ export default class Accounts extends View {
       .child(h_flex().h(28).gap(8).items_center()
         .child(image(p.icon).size(14).flex_none())
         .child(div().flex_1().min_w(0).text_size(TS.small).font_semibold().text_color(t.muted).child(p.name))
-        .child(this.button(t, `add-${p.id}`, "Add account", (cx) => this.add(p, cx), { ic: "plus" })))
+        .child(this.button(t, `add-${p.id}`, "Add account", (cx) => this.askName(p, cx), { ic: "plus" })))
       .child(v_flex().rounded(8).bg(t.surface)
         .child(this.row(t, p, null, true, !sec.accounts.length))
-        .children(sec.accounts.map((a, i) => this.row(t, p, a, false, i === sec.accounts.length - 1))));
+        .children(sec.accounts.map((a, i) => this.row(t, p, a, false, i === sec.accounts.length - 1))))
+      .when(this.adding === p.id && this.newName != null, (e) => e.child(h_flex().gap(8).items_center()
+        .child(div().flex_1().min_w(0).child(field(t, this.newName, { size: "panel", focused: true })))
+        .child(this.button(t, `addno-${p.id}`, "Cancel", (cx) => { this.adding = null; cx.notify(); }))
+        .child(this.button(t, `addyes-${p.id}`, "Add and sign in", (cx) => this.add(p, cx), { primary: true }))));
   }
 
   setting(t) {
@@ -210,16 +234,16 @@ export default class Accounts extends View {
       .child(box(it.on && !it.skip, Boolean(it.skip)))
       .child(div().w(16).flex_none().flex().justify_center().child(statusMark(t, it.status)))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.item).text_color(it.skip ? t.muted : t.foreground).child(it.name))
-      .child(div().flex_none().max_w(240).truncate().text_size(TS.small).text_color(t.dim).child(`${spaceName(it.where)} · ${it.skip ? `skipped: ${it.skip}` : it.status === "done" ? "finished" : "idle"}`));
+      .child(div().flex_none().max_w(240).truncate().text_size(TS.small).text_color(t.dim).child(`${spaceName(it.where)} · ${it.later ? `${it.skip}: moves when free` : it.skip ? `skipped: ${it.skip}` : it.status === "error" ? "stopped on an error" : it.status === "done" ? "finished" : "idle"}`));
     return v_flex().flex_1().min_h(0).p(SPACE.dialog).gap(12)
       .child(v_flex().gap(4)
         .child(div().text_size(TS.item).font_medium().text_color(t.foreground).child(`Restart running ${pl.provider.name} agents on ${pl.name}?`))
-        .child(div().text_size(TS.small).text_color(t.muted).child("Each ticked agent continues its conversation in a new tab on the new account, and its old tab closes. Agents that are working or waiting for you are never restarted.")))
+        .child(div().text_size(TS.small).text_color(t.muted).child("Each ticked agent continues its conversation in a new tab on the new account, and its old tab closes. An agent that is working or waiting for you is not interrupted: it moves by itself once it is free.")))
       .child(v_flex().id("plan-list").flex_1().min_h(0).rounded(8).bg(t.surface).overflow_y_scrollbar().children(pl.items.map(line)))
       .child(h_flex().gap(8).items_center().justify_end()
-        .child(div().flex_1().min_w(0).text_size(TS.small).text_color(t.dim).child(able.length ? "" : "Nothing can be restarted right now."))
+        .child(div().flex_1().min_w(0).text_size(TS.small).text_color(t.dim).child(able.length ? "" : pl.items.some((x) => x.later) ? "All of them are busy." : "Nothing can be restarted right now."))
         .child(this.button(t, "plan-no", "Leave them", (cx) => { this.plan = null; cx.notify(); }))
-        .when(n > 0, (e) => e.child(this.button(t, "plan-yes", `Restart ${n}`, (cx) => this.restartPicked(cx), { primary: true }))));
+        .when(n > 0 || pl.items.some((x) => x.later), (e) => e.child(this.button(t, "plan-yes", n > 0 ? `Restart ${n}` : "Move when free", (cx) => this.restartPicked(cx), { primary: true }))));
   }
 
   render() {

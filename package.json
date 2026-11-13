@@ -2,5 +2,7 @@
   "name": "herdr-ranch",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node tests/git-graph/graph.test.mjs" }
+  "scripts": {
+    "test": "node tests/git-graph/graph.test.mjs && python3 tests/accounts/sync.test.py"
+  }
 }

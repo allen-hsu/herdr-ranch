@@ -5,6 +5,12 @@ helpers and run by the Accounts dialog.
 An account is a folder: Claude Code started with CLAUDE_CONFIG_DIR=<folder> (Codex: CODEX_HOME=<folder>) keeps
 its own login there, while everything else in the folder is a symlink back to ~/.claude (~/.codex), so settings,
 skills and transcripts are shared and a conversation can be resumed under another account.
+Claude Code also keeps the person's own state next to the login, in .claude.json (trusted folders, MCP servers,
+onboarding). That file can't be a symlink (the login is in it), so `sync` copies everything but the login's own
+keys from ~/.claude.json into each account's file, the way Orca does: a folder trusted once is trusted under
+every account, and the same MCP servers are there.
+Pointers: ranch/active-claude and ranch/active-codex hold the active account's folder (empty: the system login),
+for the shell hook (integrations/shell/accounts.sh) that makes a plain `claude` / `codex` use it.
 Registry: ~/.config/herdr-app/ranch/accounts.json
   {"onSwitch": "ask" | "restart" | "leave",
    "claude": {"active": "default" | <id>, "accounts": [{"id", "dir", "addedAt"}]}, "codex": {...}}
@@ -13,11 +19,12 @@ No credentials are stored, copied or read here: the logins stay where Claude Cod
 (<folder>/auth.json) keep them. Only the email and plan are read, for display.
 
   accounts.py list                         everything the dialog shows
-  accounts.py add <provider>               make a new account folder -> {"id", "dir"}
+  accounts.py add <provider> [name]        make a new account folder (accounts/<provider>-<name>) -> {"id", "dir"}
   accounts.py remove <provider> <id>       forget it and delete its folder (symlinks and its own files)
   accounts.py use <provider> <id|default>  which account new agents start with
   accounts.py on-switch <ask|restart|leave>
   accounts.py agents <provider> t8 t9 ...  running agents: account, session id, folder, background work
+  accounts.py sync [provider]              link what's shared and bring each account's .claude.json up to date
 """
 import base64, glob, importlib, json, os, re, secrets, shutil, subprocess, sys, time
 
@@ -28,8 +35,10 @@ REG = os.environ.get("HERDR_RANCH_ACCOUNTS") or os.path.join(ROOT, "accounts.jso
 PROVIDERS = {
     "claude": {"name": "Claude Code", "home": os.path.join(HOME, ".claude"), "env": "CLAUDE_CONFIG_DIR",
                # Shared with ~/.claude. Not .claude.json (the login's own state), sessions, backups, cache.
-               "share": ["projects", "agents", "commands", "hooks", "plugins", "skills", "output-styles", "settings.json",
-                         "history.jsonl", "file-history"]},
+               "share": ["projects", "agents", "agents-archive", "commands", "hooks", "plugins", "skills", "output-styles",
+                         "settings.json", "history.jsonl", "file-history", "plans", "todos", "tasks", "paste-cache",
+                         "transcripts", "dev-mods", "rules", "CLAUDE.md", "keybindings.json", "statusline-command.sh",
+                         "herdr-status-snapshot.py"]},
     "codex": {"name": "Codex", "home": os.path.join(HOME, ".codex"), "env": "CODEX_HOME",
               # Shared with ~/.codex. Not auth.json (the login), not the sqlite / log files.
               "share": ["config.toml", "hooks.json", "AGENTS.md", "sessions", "skills", "prompts"]},
@@ -90,6 +99,133 @@ def save(reg):
         json.dump(reg, f, indent=2)
         f.write("\n")
     os.replace(tmp, REG)
+    write_pointers(reg)
+
+
+def write_pointers(reg):
+    """ranch/active-<provider>: the active account's folder, or empty for the system login (read by the shell hook)."""
+    if REG != os.path.join(ROOT, "accounts.json"):
+        return  # a test registry never moves the real pointers
+    for p in PROVIDERS:
+        aid = reg[p]["active"]
+        d = account_dir(aid) if aid != "default" else None
+        path = os.path.join(ROOT, "active-" + p)
+        try:
+            if (open(path).read().strip() if os.path.exists(path) else None) == (d or ""):
+                continue
+            with open(path + ".tmp", "w") as f:
+                f.write((d or "") + "\n")
+            os.replace(path + ".tmp", path)
+        except OSError:
+            pass
+
+
+# ---------- what an account shares with the system login ----------
+
+# Keys of .claude.json that belong to the login, not to the person's setup: never copied between accounts
+# (the same list Orca keeps, plus every cache).
+ACCOUNT_KEYS = {"oauthAccount", "additionalModelOptionsCache", "additionalModelOptionsAnsweredAt", "additionalModelCostsCache",
+                "modelAccessCache", "orgModelDefaultCache", "cachedArtifactRoster", "artifactRosterDenied",
+                "lastSeenOrgDefaultUpdatedAt", "clientDataCache", "clientDataCacheSlots", "autoCompactWindowsCache",
+                "cachedUsageUtilization", "metricsStatusCache", "metricsStatusCacheByPrincipal",
+                "githubWebConnectionStatusCache", "startupPrefetchedAt", "subscriptionNoticeCount", "hasAvailableSubscription",
+                "userID", "machineID", "firstStartTime", "firstStartVersion", "primaryApiKey", "claudeCodeFirstTokenDate"}
+
+
+def _login_key(k):
+    return k in ACCOUNT_KEYS or "Cache" in k or k.startswith("cached") or k.startswith("passes")
+
+
+def link_shared(provider, d):
+    """Symlink the shareable entries of the real home that the account folder doesn't have yet. Never replaces
+    anything that is already there."""
+    spec, made = PROVIDERS[provider], 0
+    for name in spec["share"]:
+        src, dst = os.path.join(spec["home"], name), os.path.join(d, name)
+        if os.path.lexists(src) and not os.path.lexists(dst):
+            try:
+                os.symlink(src, dst)
+                made += 1
+            except OSError:
+                pass
+    return made
+
+
+def sync_claude(d):
+    """Bring <account>/.claude.json up to date with ~/.claude.json, never touching the login's own keys:
+    folders trusted by the person become trusted here, their MCP servers are added, settings the account lacks
+    are filled in. Nothing the account recorded itself is removed, so running it twice changes nothing.
+    -> "synced" | "unchanged" | "skipped: <why>"."""
+    src, dst = os.path.join(HOME, ".claude.json"), os.path.join(d, ".claude.json")
+    if os.path.islink(dst):
+        return "skipped: the account's file is a link"
+    try:
+        mine = json.load(open(src))
+    except Exception:
+        return "skipped: ~/.claude.json is unreadable"
+    if not isinstance(mine, dict):
+        return "skipped: ~/.claude.json is not an object"
+    try:
+        before = os.stat(dst).st_mtime_ns
+        cur = json.load(open(dst))
+    except FileNotFoundError:
+        before, cur = None, {}
+    except Exception:
+        return "skipped: the account's file is unreadable"
+    if not isinstance(cur, dict):
+        return "skipped: the account's file is not an object"
+    new = dict(cur)
+    for k, v in mine.items():
+        if _login_key(k):
+            continue
+        old = cur.get(k)
+        if k == "mcpServers" and isinstance(v, dict) and isinstance(old, dict):
+            new[k] = {**old, **v}  # the person's servers, plus any added under this account
+        elif k == "projects" and isinstance(v, dict) and isinstance(old, dict):
+            merged = dict(old)
+            for name, entry in v.items():
+                o = old.get(name)
+                if not isinstance(o, dict):
+                    merged[name] = entry  # a folder this account has never opened: trusted and set up as it is for the person
+                elif isinstance(entry, dict):
+                    e = {**entry, **o}  # what the account recorded itself stays; anything it lacks is filled in
+                    if entry.get("hasTrustDialogAccepted") is True:
+                        e["hasTrustDialogAccepted"] = True
+                    merged[name] = e
+            new[k] = merged
+        elif k not in cur:
+            new[k] = v  # a setting the account doesn't have yet; one it changed itself is left alone
+    if new == cur:
+        return "unchanged"
+    tmp = "%s.%d.%s.tmp" % (dst, os.getpid(), secrets.token_hex(4))
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(new, f, indent=2)
+            f.write("\n")
+        # Claude Code running under this account writes the file too: if it changed meanwhile, leave it for next time.
+        now = os.stat(dst).st_mtime_ns if os.path.exists(dst) else None
+        if now != before:
+            return "skipped: the account's file changed meanwhile"
+        os.replace(tmp, dst)
+        return "synced"
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def sync(provider, reg=None):
+    """Every account of the provider: link what's shared; Claude: bring .claude.json up to date."""
+    reg = reg or load()
+    out = {}
+    for a in reg[provider]["accounts"]:
+        d = account_dir(a["id"])
+        if not d:
+            continue
+        linked = link_shared(provider, d)
+        out[a["id"]] = {"linked": linked, "state": sync_claude(d) if provider == "claude" else "n/a"}
+    write_pointers(reg)
+    return out
 
 
 # ---------- who is signed in (display only) ----------
@@ -146,6 +282,43 @@ def env_for(provider, reg=None):
     """The argv prefix that starts an agent on the active account: [] for the system login."""
     a = active(provider, reg)
     return ["env", "%s=%s" % (PROVIDERS[provider]["env"], a["dir"])] if a["dir"] else []
+
+
+def account_of_pid(provider, pid, argv=None):
+    """The account a running process is on, from its environment (CLAUDE_CONFIG_DIR / CODEX_HOME): also right
+    for an agent started by the shell hook, whose argv is a plain `claude`. Falls back to the terminal's argv."""
+    var = PROVIDERS[provider]["env"] + "="
+    try:
+        out = subprocess.run(["ps", "eww", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True, timeout=4).stdout
+        for tok in out.split():
+            if tok.startswith(var):
+                d = tok[len(var):].rstrip("/")
+                if os.path.dirname(d) == ACC and account_dir(os.path.basename(d)):
+                    return os.path.basename(d)
+        if out.strip():
+            return "default"
+    except Exception:
+        pass
+    return account_of_argv(argv)[1]
+
+
+def account_of_session(pid):
+    """Claude only, cheap: the account whose sessions/ folder holds this process's newest record."""
+    try:
+        name = "%d.json" % int(pid)
+    except (TypeError, ValueError):
+        return "default"
+    best = None
+    for d in session_dirs():
+        try:
+            m = os.path.getmtime(os.path.join(d, name))
+        except OSError:
+            continue
+        if best is None or m > best[0]:
+            best = (m, d)
+    if not best or best[1] == os.path.join(HOME, ".claude", "sessions"):
+        return "default"
+    return os.path.basename(os.path.dirname(best[1]))
 
 
 def account_of_argv(argv):
@@ -210,24 +383,30 @@ def cmd_list():
     return out
 
 
-def cmd_add(provider):
+def cmd_add(provider, name=""):
+    """name: what the person calls the account ("work"): its folder is then accounts/<provider>-work.
+    Without one the folder gets a random suffix. The login is tied to the folder's path, so it is never renamed."""
     spec = PROVIDERS[provider]
     reg = load()
     os.makedirs(ACC, mode=0o700, exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:24].strip("-")
+    if (name or "").strip() and not slug:
+        return {"error": "use letters or digits in the name"}
     for _ in range(20):
-        aid = "%s-%s" % (provider, secrets.token_hex(3))
+        aid = "%s-%s" % (provider, slug or secrets.token_hex(3))
         d = os.path.join(ACC, aid)
         try:
             os.mkdir(d, 0o700)
             break
         except FileExistsError:
+            if slug:
+                return {"error": "there is already an account folder named %s" % aid}
             continue
     else:
         return {"error": "could not make a folder"}
-    for name in spec["share"]:
-        src = os.path.join(spec["home"], name)
-        if os.path.lexists(src):
-            os.symlink(src, os.path.join(d, name))
+    link_shared(provider, d)
+    if provider == "claude":
+        sync_claude(d)  # the person's setup (trusted folders, MCP servers, onboarding) before the first sign-in
     reg[provider]["accounts"].append({"id": aid, "dir": d, "addedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
     save(reg)
     return {"id": aid, "dir": d, "env": ["env", "%s=%s" % (spec["env"], d)]}
@@ -255,7 +434,7 @@ def cmd_use(provider, aid):
         return {"error": "no such account"}
     reg[provider]["active"] = aid
     save(reg)
-    return {"ok": True, "active": aid, "env": env_for(provider, reg)}
+    return {"ok": True, "active": aid, "env": env_for(provider, reg), "sync": sync(provider, reg)}
 
 
 def cmd_on_switch(value):
@@ -286,7 +465,7 @@ def cmd_agents(provider, addrs):
         except Exception:
             continue
         fg = g.get("foreground") or {}
-        _, acct = account_of_argv(g.get("argv"))
+        acct = account_of_pid(provider, fg.get("pid"), g.get("argv"))
         row = {"account": acct, "state": (g.get("status") or {}).get("state"), "session": None, "cwd": fg.get("cwd") or g.get("cwd"), "background": 0}
         if provider == "claude":
             s = session(fg.get("pid"))
@@ -314,12 +493,16 @@ def cmd_agents(provider, addrs):
 def main(argv):
     cmd, args = (argv[0] if argv else ""), argv[1:]
     need_p = cmd in ("add", "remove", "use", "agents")
+    if cmd == "sync":
+        ps = [args[0]] if args and args[0] in PROVIDERS else list(PROVIDERS)
+        print(json.dumps({p: sync(p) for p in ps}, ensure_ascii=False))
+        return 0
     if need_p and (not args or args[0] not in PROVIDERS):
         out = {"error": "provider: claude or codex"}
     elif cmd == "list":
         out = cmd_list()
     elif cmd == "add":
-        out = cmd_add(args[0])
+        out = cmd_add(args[0], " ".join(args[1:]))
     elif cmd == "remove" and len(args) == 2:
         out = cmd_remove(args[0], args[1])
     elif cmd == "use" and len(args) == 2:

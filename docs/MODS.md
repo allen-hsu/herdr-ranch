@@ -5,7 +5,7 @@ Every folder in `mods/`. "Shows" is where the focus layout (`layouts/focus.json`
 
 | Mod | What it does | Shows | Lib |
 |---|---|---|---|
-| `accounts` | Add, switch, re-sign-in and remove Claude Code / Codex logins; optionally restart idle agents on the new account. | dialog (command bar, sidebar footer) | ui.js, accounts.js, accounts.py, agentname.js, subs.py, codexlog.py |
+| `accounts` | Add, switch, re-sign-in and remove Claude Code / Codex logins; optionally restart agents on the new account (busy ones follow when free). | dialog (command bar, sidebar footer) | ui.js, accounts.js, accounts.py, accountswitch.js, agentname.js, subs.py, codexlog.py |
 | `agent-inspector` | Overview / Trace / Capabilities / Config for the focused Claude Code or Codex agent, from local transcripts. | right panel tab | codexlog.py, ui.js, agentname.js, accounts.py |
 | `agent-team` | Team Map: sequence diagram of an agent's team (hc agents, subagents, messaged sessions) and their messages. | full page (⌃⌘T); also a window | agentname.js, newteam.js, folders.js, ui.js, live.py, codexlog.py, accounts.py, accounts.js |
 | `agent-toast` | Agent notifications that name the agent, state, space, branch and tab; macOS notification when Herdr is in the background; sounds. | toast (layout root `toast`) | agentname.js, live.py, codexlog.py, ui.js, accounts.py |
@@ -20,7 +20,7 @@ Every folder in `mods/`. "Shows" is where the focus layout (`layouts/focus.json`
 | `space-board` | Board by space (Todo / In progress / In review / Done) or by agent. | full page (⌃⌘B); also a dialog | ui.js, agentname.js, prs.js, folders.js, agentrows.js, subs.py, accounts.py, accounts.js |
 | `space-folders` | Folders → spaces → agents, status filter, Needs you / Finished / Pinned, Recent, 12 h fold, worktree and team buttons. Started from herdr-space-folders (a clone of Herdr's `spaces`). | sidebar (main view); menus and the folder editor as popups / dialog | prs.js, team.svg, ui.js, more.svg, folder-open.svg, agentrows.js, agentname.js, subs.py, accounts.py, accounts.js |
 | `stack-tabs` | Tab strip (text or icons) for a layout `stack` node. | right panel header | ui.js |
-| `tabs-plus` | Tab bar where a tab shows its agent's name and pulses when it finishes or needs you; answers the Board / Team Map keys. Clone of Herdr's `tabs`. | top bar | agentname.js, ui.js |
+| `tabs-plus` | Tab bar where a tab shows its agent's name and pulses when it finishes or needs you; answers the Board / Team Map keys; moves agents that were busy at an account switch once they are free. Clone of Herdr's `tabs`. | top bar | agentname.js, ui.js, accountswitch.js, accounts.js |
 | `team-launch` | One-line "New team" launcher; "More options…" for pattern, repo and roles. | dialog (⌃⌘N) | newteam.js, folders.js, ui.js, accounts.js |
 | `usage-bar` | Plan usage and reset times for Claude, Codex, Cursor (Grok slot empty). | status bar | ui.js, accounts.py |
 | `worktrees` | Worktree count pill, Resource Manager window, New / Delete / Clean up dialogs. | status bar; window; dialogs | ui.js |
@@ -35,7 +35,8 @@ Every folder in `mods/`. "Shows" is where the focus layout (`layouts/focus.json`
 | `folders.js` | which space-folders folder a space is in |
 | `prs.js` | open PRs of a repository by head branch, through `gh` |
 | `newteam.js` | the New team dialog and launch logic |
-| `accounts.js` / `accounts.py` | account registry: read side (JS) and every change (Python) |
+| `accounts.js` / `accounts.py` | account registry: read side (JS) and every change (Python), `.claude.json` sync |
+| `accountswitch.js` | restart running agents on the picked account; the waiting list for busy ones |
 | `subs.py` | Claude Code background subagents and shell commands running now |
 | `live.py` | what each agent is doing now, from transcript tails |
 | `codexlog.py` | Codex session (rollout) parsing |

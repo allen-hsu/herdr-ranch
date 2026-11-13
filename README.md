@@ -103,9 +103,17 @@ Five icon tabs (`stack-tabs`) in Herdr's own panel:
 More than one Claude Code or Codex login (`accounts`, `lib/accounts.py`). The Accounts dialog adds an account,
 picks the one new agents start on, signs in again or removes one. An added account is a folder used as
 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` whose contents, apart from the login, are symlinks to `~/.claude` /
-`~/.codex`, so settings and conversations are shared. After a switch, idle or finished agents can be restarted
-on the new account and their conversation resumed (`claude --resume` / `codex resume`); working agents are
-left alone.
+`~/.codex`, so settings and conversations are shared. Claude Code keeps trusted folders and MCP servers in
+`.claude.json` next to the login, which cannot be a symlink: before an agent starts on an added account, those
+are copied in from `~/.claude.json` (the login's own keys are never copied, nothing the account recorded is
+removed), so a folder trusted once is trusted under every account.
+
+After a switch, agents that are idle, finished or stopped on an error (out of usage, usually) can be restarted
+on the new account: the conversation is resumed in a new tab (`claude --resume` / `codex resume`) and the old
+tab closes. An agent that is working or waiting for you is not interrupted; it moves by itself once it is free.
+
+Agents started from Herdr always use the picked account. For a `claude` or `codex` you type yourself in a Herdr
+terminal to do the same, install with `--shell` (one line in your shell rc; no effect outside Herdr).
 
 ### Status bar
 
@@ -146,6 +154,7 @@ cd herdr-ranch
 ./install.sh --dry-run      # show what would change
 ./install.sh                # install, or update after a pull
 ./install.sh --statusline   # also add the snapshot hook to your Claude Code status-line script
+./install.sh --shell        # also make a plain claude / codex typed in a Herdr terminal use the picked account
 ```
 
 Then switch Herdr to the **focus** layout. Edit files in this repo and re-run the installer; do not edit the
@@ -163,19 +172,21 @@ What `install.sh` writes (`$APP` is `~/.config/herdr-app`, or `$HERDR_APP_HOME`)
 | `~/Applications/Herdr Notify.app` | built with `swiftc`, ad-hoc signed, using the icon of the installed Herdr.app; skipped without `swiftc` |
 | `$APP/keys.json` | keys from `config.example/keys.json` are merged in; a key you already bound is kept and reported |
 | your status-line script | only with `--statusline`: one line added after `input=$(cat)`, backup saved as `<script>.bak-ranch` |
+| `~/.zshrc` (or `~/.bashrc`) | only with `--shell`: one line that sources `$APP/ranch/shell-accounts.sh` |
 | `~/.cache/herdr-ranch/` | checkouts of mods pinned in `vendor.json` (none at present) |
 
 It never writes your personal config. Copy what you need from `config.example/` into `$APP`:
 `pr-panel.json` (review-request buttons), `slack-review.json` (channel and bot for the Slack requester),
 `agent-toast.json` (sounds), `agent-team.json` (which agent plays which role).
 
-Files the mods create while running: `$APP/ranch/accounts.json` and `$APP/ranch/accounts/` (accounts),
+Files the mods create while running: `$APP/ranch/accounts.json`, `$APP/ranch/accounts/` and
+`$APP/ranch/active-claude` / `active-codex` (accounts; an added account's `.claude.json` is kept up to date as above),
 `~/.config/herdr-space-folders.json` (folders), `~/.cache/herdr-claude-status/` (usage and status-line caches),
 `~/.herdr/worktrees/` (worktrees).
 
 There is no uninstall script. To remove everything: switch to another layout, delete the paths in the table
 above (for `mods/`, the folders named like those in this repo's `mods/`), remove the merged keys from
-`keys.json`, and restore `<script>.bak-ranch` if you used `--statusline`. Mods removed from this repo are not
+`keys.json`, and restore `<script>.bak-ranch` if you used `--statusline` (and delete the `herdr-ranch accounts` line from your shell rc if you used `--shell`). Mods removed from this repo are not
 removed from `$APP/mods` by an update; delete them by hand.
 
 ### Key bindings added
@@ -239,7 +250,8 @@ may change or be disallowed by a vendor's terms. Tokens are sent only to their o
 to disk; cached results (percentages and reset times) are stored in `~/.cache/herdr-claude-status/`.
 
 Things that act on your behalf: PR buttons and the team launcher start agents (the team lead in Claude Code's
-auto mode); the Accounts switch can close and restart idle agents; worktree clean-up deletes folders after a
+auto mode); the Accounts switch can close and restart agents that are not busy, and copies your trusted folders and MCP
+servers into added accounts; worktree clean-up deletes folders after a
 confirmation; git-graph can push, delete branches and reset after a confirmation. PR and issue text is never
 pasted into a prompt: the agent is given the repo, number and URL and told to treat what it reads as data.
 
@@ -249,7 +261,8 @@ pasted into a prompt: the agent is given the repo, number and URL and told to tr
 - Codex does not log hook runs, tool counts or schema sizes, so the Inspector shows configured hooks without
   counts or errors and a plainer trace for Codex.
 - Context % and cost for Claude agents need the status-line snapshot hook (`--statusline`).
-- Switching account restarts agents (idle or finished ones only) rather than moving a live session.
+- Switching account restarts agents (when they are not busy) rather than moving a live session. After a
+  resume under another account, thinking from the earlier turns is not reused and the first reply is slower.
 - Usage: no Grok data; Claude, Codex and Cursor depend on undocumented endpoints.
 - Several mods are frozen copies of Herdr's shipped mods and do not pick up Herdr's updates.
 - `git-graph` still checks the upstream project's releases, although the copy here has diverged.

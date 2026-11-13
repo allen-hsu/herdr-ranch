@@ -5,6 +5,8 @@
 #   ./install.sh               install / update
 #   ./install.sh --dry-run     show what would change
 #   ./install.sh --statusline  also add the context/quota snapshot hook to your Claude Code status line
+#   ./install.sh --shell       also add one line to your shell rc, so a plain `claude` / `codex` typed in a
+#                              Herdr terminal uses the account picked in the Accounts dialog
 #
 # Never touches your personal config (pr-panel.json, slack-review.json) except to tell you about the examples.
 set -euo pipefail
@@ -12,12 +14,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-ranch"
-DRY=0; STATUSLINE=0
+DRY=0; STATUSLINE=0; SHELLRC=0
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --statusline) STATUSLINE=1 ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    --shell) SHELLRC=1 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown option: $a" >&2; exit 2 ;;
   esac
 done
@@ -160,6 +163,20 @@ else
   say "not wired. Context % and cost on agent cards need it. Add after your status line reads stdin:"
   say '  ( printf '"'"'%s'"'"' "$input" | python3 "$HOME/.claude/herdr-status-snapshot.py" >/dev/null 2>&1 & )'
   say "or re-run with --statusline if your status line is a script with input=\$(cat)."
+fi
+
+echo "Accounts in the shell (a plain claude / codex in a Herdr terminal uses the picked account)"
+run cp "$HERE/integrations/shell/accounts.sh" "$APP/ranch/shell-accounts.sh"
+case "$(basename "${SHELL:-zsh}")" in bash) RC="$HOME/.bashrc" ;; *) RC="${ZDOTDIR:-$HOME}/.zshrc" ;; esac
+RC_LINE='[ -r "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/ranch/shell-accounts.sh" ] && . "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/ranch/shell-accounts.sh" # herdr-ranch accounts'
+if [ -f "$RC" ] && grep -q "ranch/shell-accounts.sh" "$RC"; then
+  say "already in $RC"
+elif [ "$SHELLRC" = 1 ]; then
+  if [ "$DRY" = 1 ]; then say "[dry-run] would add one line to $RC"; else printf '\n%s\n' "$RC_LINE" >> "$RC"; say "added one line to $RC (new terminals pick it up)"; fi
+else
+  say "not wired: agents started from Herdr use the picked account, a claude you type yourself uses the system login."
+  say "To wire it, re-run with --shell, or add this line to $RC:"
+  say "  $RC_LINE"
 fi
 
 echo "Personal config"
