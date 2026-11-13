@@ -14,7 +14,7 @@ Only the head and tail of each file are read: the first and last thing the perso
 conversation was given (/rename). One still open in a Claude Code process is listed with "open": where it runs
 ("claude-desktop", "cli", ...), since resuming it a second time makes two writers.
 """
-import glob, json, os, re, sys
+import glob, json, mmap, os, re, sys
 import codexlog
 import live
 
@@ -24,21 +24,35 @@ CODEX = os.path.join(HOME, ".codex", "sessions")
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 # What Claude Code itself echoes into a user record (local command output, ! shell runs, hook text): no prompt.
 ECHO = re.compile(r"<(local-command-|bash-|command-|user-prompt-submit-hook)")
-HEAD, TAIL, LIMIT, CODEX_SCAN = 256 * 1024, 256 * 1024, 40, 3000
+HEAD, LIMIT, CODEX_SCAN = 256 * 1024, 40, 3000
+TAILS = (256 * 1024, 2 * 1024 * 1024, 8 * 1024 * 1024)  # widened until the last prompt shows up (as live.py does)
+META = 16 * 1024  # of a Codex rollout's first line: enough for its id and cwd, not its full instructions
+NAMES = (b'"type":"custom-title"', b'"type":"agent-name"')  # as written, so text quoting them (escaped) never matches
 
 
 def red(s, n=200):
     return codexlog.red(s, n)  # secrets masked, home shown as ~
 
 
-def lines(path, tail=False):
-    """The records in the first (or last) 256 KB of a file; a cut line at the edge is skipped."""
+def newest(paths):
+    """[(mtime, path)] newest first. A file removed meanwhile (Claude Code's cleanup, a person tidying up) drops out."""
+    out = []
+    for p in paths:
+        try:
+            out.append((os.path.getmtime(p), p))
+        except OSError:
+            continue
+    return sorted(out, reverse=True)
+
+
+def lines(path, tail=None):
+    """The records in the first 256 KB of a file, or in its last `tail` bytes; a cut line at the edge is skipped."""
     try:
         with open(path, "rb") as f:
-            size = os.path.getsize(path)
             if tail:
-                f.seek(max(0, size - TAIL))
-                if size > TAIL:
+                size = os.fstat(f.fileno()).st_size
+                f.seek(max(0, size - tail))
+                if size > tail:
                     f.readline()
                 data = f.read()
             else:
@@ -97,44 +111,88 @@ def inside(cwd, dirs):
     return next((d for d in sorted(dirs, key=len, reverse=True) if cwd == d or cwd.startswith(d.rstrip("/") + "/")), None) if cwd else None
 
 
-def row(provider, sid, cwd, dirs, path, first, last, name=None, open_in=None):
+def last_prompt(path, head, prompt):
+    """The last thing the person typed: the tail is widened until one shows up, then the head is the answer."""
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None
+    if size <= HEAD:
+        return next((p for p in map(prompt, reversed(head)) if p), None)
+    for tail in TAILS:
+        last = next((p for p in map(prompt, reversed(lines(path, tail))) if p), None)
+        if last or tail >= size:
+            return last
+    return next((p for p in map(prompt, reversed(head)) if p), None)
+
+
+def given_name(path):
+    """The latest /rename (custom-title) or agent name anywhere in the file: found by a byte search, not by reading it."""
+    try:
+        with open(path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+            for key in sorted(NAMES, key=lambda k: -mm.rfind(k)):  # the one written last first
+                end = len(mm)
+                while (at := mm.rfind(key, 0, end)) >= 0:
+                    start, stop = mm.rfind(b"\n", 0, at) + 1, mm.find(b"\n", at)
+                    end = start
+                    try:
+                        r = json.loads(mm[start:stop if stop >= 0 else len(mm)].decode("utf-8", "replace"))
+                    except ValueError:
+                        continue
+                    if (v := r.get("customTitle") or r.get("agentName")) and isinstance(v, str):
+                        return v
+    except (OSError, ValueError):  # gone, or empty (mmap refuses an empty file)
+        pass
+    return None
+
+
+def row(provider, sid, cwd, dirs, at, first, last, name=None, open_in=None):
     top = inside(cwd, dirs)
     return {"provider": provider, "id": sid, "open": open_in, "cwd": cwd, "sub": os.path.relpath(cwd, top) if cwd != top else None,
-            "at": int(os.path.getmtime(path) * 1000), "title": red(name or first, 80), "first": red(first),
+            "at": int(at * 1000), "title": red(name or first, 80), "first": red(first),
             "last": red(last) if last and last != first else None}
+
+
+def encode(d):
+    """A folder as Claude Code names its projects/ entry: every non-alphanumeric becomes "-"."""
+    return re.sub(r"[^A-Za-z0-9]", "-", d)
+
+
+def launch_folder(path, head, dirs):
+    """Where the conversation was started: `claude --resume` looks it up under projects/<that folder, encoded>, so
+    a record's cwd counts only when it encodes to the folder the file is in (a `cd` mid-session moves later cwds)."""
+    stored = os.path.basename(os.path.dirname(path))
+    cwds = [r["cwd"] for r in head if isinstance(r.get("cwd"), str)]
+    return next((c for c in cwds if encode(c) == stored), None) or next((d for d in dirs if encode(d) == stored), None) \
+        or (cwds[0] if cwds else None)
 
 
 def claude(dirs):
     running, out = running_claude(), []
     # A folder's own conversations, and those of folders under it (its worktrees too): their encoded names start
     # with its own. "-" stands for any non-alphanumeric, so each file's own cwd decides.
-    enc = {re.sub(r"[^A-Za-z0-9]", "-", d) for d in dirs}
+    enc = {encode(d) for d in dirs}
     root = os.path.join(CLAUDE, "projects")
     try:
         folders = [f for f in os.listdir(root) if any(f == e or f.startswith(e + "-") for e in enc)]
     except OSError:
         folders = []
     paths = [p for f in folders for p in glob.glob(os.path.join(root, f, "*.jsonl"))]
-    for path in sorted(paths, key=os.path.getmtime, reverse=True):
+    for at, path in newest(paths):
         if len(out) >= LIMIT:
             break
         sid = os.path.basename(path)[:-6]
         if not UUID.fullmatch(sid):
             continue
         head = lines(path)
-        cwd = next((r["cwd"] for r in head if isinstance(r.get("cwd"), str)), None)
-        if cwd is None and os.path.basename(os.path.dirname(path)) in enc:
-            cwd = next(d for d in dirs if re.sub(r"[^A-Za-z0-9]", "-", d) == os.path.basename(os.path.dirname(path)))
+        cwd = launch_folder(path, head, dirs)
         if not inside(cwd, dirs):
             continue
         first = next((p for p in map(claude_prompt, head) if p), None)
         if not first:
             continue  # nothing was ever asked: nothing to resume
-        tail = lines(path, tail=True) if os.path.getsize(path) > HEAD else head
-        last = next((p for p in map(claude_prompt, reversed(tail)) if p), None)
-        name = next((r.get("agentName") or r.get("customTitle") for r in reversed(head + tail)
-                     if r.get("type") in ("agent-name", "custom-title") and (r.get("agentName") or r.get("customTitle"))), None)
-        out.append(row("claude", sid, cwd, dirs, path, first, last, name, running.get(sid)))
+        last = last_prompt(path, head, claude_prompt)
+        out.append(row("claude", sid, cwd, dirs, at, first, last, given_name(path), running.get(sid)))
     return out
 
 
@@ -144,15 +202,34 @@ def codex_prompt(r):
     return codexlog.user_prompt(r.get("payload") or {})
 
 
+def codex_meta(path):
+    """The id and cwd of a rollout's session_meta, read from the first 16 KB only: the line goes on with the full
+    instructions (tens of KB), and thousands of files are looked at."""
+    try:
+        with open(path, "rb") as f:
+            data = f.readline(META)
+    except OSError:
+        return {}
+    try:
+        return json.loads(data.decode("utf-8", "replace")).get("payload") or {}
+    except ValueError:  # cut short: id and cwd come before the instructions
+        pass
+    text, meta = data.decode("utf-8", "replace"), {}
+    for key, pat in (("id", r'"id"\s*:\s*("[^"]*")'), ("cwd", r'"cwd"\s*:\s*("(?:[^"\\]|\\.)*")')):
+        m = re.search(pat, text)
+        if m:
+            try:
+                meta[key] = json.loads(m.group(1))
+            except ValueError:
+                pass
+    return meta
+
+
 def codex(dirs):
     out = []
-    files = sorted(glob.glob(os.path.join(CODEX, "*", "*", "*", "rollout-*.jsonl")), key=os.path.getmtime, reverse=True)[:CODEX_SCAN]
-    for path in files:
-        try:
-            with open(path, encoding="utf-8", errors="replace") as f:
-                meta = json.loads(f.readline()).get("payload") or {}
-        except Exception:
-            continue
+    files = newest(glob.glob(os.path.join(CODEX, "*", "*", "*", "rollout-*.jsonl")))[:CODEX_SCAN]
+    for at, path in files:
+        meta = codex_meta(path)
         if not isinstance(meta.get("cwd"), str) or not inside(meta["cwd"], dirs):
             continue
         m = UUID.search(os.path.basename(path))
@@ -163,9 +240,8 @@ def codex(dirs):
         first = next((p for p in map(codex_prompt, head) if p), None)
         if not first:
             continue
-        tail = lines(path, tail=True) if os.path.getsize(path) > HEAD else head
-        last = next((p for p in map(codex_prompt, reversed(tail)) if p), None)
-        out.append(row("codex", sid, meta["cwd"], dirs, path, first, last))
+        last = last_prompt(path, head, codex_prompt)
+        out.append(row("codex", sid, meta["cwd"], dirs, at, first, last))
         if len(out) >= LIMIT:
             break
     return out
