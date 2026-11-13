@@ -127,11 +127,12 @@ export default class CommandBar extends View {
   // it was made in), a folder of the sidebar (its main space, else its path), or the space in front.
   resumeTarget(where) {
     const ps = panes(), sp = spaces();
-    const ofSpace = (s) => ({ space: s.id, name: spaceName(s.name), dirs: [place(s, ps), s.folder].filter(Boolean) });
+    // A space with no folder known (no terminal folder, not made in one) has nowhere to look: null, like a pathless folder.
+    const ofSpace = (s) => { const dirs = [place(s, ps), s.folder].filter(Boolean); return dirs.length ? { space: s.id, name: spaceName(s.name), dirs } : null; };
     if (where === "here" || where == null) { const s = sp.find((x) => x.active); return s && !s.machine ? ofSpace(s) : null; }
     if (where.space) { const s = sp.find((x) => x.id === where.space); return s && !s.machine ? ofSpace(s) : null; }
     const s = sp.find((x) => !x.machine && folderOf(x, this.folders, ps) === where.id);
-    const dirs = [expand(where.path), ...(s ? ofSpace(s).dirs : [])].filter(Boolean);
+    const dirs = [expand(where.path), ...(s ? ofSpace(s)?.dirs ?? [] : [])].filter(Boolean);
     return dirs.length ? { ...(s ? { space: s.id } : {}), name: where.name, dirs } : null;
   }
   resumeStep(where, cx, back) {
@@ -151,16 +152,18 @@ export default class CommandBar extends View {
       cx.notify();
     });
   }
-  resume(s, cx) {
-    const pv = s.provider;
-    if (!this.acct) { cx.spawn(async (cx) => { await this.acctLoad; this.resume(s, cx); }); return; }
+  // The target is read once, before any wait: Esc or Backspace during the wait moves the step on, and then nothing resumes.
+  resume(s, cx, target = this.step?.resume) {
+    const pv = s.provider, later = (cx) => { if (this.step?.resume === target) this.resume(s, cx, target); };
+    if (!target) return;
+    if (!this.acct) { cx.spawn(async (cx) => { await this.acctLoad; later(cx); }); return; }
     const env = this.acct?.[pv]?.env ?? [];
-    if (env.length && !this.synced) { cx.spawn(async (cx) => { await syncAccounts(pv); this.synced = true; this.resume(s, cx); }); return; }
+    if (env.length && !this.synced) { cx.spawn(async (cx) => { await syncAccounts(pv); this.synced = true; later(cx); }); return; }
     // The installed command (with whatever Herdr starts it with), else the plain one.
     const kd = (this.known ?? []).find((k) => k.key === pv && k.run), cmd = kd?.run ?? [pv];
     const argv = [...env, ...cmd, ...(pv === "claude" ? ["--resume", s.id] : ["resume", s.id])];
     // In the folder the conversation ran in: Claude Code looks a session up by its folder.
-    const { space, dirs } = this.step.resume, folder = s.cwd || dirs[0], name = s.title.slice(0, 28);
+    const { space, dirs } = target, folder = s.cwd || dirs[0], name = s.title.slice(0, 28);
     this.close();
     if (space) run("tab.new", { space, folder, name, argv });
     else run("space.new", { folder, argv });

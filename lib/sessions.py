@@ -22,6 +22,9 @@ CODEX = os.path.join(HOME, ".codex", "sessions")
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 SECRET = re.compile(r"(xox[abpr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w+|sk-[\w-]{16,}|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[\w.~+/=-]{12,}|(?i:(?:token|secret|password|api[_-]?key)=)\S+)")
 CODEX_INJECTED = ("# AGENTS.md instructions", "<environment_context>", "<user_instructions>", "<permissions", "<skills_instructions>", "<turn_aborted>")
+# Blocks the harness puts in a user record around (or instead of) what the person typed.
+INJECTED = re.compile(r"<(system-reminder|task-notification|agent-message|cross-session-message)\b[^>]*>.*?</\1>", re.S)
+ECHO = re.compile(r"<(local-command-|bash-|command-|user-prompt-submit-hook)")
 HEAD, TAIL, LIMIT, CODEX_SCAN = 256 * 1024, 256 * 1024, 40, 3000
 
 
@@ -61,14 +64,14 @@ def claude_prompt(r):
     c = (r.get("message") or {}).get("content")
     if isinstance(c, list):
         c = " ".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
-    c = (c or "").strip() if isinstance(c, str) else ""
+    c = INJECTED.sub("", c).strip() if isinstance(c, str) else ""
     # A slash command with arguments reads as typed ("/review the cart PR"); a bare one (/clear, /model) is no prompt.
     cmd = re.search(r"<command-name>(.*?)</command-name>", c, re.S)
     if cmd:
         args = re.search(r"<command-args>(.*?)</command-args>", c, re.S)
         args = args.group(1).strip() if args else ""
         return f"{cmd.group(1).strip()} {args}" if args else None
-    return None if not c or c.startswith(("<", "Caveat:", "[Request interrupted")) else c
+    return None if not c or ECHO.match(c) or c.startswith(("Caveat:", "[Request interrupted")) else c
 
 
 def running_claude():
