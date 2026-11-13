@@ -2,11 +2,13 @@
 //   Type to filter agents, folders, spaces, actions and views; ↑/↓ to move, Enter to run, Esc to close.
 //   "New agent…" (or Enter on a folder) continues in the same box: pick the folder, pick the agent,
 //   and whatever is typed becomes its first message. Backspace on an empty box goes back a step.
+//   "Resume a conversation…" lists the past Claude Code / Codex conversations started in a space's or folder's
+//   path (sessions.py) and resumes the picked one in a new tab there (claude --resume / codex resume).
 // The right side explains the highlighted row, so nothing here needs to be memorized.
 // Opened with ⌘K (keys.json: "mod.open:command-bar").
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents, home } from "herdr";
+import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents, home, appHome } from "herdr";
 import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { loadFolders, folderOf, place } from "./folders.js";
@@ -18,11 +20,17 @@ const KNOWN = "new-menu.agents";
 const SHELL = { key: "shell", name: "Terminal", icon: "icons/shell.svg", tint: true, run: null, about: "A plain shell, no agent." };
 const GROUPS = ["Needs you", "Agents", "Folders", "Spaces", "Actions", "Views"];
 const ROWS = 11;
+const PROVIDER = { claude: "Claude Code", codex: "Codex" };
+const expand = (p) => p?.replace(/^~(?=\/|$)/, home()) ?? null;
+// "5m ago", "3h ago", "2d ago", else the date.
+const ago = (ms) => { const s = (Date.now() - ms) / 1000;
+  return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : s < 14 * 86400 ? `${Math.round(s / 86400)}d ago` : new Date(ms).toLocaleDateString(); };
 
 export default class CommandBar extends View {
   init(_p, cx) {
     this.overlay = props()?.overlay;
-    this.step = props()?.step ?? null; // null: search everything · { folder?: folder|"here" } : New agent
+    this.step = props()?.step ?? null; // null: search everything · { folder?: folder|"here" } : New agent · { resume } : Resume
+    this.sessions = null; // the resume step's list (null while it loads)
     this.at = 0;
     this.q = "";
     this.folders = { list: [], of: {} };
@@ -33,7 +41,19 @@ export default class CommandBar extends View {
     this.handle = cx.focus_handle();
     this.input.focus();
     cx.timer.after(300, () => this.input.focus());
-    cx.spawn(async (cx) => { this.folders = await loadFolders(); cx.notify(); });
+    if (this.step?.resume?.dirs?.length) this.loadSessions(cx);
+    // Opened on a space or folder (the sidebar's "Resume a conversation…"): resolved once the folders are known.
+    const ask = this.step?.resume && !this.step.resume.dirs ? this.step.resume : null;
+    if (ask) this.step = { resume: { name: ask.name ?? spaceName(spaces().find((x) => x.id === ask.space)?.name), dirs: [] } };
+    cx.spawn(async (cx) => {
+      this.folders = await loadFolders();
+      if (ask) {
+        const target = this.resumeTarget(ask);
+        if (!target) { notify({ title: "Nowhere to resume", body: "Resuming works in a space on this computer, or a folder with a path.", level: "warning" }); this.close(); return; }
+        this.step = { resume: target }; this.loadSessions(cx);
+      }
+      cx.notify();
+    });
     // Accounts: Claude Code and Codex start on the active one (see the Accounts dialog).
     this.acct = null;
     this.acctLoad = accountsInfo("command-bar").then((d) => { this.acct = d; }).catch(() => { this.acct = {}; });
@@ -47,13 +67,23 @@ export default class CommandBar extends View {
   }
 
   hint() {
-    return !this.step ? "Search agents, folders, actions, views…" : this.step.folder == null ? "New agent — which folder?" : "What should it do? (optional) — pick the agent";
+    return !this.step ? "Search agents, folders, actions, views…" : this.step.resume ? "Resume which conversation? (type to filter)"
+      : this.step.resumeWhere ? "Resume — conversations from which folder?"
+      : this.step.folder == null ? "New agent — which folder?" : "What should it do? (optional) — pick the agent";
   }
   close() { closeOverlay(this.overlay); }
   setStep(step, cx) {
     this.step = step; this.at = 0; this.q = "";
     this.input.set_value(""); this.input.set_placeholder?.(this.hint()); this.input.focus();
+    if (step?.resume) this.loadSessions(cx);
     cx.notify();
+  }
+  // One step back: from Resume to where it was opened from, from the agent to the folder, from the folder to search.
+  back(cx) {
+    const s = this.step;
+    if (s?.resumeWhere) { this.setStep(null, cx); return; }
+    if (s?.resume) { if (s.back !== undefined) this.setStep(s.back, cx); else if (props()?.step) this.close(); else this.setStep(null, cx); return; }
+    this.setStep(s?.folder != null && !props()?.step ? {} : null, cx);
   }
 
   // ---------- starting an agent ----------
@@ -82,7 +112,7 @@ export default class CommandBar extends View {
     const mine = spaces().filter((s) => !s.machine && folderOf(s, this.folders, ps) === folder.id);
     if (mine.length) run("tab.new", { space: mine[0].id, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) });
     // Herdr takes the path as written: a folder path saved as "~/…" is expanded here (as space-folders does).
-    else if (folder.path) run("space.new", { folder: folder.path.replace(/^~(?=\/|$)/, home()), ...(argv ? { argv, task: t } : {}) });
+    else if (folder.path) run("space.new", { folder: expand(folder.path), ...(argv ? { argv, task: t } : {}) });
     else notify({ title: `${folder.name} has no space and no path`, body: "Give the folder a path (⋯ › Edit) or open a space in it first.", level: "warning" });
   }
 
@@ -90,6 +120,68 @@ export default class CommandBar extends View {
   accountLine(kd) {
     const pv = kd.run ? providerOf(kd) : null, name = pv ? activeName(this.acct, pv) : null;
     return name ? `\nAccount: ${name}` : "";
+  }
+
+  // ---------- resuming a past conversation ----------
+  // Where a resume lands, and which folders' conversations to list: a space (its first terminal's folder and the one
+  // it was made in), a folder of the sidebar (its main space, else its path), or the space in front.
+  resumeTarget(where) {
+    const ps = panes(), sp = spaces();
+    const ofSpace = (s) => ({ space: s.id, name: spaceName(s.name), dirs: [place(s, ps), s.folder].filter(Boolean) });
+    if (where === "here" || where == null) { const s = sp.find((x) => x.active); return s && !s.machine ? ofSpace(s) : null; }
+    if (where.space) { const s = sp.find((x) => x.id === where.space); return s && !s.machine ? ofSpace(s) : null; }
+    const s = sp.find((x) => !x.machine && folderOf(x, this.folders, ps) === where.id);
+    const dirs = [expand(where.path), ...(s ? ofSpace(s).dirs : [])].filter(Boolean);
+    return dirs.length ? { ...(s ? { space: s.id } : {}), name: where.name, dirs } : null;
+  }
+  resumeStep(where, cx, back) {
+    const target = this.resumeTarget(where);
+    if (!target) { notify({ title: "Nowhere to resume", body: "Resuming works in a space on this computer, or a folder with a path.", level: "warning" }); return; }
+    this.setStep({ resume: target, ...(back !== undefined ? { back } : {}) }, cx);
+  }
+  loadSessions(cx) {
+    const dirs = [...new Set(this.step.resume.dirs ?? [])];
+    this.sessions = null;
+    const step = this.step;
+    cx.spawn(async (cx) => {
+      let list = [];
+      try { list = JSON.parse((await exec("python3", [`${appHome()}/mods/command-bar/sessions.py`, "list", ...dirs], { timeout: 20000 })).stdout || "[]"); } catch {}
+      if (this.step !== step) return; // moved on meanwhile
+      this.sessions = Array.isArray(list) ? list : [];
+      cx.notify();
+    });
+  }
+  resume(s, cx) {
+    const pv = s.provider;
+    if (!this.acct) { cx.spawn(async (cx) => { await this.acctLoad; this.resume(s, cx); }); return; }
+    const env = this.acct?.[pv]?.env ?? [];
+    if (env.length && !this.synced) { cx.spawn(async (cx) => { await syncAccounts(pv); this.synced = true; this.resume(s, cx); }); return; }
+    // The installed command (with whatever Herdr starts it with), else the plain one.
+    const kd = (this.known ?? []).find((k) => k.key === pv && k.run), cmd = kd?.run ?? [pv];
+    const argv = [...env, ...cmd, ...(pv === "claude" ? ["--resume", s.id] : ["resume", s.id])];
+    // In the folder the conversation ran in: Claude Code looks a session up by its folder.
+    const { space, dirs } = this.step.resume, folder = s.cwd || dirs[0], name = s.title.slice(0, 28);
+    this.close();
+    if (space) run("tab.new", { space, folder, name, argv });
+    else run("space.new", { folder, argv });
+  }
+  resumeRows(t) {
+    const q = this.q.trim().toLowerCase(), { name } = this.step.resume;
+    const kindOf = (pv) => (this.known ?? []).find((k) => k.key === pv);
+    return (this.sessions ?? []).filter((s) => !q || `${s.title} ${s.first} ${s.last ?? ""} ${s.provider} ${s.sub ?? ""}`.toLowerCase().includes(q)).slice(0, 30)
+      .map((s) => { const kd = kindOf(s.provider);
+        const open = s.open ? (s.open === "claude-desktop" ? "open in Claude app" : "running") : null;
+        return { group: "Past conversations", name: s.title, hint: [open, s.sub, ago(s.at)].filter(Boolean).join(" · "), mark: kd ? this.kindIcon(t, kd) : icon("history", 14, t.muted), verb: "Resume",
+          desc: `${PROVIDER[s.provider] ?? s.provider} · last active ${ago(s.at)}${s.sub ? `\nIn ${s.sub}` : ""}`
+            + `${open ? `\nStill ${open}: close it there first, or both will write to the same conversation.` : ""}`
+            + `\n\nFirst message:\n${s.first}${s.last ? `\n\nLast message:\n${s.last}` : ""}`
+            + `\n\nResumes in ${name}, as a new tab${s.sub ? ` (in ${s.sub})` : ""}.${kd ? this.accountLine(kd) : ""}`,
+          run: (cx) => this.resume(s, cx) }; });
+  }
+  emptyText() {
+    if (!this.step?.resume) return "Nothing matches.";
+    if (this.sessions == null) return "Looking for past conversations…";
+    return this.sessions.length ? "Nothing matches." : `No past Claude Code or Codex conversation in ${this.step.resume.name}.`;
   }
 
   // ---------- rows ----------
@@ -121,6 +213,7 @@ export default class CommandBar extends View {
 
     const act = (name, ic, desc, fn, extra = {}) => out.push({ group: "Actions", name, mark: icon(ic, 14, t.muted), desc, verb: "Run", kw: "", ...extra, run: fn });
     act("New agent…", "plus", "Pick a folder and an agent (any agent installed here, or a plain terminal). What you type becomes its first message.", (cx) => this.setStep({}, cx), { keep: true, verb: "Continue", kw: "start launch claude codex grok cursor", hint: "" });
+    act("Resume a conversation…", "history", "Pick a past Claude Code or Codex conversation started in this space's folder (or a folder you pick) and continue it in a new tab.", (cx) => this.resumeTarget("here") ? this.resumeStep("here", cx) : this.setStep({ resumeWhere: true }, cx), { keep: true, verb: "Continue", kw: "resume continue history past session conversation claude codex", hint: "" });
     act("New team…", "users", "A lead plus helpers on one task: maker-checker, leader-workers, arena, research-build.", () => { this.close(); openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: {} }); }, { hint: "⌃⌘N", kw: "lead maker checker arena" });
     act("New worktree…", "git-branch", "A separate copy of this repo on its own branch, as a new space.", (cx) => { this.close(); cx.spawn(async () => {
       const dir = focused()?.cwd; const r = dir ? await exec("git", ["-C", dir, "rev-parse", "--show-toplevel"]).catch(() => null) : null;
@@ -158,6 +251,15 @@ export default class CommandBar extends View {
 
   rows(t) {
     const q = this.q.trim().toLowerCase();
+    if (this.step?.resume) return this.resumeRows(t);
+    if (this.step?.resumeWhere) {
+      const ps = panes();
+      const list = [...spaces().filter((x) => !x.machine).map((x) => ({ name: spaceName(x.name), hint: place(x, ps) ?? "", mark: icon("layers", 14, t.muted), where: { space: x.id } })),
+        ...(this.folders.list ?? []).filter((f) => f.path || spaces().some((x) => !x.machine && folderOf(x, this.folders, ps) === f.id))
+          .map((f) => ({ name: f.name, hint: f.path ?? "", mark: icon("folder", 14, t.muted), where: f }))];
+      return list.filter((r) => !q || `${r.name} ${r.hint}`.toLowerCase().includes(q)).map((r) => ({ group: "Where", ...r, verb: "Next", keep: true,
+        desc: `Past conversations started in ${r.name}${r.hint ? ` (${r.hint})` : ""} or in folders under it.`, run: (cx) => this.resumeStep(r.where, cx, this.step) }));
+    }
     if (this.step) {
       if (this.step.folder == null) {
         const list = [{ name: "This space", hint: spaceName(spaces().find((s) => s.active)?.name), mark: icon("corner-down-right", 14, t.muted), desc: "A new tab in the space you're in now.", verb: "Next", keep: true, run: (cx) => this.setStep({ folder: "here" }, cx) },
@@ -166,8 +268,10 @@ export default class CommandBar extends View {
       }
       const f = this.step.folder, whereName = f === "here" ? "this space" : f.name;
       // Typing here is the task, not a filter. The agent used last time comes first.
-      return this.kinds().map((kd) => ({ group: "Agent", name: kd.name, hint: kd.key === this.last ? "used last time" : "", mark: this.kindIcon(t, kd),
-        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${this.accountLine(kd)}${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: (cx) => this.start(f, kd, kd.run ? this.q : "", cx) }));
+      return [...this.kinds().map((kd) => ({ group: "Agent", name: kd.name, hint: kd.key === this.last ? "used last time" : "", mark: this.kindIcon(t, kd),
+        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${this.accountLine(kd)}${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: (cx) => this.start(f, kd, kd.run ? this.q : "", cx) })),
+        { group: "Or", name: "Resume a past conversation…", hint: "", mark: icon("history", 14, t.muted), verb: "Continue", keep: true,
+          desc: `Pick a Claude Code or Codex conversation started in ${whereName} before, and continue it in a new tab.`, run: (cx) => this.resumeStep(f, cx, this.step) }];
     }
     const all = this.everything(t);
     if (!q) {
@@ -213,31 +317,32 @@ export default class CommandBar extends View {
     return v_flex().id("command-bar").track_focus(this.handle).size_full().bg(t.popover).text_size(13).text_color(t.foreground)
       .on_key_down((e, cx) => {
         const key = e.key;
-        if (key === "escape") { if (this.step) this.setStep(this.step.folder != null && !props()?.step ? {} : null, cx); else this.close(); }
+        if (key === "escape") { if (this.step) this.back(cx); else this.close(); }
         else if (key === "down") this.at = rows.length ? (this.at + 1) % rows.length : 0;
         else if (key === "up") this.at = rows.length ? (this.at + rows.length - 1) % rows.length : 0;
         else if (key === "tab") { if (sel?.keep) sel.run(cx); }
-        else if (key === "backspace" && this.step && !this.input.value()) this.setStep(this.step.folder != null ? {} : null, cx);
+        else if (key === "backspace" && this.step && !this.input.value()) { if (this.step.resume || this.step.resumeWhere) this.back(cx); else this.setStep(this.step.folder != null ? {} : null, cx); }
         else return;
         cx.stop_propagation(); cx.notify();
       })
       .child(h_flex().h(52).flex_none().px(16).gap(8).items_center().border_b(1).border_color(t.border)
         .when(!this.step, (e) => e.child(icon("search", 16, t.dim)))
-        .when(Boolean(this.step), (e) => e.child(chip("New agent", true)))
-        .when(this.step?.folder != null, (e) => e.child(chip(this.step.folder === "here" ? "This space" : this.step.folder.name, false)))
+        .when(Boolean(this.step), (e) => e.child(chip(this.step.resume || this.step.resumeWhere ? "Resume" : "New agent", true)))
+        .when(Boolean(this.step?.resume), (e) => e.child(chip(this.step.resume.name, false)))
+        .when(!this.step?.resume && !this.step?.resumeWhere && this.step?.folder != null, (e) => e.child(chip(this.step.folder === "here" ? "This space" : this.step.folder.name, false)))
         .child(Input.new(this.input).flex_1().h(36).text_size(15).text_color(t.foreground))
         .child(div().id("cb-esc").flex_none().px(6).py(2).rounded(5).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.close()).child("Esc")))
       .child(h_flex().flex_1().min_h(0).items_start()
         .child(v_flex().id("cb-list").w(400).flex_none().h_full().p(6).gap(1).overflow_hidden().border_r(1).border_color(t.border)
           .children(list)
-          .when(!rows.length, (e) => e.child(div().px(10).py(14).text_color(t.dim).child("Nothing matches."))))
+          .when(!rows.length, (e) => e.child(div().px(10).py(14).text_color(t.dim).child(this.emptyText()))))
         .child(v_flex().flex_1().min_w(0).h_full().p(18).gap(8)
           .when(Boolean(sel), (e) => e
             .child(div().text_size(11).font_semibold().text_color(t.dim).child(sel.group))
             .child(div().text_size(16).font_semibold().child(sel.name))
             .child(div().text_color(t.muted).child(sel.desc ?? "")))))
       .child(h_flex().h(34).flex_none().px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(11).text_color(t.muted)
-        .child(div().flex_1().child(this.step ? (this.step.folder == null ? "Step 1 of 2 · ⌫ back" : "Step 2 of 2 · type the task · ⌫ back") : ""))
+        .child(div().flex_1().child(!this.step ? "" : this.step.resume || this.step.resumeWhere ? "type to filter · ⌫ back" : this.step.folder == null ? "Step 1 of 2 · ⌫ back" : "Step 2 of 2 · type the task · ⌫ back"))
         .child("↑↓ move")
         .child(`↵ ${sel?.verb ?? "Run"}`)
         .when(Boolean(sel?.keep), (e) => e.child("⇥ continue")));
