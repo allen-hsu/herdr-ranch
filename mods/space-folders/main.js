@@ -20,6 +20,7 @@ import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
 import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
 import { TS, C, tint, icon, statusMark, statusOf, spaceName, openCommandBar, toggleSidebar } from "./ui.js";
+import { reposOf, otherRules, isPlainPath } from "./folders.js";
 const WORKTREES_MOD = "worktrees";
 const TRAIL_W = 30;
 // A logo's tile: light on a dark theme (dark marks stay visible; the theme's text color is its light tone), the raised tier on a light one.
@@ -74,7 +75,8 @@ async function newSpaceIn(machine, id) {
   setShared("space-folders.new", { machine, id, before: spaces().map((s) => s.id), until: Date.now() + 60000 });
   const path = id && folders(machine).list.find((f) => f.id === id)?.path;
   const folder = path ? await expand(machine, path).catch(() => null) : null;
-  run("space.new", { ...(machine ? { machine } : {}), ...(folder ? { folder } : {}) });
+  // Named after the folder it starts in: unnamed, Herdr renames a space to wherever its first terminal is now.
+  run("space.new", { ...(machine ? { machine } : {}), ...(folder ? { folder, ...(lastPart(folder) ? { name: lastPart(folder) } : {}) } : {}) });
 }
 
 // A rule of "Collect spaces from" takes a folder and everything in it. "~" is
@@ -202,19 +204,21 @@ export default class Spaces extends View {
       const f = folders(machine).list.find((x) => x.id === edit) ?? { name: NEW_FOLDER };
       this.editing = { id: edit, machine, fresh, overlay };
       this.name = InputState.new({ value: f.name ?? "" });
-      this.path = InputState.new({ value: f.path ?? "", placeholder: "e.g. ~/Documents/github.com/owner/repo" });
-      this.match = InputState.new({ value: f.match ?? "", placeholder: "e.g. wbso-ai, ~/code/client-*" });
-      // The rules follow the start folder until they're given rules of their own.
-      this.mirror = !f.match || f.match === f.path;
-      this.path.on("change", (_e, cx) => { if (this.mirror) { this.match.set_value(this.path.value()); cx.notify(); } });
-      this.match.on("change", () => { this.mirror = this.match.value() === this.path.value(); });
-      // The name follows the start folder's last part while it's still the default
+      // The folders (repos) it is made of: the first is where its "New space here" opens; New agent asks which one
+      // when there are several. Stored as before: `path` is the first, `match` lists them all, then the other rules.
+      this.repos = reposOf(f);
+      this.path = InputState.new({ value: "", placeholder: this.repos.length ? "Add another folder, e.g. ~/code/api" : "e.g. ~/Documents/github.com/owner/repo" });
+      this.match = InputState.new({ value: otherRules(f).join(", "), placeholder: "e.g. wbso-ai, ~/code/client-*" });
+      this.editNote = null;
+      // The name follows the first folder's last part while it's still the default
       // (or already that part); typing a name of its own stops that.
-      const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.path.value());
+      const named = (n) => !n || n === NEW_FOLDER || n === lastPart(this.repos[0] ?? this.path.value());
       this.nameMirror = named(this.name.value());
-      this.path.on("change", (_e, cx) => { this.follow(); cx.notify(); });
+      this.path.on("change", (_e, cx) => { this.editNote = null; this.follow(); cx.notify(); });
       this.name.on("change", () => { this.nameMirror = named(this.name.value()); });
-      for (const input of [this.name, this.path, this.match]) input.on("submit", () => this.saveFolder());
+      // Enter in the path box adds it; with the box empty (and in the other boxes) it saves.
+      this.path.on("submit", (_e, cx) => { if (this.path.value().trim()) { this.addRepo(this.path.value()); cx.notify(); } else this.saveFolder(); });
+      for (const input of [this.name, this.match]) input.on("submit", () => this.saveFolder());
       this.name.set_selected_range({ start: 0, end: this.name.value().length });
       this.name.focus();
       cx.timer.after(300, () => this.name.focus());
@@ -535,27 +539,37 @@ export default class Spaces extends View {
 
   saveFolder() {
     const { id, machine, fresh, overlay } = this.editing, f = folders(machine);
-    const name = this.name.value().trim(), path = this.path.value().trim() || null, match = this.match.value().trim() || null;
+    const typed = this.path.value().trim();
+    const repos = [...this.repos, ...(typed && isPlainPath(typed) && !this.repos.includes(this.short(typed)) ? [this.short(typed)] : [])];
+    const others = this.match.value().split(",").map((x) => x.trim()).filter((x) => x && !repos.includes(x));
+    const name = this.name.value().trim(), path = repos[0] ?? null, match = [...repos, ...others].join(", ") || null;
     // A folder deleted while its dialog was open isn't made again; a new one is made now.
     const list = fresh && !f.list.some((x) => x.id === id) ? [...f.list, { id, name: NEW_FOLDER, folded: false }] : f.list;
     saveFolders(machine, { ...f, list: list.map((x) => x.id === id ? { ...x, name: name || x.name, path, match } : x) });
     closeOverlay(overlay);
   }
-
-  // The name, while it follows the start folder, set to that folder's last part.
   follow() {
-    const part = lastPart(this.path.value());
+    const part = lastPart(this.repos[0] ?? this.path.value());
     if (this.nameMirror && part && part !== this.name.value()) this.name.set_value(part);
   }
-
-  // The system's folder picker, for this computer: home written as "~".
+  // A path as it is kept: "~" for this computer's home, no trailing slash.
+  short(p) {
+    const q = p.trim().replace(/(.)\/+$/, "$1");
+    return !this.editing.machine && (q === home() || q.startsWith(home() + "/")) ? `~${q.slice(home().length)}` : q;
+  }
+  addRepo(p) {
+    const q = this.short(p);
+    if (!isPlainPath(q)) { this.editNote = 'A folder starts with ~ or /. A name or a pattern with * goes in "Also collect spaces from".'; return; }
+    if (!this.repos.includes(q)) this.repos.push(q);
+    this.path.set_value(""); this.path.set_placeholder?.("Add another folder, e.g. ~/code/api");
+    this.editNote = null;
+    this.follow();
+  }
   choose(cx) {
     cx.spawn(async (cx) => {
-      const picked = await pickFolder({ prompt: "Start new spaces in" });
+      const picked = await pickFolder({ prompt: "A folder of this group" });
       if (!picked) return;
-      this.path.set_value(picked.startsWith(home()) ? `~${picked.slice(home().length)}` : picked);
-      if (this.mirror) this.match.set_value(this.path.value());
-      this.follow();
+      this.addRepo(picked);
       cx.notify();
     });
   }
@@ -595,7 +609,7 @@ export default class Spaces extends View {
           // An empty folder says what to do next.
           ...(!hidden && !away && !collapsed && !counted.length ? [h_flex().id(`folder-empty-${f.id}`).h(26).ml(indent(null, nested) + 20).mr(8).px(8).gap(6).items_center().rounded(6).flex_none()
             .border_1().border_dashed().border_color(t.border).text_size(TS.body).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null } }); })
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null, match: f.match ?? null } }); })
             .child(icon("plus", 12)).child("New agent")] : []),
           ...inside.flatMap((r) => draw(r, away)),
           ...visitors.flatMap((g) => this.machineSection(g.m, g.rows, t, collapsed, { nested: true, hidden: away, seen })),
@@ -815,7 +829,7 @@ export default class Spaces extends View {
       .when(hover, (el) => el.child(div().id(`folder-add-${f.id}`).size(20).flex_none().flex().items_center().justify_center().rounded(5).bg(t.raised).text_color(t.foreground)
         .hover((s) => s.bg(t.selected)).tooltip(`New agent in ${f.name}`)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null } }); }).child(icon("plus", 13))))
+        .on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null, match: f.match ?? null } }); }).child(icon("plus", 13))))
       .child(this.trail().when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
         () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: machine ? 206 : 239, props: { folderMenu: f.id, machine } })))));
   }
@@ -866,7 +880,7 @@ export default class Spaces extends View {
       .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
       .when(!machine, (el) => el.child(item("folder-resume", "Resume a conversation…", () => {
         const f = folders(machine).list.find((x) => x.id === id);
-        if (f) openBar({ resume: { id: f.id, name: f.name, path: f.path ?? null } });
+        if (f) openBar({ resume: { id: f.id, name: f.name, path: f.path ?? null, match: f.match ?? null } });
       })))
       .when(!machine, (el) => el.child(item("folder-team", "Start an agent team…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: id } }))))
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
@@ -888,14 +902,36 @@ export default class Spaces extends View {
           .child(Input.new(input).w_full().text_size(TS.item).text_color(t.foreground)))
         .when(Boolean(extra), (el) => el.child(extra)))
       .when(Boolean(hint), (el) => el.child(div().text_size(TS.body).text_color(t.dim).child(hint)));
+    const repoRow = (p, i) => h_flex().id(`repo-${i}`).h(32).flex_none().px(10).gap(8).items_center()
+      .when(i < this.repos.length - 1, (el) => el.border_b(1).border_color(t.border))
+      .child(icon("folder", 13, t.dim))
+      .child(div().flex_1().min_w(0).truncate().text_size(TS.item).child(p))
+      .when(i === 0 && this.repos.length > 1, (el) => el.child(div().flex_none().text_size(TS.small).text_color(t.dim).child("new spaces start here")))
+      .when(i > 0, (el) => el.child(div().id(`repo-first-${i}`).flex_none().px(6).h(20).flex().items_center().rounded(5).text_size(TS.small).text_color(t.muted).cursor_pointer()
+        .hover((x) => x.bg(t.hover).text_color(t.foreground)).tooltip("New spaces start here")
+        .on_click((_e, cx) => { this.repos = [p, ...this.repos.filter((x) => x !== p)]; this.follow(); cx.notify(); }).child("Make first")))
+      .child(div().id(`repo-rm-${i}`).flex_none().size(20).flex().items_center().justify_center().rounded(5).text_color(t.dim).cursor_pointer()
+        .hover((x) => x.bg(t.hover).text_color(t.foreground)).tooltip("Remove from this folder")
+        .on_click((_e, cx) => { this.repos = this.repos.filter((x) => x !== p); this.follow(); cx.notify(); }).child(icon("x", 12)));
     return v_flex().id("folder-edit").w_full().p(20).gap(16).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(overlay); cx.stop_propagation(); } })
       .child(div().text_size(TS.title).font_semibold().child("Edit folder"))
       .child(field("Name", this.name, null))
-      .child(field("Start new spaces in", this.path, "Its + and New space here open a space there.",
-        machine ? null : button("folder-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
-      .child(field("Collect spaces from", this.match,
-        "Spaces working in these folders join this one. Comma-separated: a folder name like wbso-ai, or a path like ~/code/client-*."))
+      .child(v_flex().gap(6)
+        .child(div().text_size(TS.body).font_medium().text_color(t.muted).child("Folders in it"))
+        // A fixed height, so adding one doesn't change the dialog's size.
+        .child(v_flex().id("folder-repos").h(100).rounded(8).border_1().border_color(t.border).bg(t.background).overflow_y_scrollbar()
+          .when(!this.repos.length, (el) => el.child(div().px(10).py(9).text_size(TS.body).text_color(t.dim).child("None yet. Add the repository or folder this group is about.")))
+          .children(this.repos.map(repoRow)))
+        .child(h_flex().gap(8)
+          .child(div().flex_1().min_w(0).h(34).px(10).flex().items_center().rounded(8).border_1().border_color(t.input).bg(t.background)
+            .child(Input.new(this.path).w_full().text_size(TS.item).text_color(t.foreground)))
+          .when(!machine, (el) => el.child(button("folder-choose", "Choose…", false, (_e, cx) => this.choose(cx))))
+          .child(button("folder-add", "Add", false, (_e, cx) => { if (this.path.value().trim()) this.addRepo(this.path.value()); cx.notify(); })))
+        .child(div().text_size(TS.body).text_color(this.editNote ? C(t).status.blocked : t.dim)
+          .child(this.editNote ?? "Spaces and agents started in any of these belong here. With several, New agent asks which one; the first is where New space here opens.")))
+      .child(field("Also collect spaces from", this.match,
+        "Optional, comma-separated: a folder name at any depth like wbso-ai, or a pattern like ~/code/client-*."))
       .child(h_flex().pt(4).gap(8).justify_end()
         .child(button("folder-cancel", "Cancel", false, () => closeOverlay(overlay)))
         .child(button("folder-save", "Save", true, () => this.saveFolder())));
@@ -997,15 +1033,16 @@ export default class Spaces extends View {
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
     const repo = tree || same(g.name) ? "" : g.name;
     const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
-    return h_flex()
-      .flex_1()
-      .min_w(0)
+    // Two parts, so the row can give each its due: the repo / branch text takes what is left after the name and
+    // truncates first (down to nothing); the counts and the PR never shrink and never slide over the tag.
+    const text = h_flex().flex_1().min_w(0).justify_end().items_center().text_size(TS.meta).text_color(t.dim)
+      .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)));
+    const fixed = h_flex()
+      .flex_none()
       .gap(5)
-      .justify_end()
       .items_center()
       .text_size(TS.meta)
       .text_color(t.dim)
-      .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().id(`ahead-${name}`).flex_none().text_color(C(t).diff.add)
         .tooltip(`${g.ahead} commit${g.ahead === 1 ? "" : "s"} here not pushed yet`).child(`\u2191${g.ahead}`)))
       // Behind the remote isn't shown: nearly every repo is a little behind, and it needs no action here.
@@ -1020,6 +1057,7 @@ export default class Spaces extends View {
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
           .on_click((_e, cx) => { cx.stop_propagation(); revealPR(pr, cx); }).child(`#${pr.number}`));
       });
+    return [text, fixed];
   }
 
   row({ w, i, g, tree, folder, nested }, t) {
@@ -1078,12 +1116,14 @@ export default class Spaces extends View {
           // Orca-style: a status mark where the avatar was (spinner working, red needs you, blue finished unseen,
           // ring idle, faint dot no agent) — the same 18px column as folder icons and logos.
           .when(!tree, el => el.child(h_flex().size(18).flex_none().items_center().justify_center().child(statusMark(t, statusOf(mine)))))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(spaceName(w.name)))
+          // The name comes first: it gives way (down to 64px) only when the tag and the counts would not fit otherwise.
+          .child(div().flex_shrink(1).min_w(64).max_w(150).truncate().text_color(on || unread ? t.foreground : t.muted).when(unread, (el) => el.font_semibold()).child(spaceName(w.name)))
           // Orca's tag: the repository's main checkout (worktrees show a branch icon instead).
-          .when(Boolean(g) && !g.linked && !tree, (el) => el.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border)
+          // A long name keeps the room instead: the tag says little (worktrees are already marked by their icon).
+          .when(Boolean(g) && !g.linked && !tree && spaceName(w.name).length <= 14, (el) => el.child(div().flex_none().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border)
             .text_size(TS.tiny).text_color(t.dim).child("primary")))
           // Hovered, the git details step aside for the row's one ⋯ button (same place on every row).
-          .child(g ? this.gitTail(g, tree, spaceName(w.name), t, w.machine) : div().flex_1())
+          .children(g ? this.gitTail(g, tree, spaceName(w.name), t, w.machine) : [div().flex_1()])
 
           // The right-hand column is free (status sits on the left), so ⋯ lives there and covers nothing.
           .child(this.trail().when(this.hovered === w.id, (el) => el.child(this.more(t, `more-${w.id}`, "Worktree, team and space actions", () => this.rowMenu(w, g))))),

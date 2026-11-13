@@ -22,7 +22,8 @@ Screenshots are illustrative mockups with sample data. To regenerate them: `docs
 <p align="center"><img src="docs/img/sidebar.png" alt="Sidebar with status filter, Pinned and Needs you sections, folders, spaces and agents" width="300"><br><em>The sidebar: status filter, Pinned, Needs you and Finished, then folders with their spaces and agents.</em></p>
 
 - **Folders, spaces, agents.** Spaces are grouped into folders (drag a space onto a folder, or give the folder
-  path rules so it collects matching spaces). Worktree spaces sit under their checkout. Each space lists its
+  path rules so it collects matching spaces). A folder can be made of several folders on disk (the repos of
+  one project): a space belongs to the folder it was started in and stays there when its agent `cd`s elsewhere. Worktree spaces sit under their checkout. Each space lists its
   agents with a status mark, context bar and the time since its state changed. Spaces in no folder are listed
   under **Recent**. (`space-folders`)
 - **Status filter.** All / Working / Needs you / Done in the header shows the same tree with only the agents
@@ -50,8 +51,8 @@ explains the highlighted row. (`command-bar`)
   right, Toggle sidebar, Toggle details panel, and "Compact this agent's context" for a focused Claude agent.
 - **Views:** Board, Team Map, the four Inspector tabs, Changes, Git graph, Pull requests, Files, Resource
   Manager, Accounts, Settings, Keybinds, Herdr's own command palette.
-- **New agent flow:** pick a folder (or "This space"), pick one of the agents Herdr reports as installed (or a
-  plain terminal); whatever you typed becomes its first message. Backspace on an empty box goes back a step.
+- **New agent flow:** pick a folder (or "This space"; a folder made of several folders asks which one), pick one
+  of the agents Herdr reports as installed (or a plain terminal); whatever you typed becomes its first message. Backspace on an empty box goes back a step.
 - **Resume a conversation:** lists the past Claude Code and Codex conversations started in this space's folder or
   in folders under it, such as `.claude/worktrees/<name>` (newest first, with the first and last thing you typed;
   one still open elsewhere, like the Claude app, is marked), and continues the picked one in a new tab in its own

@@ -11,7 +11,7 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents, home, appHome } from "herdr";
 import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 import { agentName } from "./agentname.js";
-import { loadFolders, folderOf, place } from "./folders.js";
+import { loadFolders, folderOf, place, reposOf, lastPart } from "./folders.js";
 import { providerOf, accountsInfo, activeName, openAccounts, syncAccounts } from "./accounts.js";
 
 // What "New agent" can start: the agents Herdr knows are installed on this computer (the same list, icons and
@@ -65,8 +65,17 @@ export default class CommandBar extends View {
   hint() {
     return !this.step ? "Search agents, folders, actions, views…" : this.step.resume ? "Resume which conversation? (type to filter)"
       : this.step.resumeWhere ? "Resume — conversations from which folder?"
-      : this.step.folder == null ? "New agent — which folder?" : "What should it do? (optional) — pick the agent";
+      : this.step.folder == null ? "New agent — which folder?"
+      : this.needsRepo() ? `Which folder of ${this.step.folder.name}? (type to filter)` : "What should it do? (optional) — pick the agent";
   }
+  // The places a sidebar folder is made of (its start folder, then the plain paths it collects), from the live
+  // folder list when it has loaded, else from what the bar was opened with.
+  repos(f) {
+    if (!f || f === "here" || f.space) return [];
+    return reposOf((this.folders.list ?? []).find((x) => x.id === f.id) ?? f);
+  }
+  // A folder of several places, and none picked yet: the step in between asks which.
+  needsRepo(step = this.step) { return step?.folder != null && step.repo == null && this.repos(step.folder).length > 1; }
   close() { closeOverlay(this.overlay); }
   setStep(step, cx) {
     this.step = step; this.at = 0; this.q = "";
@@ -79,6 +88,7 @@ export default class CommandBar extends View {
     const s = this.step;
     if (s?.resumeWhere) { this.setStep(null, cx); return; }
     if (s?.resume) { if (s.back !== undefined) this.setStep(s.back, cx); else if (props()?.step) this.close(); else this.setStep(null, cx); return; }
+    if (s?.repo != null) { this.setStep({ folder: s.folder }, cx); return; } // back to "which folder of it"
     this.setStep(s?.folder != null && !props()?.step ? {} : null, cx);
   }
 
@@ -89,13 +99,14 @@ export default class CommandBar extends View {
   }
   kindIcon(t, kd, size = 14) { return kd.tint ? svg(kd.icon).size(size).flex_none().text_color(t.foreground) : image(kd.icon).size(size).flex_none(); }
 
-  start(folder, kind, task, cx) {
+  // repo: the place picked in a folder of several (null: its first).
+  start(folder, kind, task, cx, repo = null) {
     // The account list is read when the bar opens; a start before it arrived waits for it (never the wrong login).
     const pv = kind.run ? providerOf(kind) : null;
-    if (pv && !this.acct) { cx.spawn(async (cx) => { await this.acctLoad; this.start(folder, kind, task, cx); }); return; }
+    if (pv && !this.acct) { cx.spawn(async (cx) => { await this.acctLoad; this.start(folder, kind, task, cx, repo); }); return; }
     const env = pv ? this.acct?.[pv]?.env ?? [] : [];
     // An added account: bring its setup (trusted folders, MCP servers) up to date first, then start.
-    if (env.length && !this.synced) { cx.spawn(async (cx) => { await syncAccounts(pv); this.synced = true; this.start(folder, kind, task, cx); }); return; }
+    if (env.length && !this.synced) { cx.spawn(async (cx) => { await syncAccounts(pv); this.synced = true; this.start(folder, kind, task, cx, repo); }); return; }
     const argv = kind.run ? [...env, ...kind.run] : undefined, t = task.trim() || undefined;
     const name = t ? t.slice(0, 28) : kind.run ? kind.name : undefined;
     localStorage.setItem("kind", kind.key);
@@ -103,12 +114,17 @@ export default class CommandBar extends View {
     if (folder === "here") { run("tab.new", { ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) }); return; }
     // A given space (the Board's "+" on a card).
     if (folder.space) { run("tab.new", { space: folder.space, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) }); return; }
-    // The folder's main space (its first one): a new tab there. No space yet: a new space in the folder's path.
+    // A new tab in the space made in that place; none yet: a new space there, named after it (unnamed, Herdr
+    // renames a space to wherever its first terminal is, so it would change name when the agent cd's elsewhere).
+    // A folder of one place keeps using its first space, wherever that was made.
     const ps = panes();
     const mine = spaces().filter((s) => !s.machine && folderOf(s, this.folders, ps) === folder.id);
-    if (mine.length) run("tab.new", { space: mine[0].id, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) });
+    const places = this.repos(folder), path = repo ?? places[0] ?? folder.path ?? null;
+    const same = (a, b) => Boolean(a) && Boolean(b) && expand(a).replace(/(.)\/+$/, "$1") === expand(b).replace(/(.)\/+$/, "$1");
+    const target = places.length > 1 && path ? mine.find((s) => same(s.folder, path)) : mine[0];
+    if (target) run("tab.new", { space: target.id, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) });
     // Herdr takes the path as written: a folder path saved as "~/…" is expanded here (as space-folders does).
-    else if (folder.path) run("space.new", { folder: expand(folder.path), ...(argv ? { argv, task: t } : {}) });
+    else if (path) run("space.new", { folder: expand(path), ...(lastPart(path) ? { name: lastPart(path) } : {}), ...(argv ? { argv, task: t } : {}) });
     else notify({ title: `${folder.name} has no space and no path`, body: "Give the folder a path (⋯ › Edit) or open a space in it first.", level: "warning" });
   }
 
@@ -128,7 +144,7 @@ export default class CommandBar extends View {
     if (where === "here" || where == null) { const s = sp.find((x) => x.active); return s && !s.machine ? ofSpace(s) : null; }
     if (where.space) { const s = sp.find((x) => x.id === where.space); return s && !s.machine ? ofSpace(s) : null; }
     const s = sp.find((x) => !x.machine && folderOf(x, this.folders, ps) === where.id);
-    const dirs = [expand(where.path), ...(s ? ofSpace(s)?.dirs ?? [] : [])].filter(Boolean);
+    const dirs = [...new Set([expand(where.path), ...this.repos(where).map(expand), ...(s ? ofSpace(s)?.dirs ?? [] : [])].filter(Boolean))];
     return dirs.length ? { ...(s ? { space: s.id } : {}), name: where.name, dirs } : null;
   }
   // To the Resume step for `where`, or otherwise() when it has nowhere to look (by default, say so).
@@ -164,7 +180,7 @@ export default class CommandBar extends View {
     const { space, dirs } = target, folder = s.cwd || dirs[0], name = s.title.slice(0, 28);
     this.close();
     if (space) run("tab.new", { space, folder, name, argv });
-    else run("space.new", { folder, argv });
+    else run("space.new", { folder, ...(lastPart(folder) ? { name: lastPart(folder) } : {}), argv });
   }
   resumeRows(t) {
     const q = this.q.trim().toLowerCase(), { name } = this.step.resume;
@@ -264,13 +280,22 @@ export default class CommandBar extends View {
     if (this.step) {
       if (this.step.folder == null) {
         const list = [{ name: "This space", hint: spaceName(spaces().find((s) => s.active)?.name), mark: icon("corner-down-right", 14, t.muted), desc: "A new tab in the space you're in now.", verb: "Next", keep: true, run: (cx) => this.setStep({ folder: "here" }, cx) },
-          ...(this.folders.list ?? []).map((f) => ({ name: f.name, hint: f.path ?? "", mark: icon("folder", 14, t.muted), desc: `A new tab in ${f.name}'s main space.`, verb: "Next", keep: true, run: (cx) => this.setStep({ folder: f }, cx) }))];
+          ...(this.folders.list ?? []).map((f) => { const n = reposOf(f).length;
+            return { name: f.name, hint: n > 1 ? `${n} folders` : f.path ?? "", mark: icon("folder", 14, t.muted), desc: n > 1 ? `${f.name} is made of ${n} folders: the next step asks which one.` : `A new tab in ${f.name}'s main space.`, verb: "Next", keep: true, run: (cx) => this.setStep({ folder: f }, cx) }; })];
         return list.filter((r) => !q || r.name.toLowerCase().includes(q)).map((r) => ({ group: "Where", ...r }));
       }
-      const f = this.step.folder, whereName = f === "here" ? "this space" : f.name;
+      const f = this.step.folder;
+      if (this.needsRepo()) {
+        const ps = panes(), mine = spaces().filter((s) => !s.machine && folderOf(s, this.folders, ps) === f.id);
+        const at = (p) => mine.find((s) => s.folder && expand(s.folder).replace(/(.)\/+$/, "$1") === expand(p).replace(/(.)\/+$/, "$1"));
+        return this.repos(f).filter((p) => !q || p.toLowerCase().includes(q)).map((p) => { const sp = at(p);
+          return { group: `Where in ${f.name}`, name: lastPart(p) || p, hint: sp ? "has a space" : "", mark: icon("folder", 14, t.muted), verb: "Next", keep: true,
+            desc: `${p}\n\n${sp ? `A new tab in its space (${spaceName(sp.name)}).` : "A new space there, named after it."}`, run: (cx) => this.setStep({ folder: f, repo: p }, cx) }; });
+      }
+      const repo = this.step.repo ?? null, whereName = f === "here" ? "this space" : repo ? `${lastPart(repo)} (${f.name})` : f.name;
       // Typing here is the task, not a filter. The agent used last time comes first.
       return [...this.kinds().map((kd) => ({ group: "Agent", name: kd.name, hint: kd.key === this.last ? "used last time" : "", mark: this.kindIcon(t, kd),
-        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${this.accountLine(kd)}${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: (cx) => this.start(f, kd, kd.run ? this.q : "", cx) })),
+        desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${this.accountLine(kd)}${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: (cx) => this.start(f, kd, kd.run ? this.q : "", cx, repo) })),
         { group: "Or", name: "Resume a past conversation…", hint: "", mark: icon("history", 14, t.muted), verb: "Continue", keep: true,
           desc: `Pick a Claude Code or Codex conversation started in ${whereName} before, and continue it in a new tab.`, run: (cx) => this.resumeStep(f, cx, { back: this.step }) }];
     }
@@ -331,6 +356,7 @@ export default class CommandBar extends View {
         .when(Boolean(this.step), (e) => e.child(chip(this.step.resume || this.step.resumeWhere ? "Resume" : "New agent", true)))
         .when(Boolean(this.step?.resume), (e) => e.child(chip(this.step.resume.name, false)))
         .when(!this.step?.resume && !this.step?.resumeWhere && this.step?.folder != null, (e) => e.child(chip(this.step.folder === "here" ? "This space" : this.step.folder.name, false)))
+        .when(!this.step?.resume && !this.step?.resumeWhere && this.step?.repo != null, (e) => e.child(chip(lastPart(this.step.repo), false)))
         .child(Input.new(this.input).flex_1().h(36).text_size(15).text_color(t.foreground))
         .child(div().id("cb-esc").flex_none().px(6).py(2).rounded(5).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.close()).child("Esc")))
       .child(h_flex().flex_1().min_h(0).items_start()
@@ -343,7 +369,7 @@ export default class CommandBar extends View {
             .child(div().text_size(16).font_semibold().child(sel.name))
             .child(div().text_color(t.muted).child(sel.desc ?? "")))))
       .child(h_flex().h(34).flex_none().px(14).gap(14).items_center().border_t(1).border_color(t.border).text_size(11).text_color(t.muted)
-        .child(div().flex_1().child(!this.step ? "" : this.step.resume || this.step.resumeWhere ? "type to filter · ⌫ back" : this.step.folder == null ? "Step 1 of 2 · ⌫ back" : "Step 2 of 2 · type the task · ⌫ back"))
+        .child(div().flex_1().child(!this.step ? "" : this.step.resume || this.step.resumeWhere ? "type to filter · ⌫ back" : this.step.folder == null ? "Step 1 · ⌫ back" : this.needsRepo() ? "Step 2 of 3 · type to filter · ⌫ back" : this.step.repo != null ? "Step 3 of 3 · type the task · ⌫ back" : "Step 2 of 2 · type the task · ⌫ back"))
         .child("↑↓ move")
         .child(`↵ ${sel?.verb ?? "Run"}`)
         .when(Boolean(sel?.keep), (e) => e.child("⇥ continue")));
