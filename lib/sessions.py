@@ -15,21 +15,20 @@ conversation was given (/rename). One still open in a Claude Code process is lis
 ("claude-desktop", "cli", ...), since resuming it a second time makes two writers.
 """
 import glob, json, os, re, sys
+import codexlog
+import live
 
 HOME = os.path.expanduser("~")
 CLAUDE = os.path.join(HOME, ".claude")
 CODEX = os.path.join(HOME, ".codex", "sessions")
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-SECRET = re.compile(r"(xox[abpr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w+|sk-[\w-]{16,}|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[\w.~+/=-]{12,}|(?i:(?:token|secret|password|api[_-]?key)=)\S+)")
-CODEX_INJECTED = ("# AGENTS.md instructions", "<environment_context>", "<user_instructions>", "<permissions", "<skills_instructions>", "<turn_aborted>")
-# Blocks the harness puts in a user record around (or instead of) what the person typed.
-INJECTED = re.compile(r"<(system-reminder|task-notification|agent-message|cross-session-message)\b[^>]*>.*?</\1>", re.S)
+# What Claude Code itself echoes into a user record (local command output, ! shell runs, hook text): no prompt.
 ECHO = re.compile(r"<(local-command-|bash-|command-|user-prompt-submit-hook)")
 HEAD, TAIL, LIMIT, CODEX_SCAN = 256 * 1024, 256 * 1024, 40, 3000
 
 
 def red(s, n=200):
-    return SECRET.sub("[redacted]", " ".join(str(s or "").split()))[:n]
+    return codexlog.red(s, n)  # secrets masked, home shown as ~
 
 
 def lines(path, tail=False):
@@ -64,7 +63,7 @@ def claude_prompt(r):
     c = (r.get("message") or {}).get("content")
     if isinstance(c, list):
         c = " ".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
-    c = INJECTED.sub("", c).strip() if isinstance(c, str) else ""
+    c = live.human_text(c) if isinstance(c, str) else ""
     # A slash command with arguments reads as typed ("/review the cart PR"); a bare one (/clear, /model) is no prompt.
     cmd = re.search(r"<command-name>(.*?)</command-name>", c, re.S)
     if cmd:
@@ -77,7 +76,7 @@ def claude_prompt(r):
 def running_claude():
     """{session id: entrypoint} of Claude Code processes alive now (~/.claude/sessions/<pid>.json, also added accounts)."""
     dirs = [os.path.join(CLAUDE, "sessions")] + glob.glob(os.path.join(HOME, ".config", "herdr-app", "ranch", "accounts", "*", "sessions"))
-    live = {}
+    found = {}
     for d in dirs:
         for p in glob.glob(os.path.join(d, "*.json")):
             try:
@@ -89,8 +88,8 @@ def running_claude():
             except Exception:  # not a pid file, the process is gone, or the file is half written
                 continue
             if isinstance(sid, str):
-                live[sid] = str(rec.get("entrypoint") or "cli")
-    return live
+                found[sid] = str(rec.get("entrypoint") or "cli")
+    return found
 
 
 def inside(cwd, dirs):
@@ -106,7 +105,7 @@ def row(provider, sid, cwd, dirs, path, first, last, name=None, open_in=None):
 
 
 def claude(dirs):
-    live, out = running_claude(), []
+    running, out = running_claude(), []
     # A folder's own conversations, and those of folders under it (its worktrees too): their encoded names start
     # with its own. "-" stands for any non-alphanumeric, so each file's own cwd decides.
     enc = {re.sub(r"[^A-Za-z0-9]", "-", d) for d in dirs}
@@ -135,18 +134,14 @@ def claude(dirs):
         last = next((p for p in map(claude_prompt, reversed(tail)) if p), None)
         name = next((r.get("agentName") or r.get("customTitle") for r in reversed(head + tail)
                      if r.get("type") in ("agent-name", "custom-title") and (r.get("agentName") or r.get("customTitle"))), None)
-        out.append(row("claude", sid, cwd, dirs, path, first, last, name, live.get(sid)))
+        out.append(row("claude", sid, cwd, dirs, path, first, last, name, running.get(sid)))
     return out
 
 
 # ---------- Codex ----------
 
 def codex_prompt(r):
-    p = r.get("payload") or {}
-    if r.get("type") != "response_item" or p.get("type") != "message" or p.get("role") != "user":
-        return None
-    t = " ".join(c.get("text", "") for c in (p.get("content") or []) if isinstance(c, dict) and c.get("type") in ("input_text", "text")).strip()
-    return None if not t or t.startswith(CODEX_INJECTED) else t
+    return codexlog.user_prompt(r.get("payload") or {})
 
 
 def codex(dirs):

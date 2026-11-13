@@ -47,11 +47,7 @@ export default class CommandBar extends View {
     if (ask) this.step = { resume: { name: ask.name ?? spaceName(spaces().find((x) => x.id === ask.space)?.name), dirs: [] } };
     cx.spawn(async (cx) => {
       this.folders = await loadFolders();
-      if (ask) {
-        const target = this.resumeTarget(ask);
-        if (!target) { notify({ title: "Nowhere to resume", body: "Resuming works in a space on this computer, or a folder with a path.", level: "warning" }); this.close(); return; }
-        this.step = { resume: target }; this.loadSessions(cx);
-      }
+      if (ask) this.resumeStep(ask, cx, { otherwise: () => { this.nowhere(); this.close(); } });
       cx.notify();
     });
     // Accounts: Claude Code and Codex start on the active one (see the Accounts dialog).
@@ -135,11 +131,13 @@ export default class CommandBar extends View {
     const dirs = [expand(where.path), ...(s ? ofSpace(s)?.dirs ?? [] : [])].filter(Boolean);
     return dirs.length ? { ...(s ? { space: s.id } : {}), name: where.name, dirs } : null;
   }
-  resumeStep(where, cx, back) {
+  // To the Resume step for `where`, or otherwise() when it has nowhere to look (by default, say so).
+  resumeStep(where, cx, { back, otherwise = () => this.nowhere() } = {}) {
     const target = this.resumeTarget(where);
-    if (!target) { notify({ title: "Nowhere to resume", body: "Resuming works in a space on this computer, or a folder with a path.", level: "warning" }); return; }
+    if (!target) { otherwise(); return; }
     this.setStep({ resume: target, ...(back !== undefined ? { back } : {}) }, cx);
   }
+  nowhere() { notify({ title: "Nowhere to resume", body: "Resuming works in a space on this computer, or a folder with a path.", level: "warning" }); }
   loadSessions(cx) {
     const dirs = [...new Set(this.step.resume.dirs ?? [])];
     this.sessions = null;
@@ -216,7 +214,7 @@ export default class CommandBar extends View {
 
     const act = (name, ic, desc, fn, extra = {}) => out.push({ group: "Actions", name, mark: icon(ic, 14, t.muted), desc, verb: "Run", kw: "", ...extra, run: fn });
     act("New agent…", "plus", "Pick a folder and an agent (any agent installed here, or a plain terminal). What you type becomes its first message.", (cx) => this.setStep({}, cx), { keep: true, verb: "Continue", kw: "start launch claude codex grok cursor", hint: "" });
-    act("Resume a conversation…", "history", "Pick a past Claude Code or Codex conversation started in this space's folder (or a folder you pick) and continue it in a new tab.", (cx) => this.resumeTarget("here") ? this.resumeStep("here", cx) : this.setStep({ resumeWhere: true }, cx), { keep: true, verb: "Continue", kw: "resume continue history past session conversation claude codex", hint: "" });
+    act("Resume a conversation…", "history", "Pick a past Claude Code or Codex conversation started in this space's folder (or a folder you pick) and continue it in a new tab.", (cx) => this.resumeStep("here", cx, { otherwise: () => this.setStep({ resumeWhere: true }, cx) }), { keep: true, verb: "Continue", kw: "resume continue history past session conversation claude codex", hint: "" });
     act("New team…", "users", "A lead plus helpers on one task: maker-checker, leader-workers, arena, research-build.", () => { this.close(); openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: {} }); }, { hint: "⌃⌘N", kw: "lead maker checker arena" });
     act("New worktree…", "git-branch", "A separate copy of this repo on its own branch, as a new space.", (cx) => { this.close(); cx.spawn(async () => {
       const dir = focused()?.cwd; const r = dir ? await exec("git", ["-C", dir, "rev-parse", "--show-toplevel"]).catch(() => null) : null;
@@ -261,7 +259,7 @@ export default class CommandBar extends View {
         ...(this.folders.list ?? []).filter((f) => f.path || spaces().some((x) => !x.machine && folderOf(x, this.folders, ps) === f.id))
           .map((f) => ({ name: f.name, hint: f.path ?? "", mark: icon("folder", 14, t.muted), where: f }))];
       return list.filter((r) => !q || `${r.name} ${r.hint}`.toLowerCase().includes(q)).map((r) => ({ group: "Where", ...r, verb: "Next", keep: true,
-        desc: `Past conversations started in ${r.name}${r.hint ? ` (${r.hint})` : ""} or in folders under it.`, run: (cx) => this.resumeStep(r.where, cx, this.step) }));
+        desc: `Past conversations started in ${r.name}${r.hint ? ` (${r.hint})` : ""} or in folders under it.`, run: (cx) => this.resumeStep(r.where, cx, { back: this.step }) }));
     }
     if (this.step) {
       if (this.step.folder == null) {
@@ -274,7 +272,7 @@ export default class CommandBar extends View {
       return [...this.kinds().map((kd) => ({ group: "Agent", name: kd.name, hint: kd.key === this.last ? "used last time" : "", mark: this.kindIcon(t, kd),
         desc: `${kd.about ?? `Runs ${kd.run.join(" ")}.`}\nStarts in ${whereName}, as a new tab.${this.accountLine(kd)}${kd.run && this.q.trim() ? `\n\nFirst message:\n${this.q.trim()}` : ""}`, verb: "Start", run: (cx) => this.start(f, kd, kd.run ? this.q : "", cx) })),
         { group: "Or", name: "Resume a past conversation…", hint: "", mark: icon("history", 14, t.muted), verb: "Continue", keep: true,
-          desc: `Pick a Claude Code or Codex conversation started in ${whereName} before, and continue it in a new tab.`, run: (cx) => this.resumeStep(f, cx, this.step) }];
+          desc: `Pick a Claude Code or Codex conversation started in ${whereName} before, and continue it in a new tab.`, run: (cx) => this.resumeStep(f, cx, { back: this.step }) }];
     }
     const all = this.everything(t);
     if (!q) {
@@ -324,7 +322,7 @@ export default class CommandBar extends View {
         else if (key === "down") this.at = rows.length ? (this.at + 1) % rows.length : 0;
         else if (key === "up") this.at = rows.length ? (this.at + rows.length - 1) % rows.length : 0;
         else if (key === "tab") { if (sel?.keep) sel.run(cx); }
-        else if (key === "backspace" && this.step && !this.input.value()) { if (this.step.resume || this.step.resumeWhere) this.back(cx); else this.setStep(this.step.folder != null ? {} : null, cx); }
+        else if (key === "backspace" && this.step && !this.input.value()) this.back(cx);
         else return;
         cx.stop_propagation(); cx.notify();
       })
