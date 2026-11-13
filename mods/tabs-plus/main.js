@@ -1,8 +1,8 @@
-// Modified from Herdr's built-in `tabs` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: agent names on tabs, flash on done / needs-you, new-tab button after the last tab, page keys.
+// Modified from Herdr's built-in `tabs` mod (Apache-2.0; see /NOTICE). Changes by herdr-ranch: agent names on tabs, folder names on plain terminal tabs, flash on done / needs-you, new-tab button after the last tab, page keys.
 // Herdr's shipped tab bar (mods/tabs), cloned: tabs show their agent's name (lib/agentname.js) unless you named them.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
-import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props, nextCommand } from "herdr";
+import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props, nextCommand, home } from "herdr";
 import { agentName } from "./agentname.js";
 import { TS, C, tint, icon, statusMark, togglePage } from "./ui.js";
 import { movePending } from "./accountswitch.js";
@@ -14,6 +14,19 @@ function find(node, id) {
     if (found) return found;
   }
   return null;
+}
+
+// ranch: what a plain terminal tab is, when you haven't named it: the folder it is in ("herdr-ranch", "Home"), led by
+// the program when something other than the shell runs there ("npm · herdr-ranch"). A mod pane: the mod's name.
+function terminalLabel(tabId) {
+  const mine = panes().filter((p) => p.tab === tabId);
+  const p = mine.find((x) => x.focused) ?? mine[0];
+  if (!p) return null;
+  if (!p.terminal) return p.title || null;
+  const cwd = (p.cwd ?? "").replace(/\/+$/, "");
+  const folder = !cwd ? null : cwd === home() ? "Home" : cwd.split("/").pop() || "/";
+  const prog = p.program && !p.program.shell ? p.program.name : null;
+  return [prog, folder].filter(Boolean).join(" · ") || p.program?.name || null;
 }
 
 export default class Tabs extends View {
@@ -80,7 +93,7 @@ export default class Tabs extends View {
       // ranch: a tab you named keeps its name; otherwise it shows its agent's name, as the sidebar does.
       const lead = agents().find((a) => a.tab === c.id && a.focused) ?? agents().find((a) => a.tab === c.id);
       const mineNamed = c.named && c.name !== program?.name && !/^tb\d+$/.test(c.name);
-      const name = mineNamed ? c.name : (lead && agentName(lead)) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
+      const name = mineNamed ? c.name : (lead && agentName(lead)) || (!c.named && terminalLabel(c.id)) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
       const now = Date.now();
       if (this.prev[c.id] !== c.status) {
         if ((c.status === "done" || c.status === "blocked") && !c.active) this.flash[c.id] = { kind: c.status, until: c.status === "blocked" ? Infinity : now + 4000 };
