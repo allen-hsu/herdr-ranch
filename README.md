@@ -19,16 +19,16 @@ Screenshots are illustrative mockups with sample data. To regenerate them: `docs
 
 ### Sidebar
 
-<p align="center"><img src="docs/img/sidebar.png" alt="Sidebar with status filter, Pinned and Needs you sections, folders, spaces and agents" width="300"><br><em>The sidebar: status filter, Pinned and Needs you, then folders with their spaces and agents.</em></p>
+<p align="center"><img src="docs/img/sidebar.png" alt="Sidebar with status filter, Pinned and Needs you sections, folders, spaces and agents" width="300"><br><em>The sidebar: status filter, Pinned, Needs you and Finished, then folders with their spaces and agents.</em></p>
 
 - **Folders, spaces, agents.** Spaces are grouped into folders (drag a space onto a folder, or give the folder
   path rules so it collects matching spaces). Worktree spaces sit under their checkout. Each space lists its
   agents with a status mark, context bar and the time since its state changed. Spaces in no folder are listed
   under **Recent**. (`space-folders`)
 - **Status filter.** All / Working / Needs you / Done in the header shows the same tree with only the agents
-  in that state.
-- **Needs you / Finished / Pinned.** With no filter on, pinned agents, agents waiting for you and agents that
-  finished while you were elsewhere are repeated in sections at the top.
+  in that state, and the spaces and folders that hold them. Click the active one again to go back to All.
+- **Pinned / Needs you / Finished.** With no filter on, pinned agents, agents waiting for you and agents that
+  finished while you were elsewhere are repeated in sections at the top, each with the name of its space.
 - **12-hour fold.** Agents that finished or went idle more than 12 hours ago fold into one line per space.
 - **Background-work indicator.** Under a Claude Code agent: the `hc` sub-agents it started and its running
   background subagents and background shell commands. (`lib/agentrows.js`, `lib/subs.py`)
@@ -60,10 +60,15 @@ Five icon tabs (`stack-tabs`) in Herdr's own panel:
 <p align="center"><img src="docs/img/panel-inspector.png" alt="Inspector, Overview tab" width="270"> <img src="docs/img/inspector-trace.png" alt="Inspector, Trace tab" width="270"> <img src="docs/img/files-search.png" alt="Files panel searching inside files" width="270"><br><em>Inspector Overview, Inspector Trace, and Files searching inside files.</em></p>
 
 - **Files** (`files-plus`): a lazy file browser for the focused pane's folder with read-only previews, and
-  search by file name or inside files (the latter needs `rg`).
+  search by file name or inside files (the latter needs `rg`; one row per hit, at most 3 per file). Clicking a
+  result opens the whole file, read-only, with syntax colors.
 - **Inspector** (`agent-inspector`), for the focused Claude Code or Codex agent:
-  - *Overview*: what it is doing now, what needs you, how long the context will last, cache and session cost.
-  - *Trace*: per turn, a summary, time split and a waterfall of LLM calls, tools and hooks, with per-call detail.
+  - *Overview*: what it is doing now, what needs your attention, how long the context will last and what fills
+    it, what replying before or after the prompt cache expires costs, session spend with unusually costly turns,
+    and its subagents.
+  - *Trace*: one row per turn with a stats line (time, calls, tools, tokens, cache hit, cost); filters for turns
+    with errors, costly turns and turns that loaded skills. An open turn shows its time split (model, tools,
+    waiting for you, other) and a waterfall of LLM calls, tools, subagents and hooks, with per-call detail.
   - *Capabilities*: skills, MCP servers and tools: what it could use, what it used, what each costs in context.
   - *Config*: model and mode, memory files, hooks by name with their health.
 - **Changes** (`changes-plus`): uncommitted changes with coloured diff rows.
@@ -80,11 +85,12 @@ Five icon tabs (`stack-tabs`) in Herdr's own panel:
 <p align="center"><img src="docs/img/team-map.png" alt="Team Map with the details drawer open"><br><em>Team Map, with the details of one teammate open.</em></p>
 
 - **Board** (⌃⌘B, `space-board`). *By space*: every space as a card in Todo / In progress / In review / Done;
-  placed automatically from agent state and open PRs until you drag it; cards can be pinned. *By agent*: one
+  placed automatically from agent state and open PRs until you drag it (↺ on the card puts it back); the PR
+  number is colored by CI; cards can be pinned. *By agent*: one
   card per agent in Needs you / Working / Finished / Idle.
-- **Team Map** (⌃⌘T, `agent-team`): a sequence diagram of the focused agent's team: one column per teammate
-  (agents it started with `hc run`, Claude subagents, sessions it messaged) with a status card, and each
-  message as an arrow.
+- **Team Map** (⌃⌘T, `agent-team`): a timeline of the focused agent's team: one lane per teammate (agents it
+  started with `hc run`, Claude subagents, sessions it messaged) with bars for working, finished and waiting for
+  you, and each message as a marker. Click a teammate for its details.
 
 ### Agent teams
 
