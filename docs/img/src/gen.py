@@ -66,6 +66,9 @@ P = {
  "refresh": '<path d="M3 12a9 9 0 0 1 15.7-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6.3L3 16"/><path d="M8 16H3v5"/>',
  "wrench": '<path d="M14.5 6.5a4 4 0 0 0 5 5L11 20a2.1 2.1 0 0 1-3-3Z"/><path d="m14.5 6.5 3-3"/>',
  "check": '<path d="m5 12 5 5 9-10"/>',
+ "sparkles": '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 15v4M17 17h4"/>',
+ "flag": '<path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/>',
+ "bot": '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/>',
  "collapse": '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>',
 }
 def ic(n, s=14, col="#a5a8b0", w=2):
@@ -124,7 +127,7 @@ def folder(name, open_=True, status=""):
 def space(name, extra="", wt=False):
     return f'<div class="r mut" style="height:28px;margin-left:20px;padding:0 8px;gap:7px">{ic("branch" if wt else "folder",13,"#7d818b")}<div class="g tr{" mono s12" if wt else ""}">{name}</div>{extra}</div>'
 PRB = lambda n, col="#98c379": f'<div class="chip r" style="gap:4px;background:#24262b;color:#a5a8b0">{ic("pr",10,col)}#{n}</div>'
-CHG = lambda n: f'<div class="chip" style="background:#3a321f;color:#e5c07b">{n}</div>'
+CHG = lambda n: f'<div class="r s11 n" style="gap:3px;color:#f0857d"><div style="width:5px;height:5px;border-radius:3px;background:#f0857d"></div>{n}</div>'
 
 def sidebar(width=268, lights=True):
     L = '<div class="r n" style="gap:8px;margin-right:6px">' + ''.join('<div style="width:12px;height:12px;border-radius:50%;background:#3a3d45"></div>' for _ in range(3)) + '</div>' if lights else ''
@@ -134,7 +137,7 @@ def sidebar(width=268, lights=True):
     <div class="r" style="gap:8px;padding:0 6px;height:24px">{L}<div style="width:18px;height:18px;border-radius:5px;background:#e4e5e9" class="n"></div><div class="g b6">Herdr</div>{ic("panell",15)}</div>
     <div class="r mut" style="height:30px;padding:0 10px;gap:8px;border-radius:8px;background:#24262b">{ic("search",13)}<div class="g tr s12">Search or run a command</div><div class="kbd">⌘K</div></div>
   </div>
-  <div class="c g" style="padding:0 8px;gap:10px;min-height:0;overflow:hidden">
+  <div class="c g" style="padding:0 8px;gap:5px;min-height:0;overflow:hidden">
     <div class="c" style="gap:6px">
       <div class="r h" style="padding:0 8px"><div class="g">Folders</div>{ic("plus",13,"#7d818b")}</div>
       <div class="seg sb" style="margin:0 2px"><div class="on">All</div><div>Working <span class="dim s11">2</span></div><div>Needs you <span style="color:#f0857d" class="s11">1</span></div><div>Done <span class="dim s11">3</span></div></div>
@@ -145,11 +148,15 @@ def sidebar(width=268, lights=True):
     </div>
     <div class="c" style="gap:2px">
       <div class="r h" style="color:#f0857d"><div class="g">Needs you</div><div style="font-weight:400">1</div></div>
-      <div class="r" style="height:44px;padding:0 8px;gap:6px;border-radius:7px;background:#2a1e1f">{mk("need")}<div class="mk">{pi("cc")}</div><div class="c g" style="gap:1px"><div class="tr">Add CSV export</div><div class="s11 mut tr">billing-api · permission to run Bash</div></div></div>
+      <div class="r" style="height:44px;padding:0 8px;gap:6px;border-radius:7px;background:#2a1e1f">{mk("need")}<div class="mk">{pi("cc")}</div><div class="c g" style="gap:1px"><div class="tr">Add CSV export</div><div class="s11 mut tr">billing-api</div></div></div>
+    </div>
+    <div class="c" style="gap:1px">
+      <div class="r h"><div class="g">Finished</div><div style="font-weight:400">1</div></div>
+      {agent("done","Try the new CLI flags","2h",0)}
     </div>
     <div class="c" style="gap:1px">
       {folder("acme-web")}
-      {space("acme-web", CHG("3 changes"))}
+      {space("acme-web", CHG(3))}
       {agent("work","Fix flaky checkout test","now",sel=True)}
       {child(pi("tm",12,"#7d818b"),"npm run test:watch","4m")}
       {agent("done","Review PR #214","41m")}
@@ -175,13 +182,12 @@ def sidebar(width=268, lights=True):
 </div>"""
 
 # ---------------------------------------------------------------- right panel
-def tabs(active, changes=3):
+def tabs(active):
     def b(name, icon, badge=""):
         on = name == active
         ul = '<div style="position:absolute;left:6px;right:6px;bottom:-4px;height:2px;border-radius:1px;background:#e4e5e9"></div>' if on else ''
         return f'<div class="ib" style="width:32px;height:32px;position:relative">{ic(icon,16,"#e4e5e9" if on else "#a5a8b0")}{badge}{ul}</div>'
-    bd = f'<div style="position:absolute;top:3px;right:2px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:#e5c07b;color:#17181b;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">{changes}</div>'
-    return f'<div class="r n" style="height:40px;padding:0 8px;gap:2px;border-bottom:1px solid #26282d">{b("Files","files")}{b("Inspector","gauge")}{b("Changes","branch",bd)}{b("PRs","pr")}{b("Graph","graph")}<div class="g"></div><div class="ib">{ic("panelr",16)}</div></div>'
+    return f'<div class="r n" style="height:40px;padding:0 8px;gap:2px;border-bottom:1px solid #26282d">{b("Files","files")}{b("Inspector","gauge")}{b("Changes","branch")}{b("PRs","pr")}{b("Graph","graph")}<div class="g"></div><div class="ib">{ic("panelr",16)}</div></div>'
 def subtabs(active):
     out = ''.join(f'<div style="padding:4px 9px;border-radius:6px;{"background:#2c2e35;font-weight:500" if n==active else "color:#a5a8b0"}">{n}</div>' for n in ["Overview","Trace","Capabilities","Config"])
     return f'<div class="r n" style="height:38px;padding:0 8px;gap:2px">{out}</div>'
@@ -190,20 +196,16 @@ def sect(title, right, body):
 def overview_body(long=False):
     more = ""
     if long:
-        steps = [("Edit","tests/checkout.spec.ts","+18 −4","12s"),("Bash","npm test -- checkout","exit 0","1m09s"),("Read","src/cart/session.ts","214 lines","0.1s"),("Grep","waitForTimeout","6 matches","0.2s")]
-        rows = ''.join(f'<div class="r s12" style="height:24px;gap:8px">{ic("wrench",12,"#7d818b")}<div class="n b5" style="width:38px">{a}</div><div class="g tr mono mut" style="font-size:11.5px">{b}</div><div class="s11 dim n">{c}</div><div class="s11 dim n" style="width:40px;text-align:right">{d}</div></div>' for a,b,c,d in steps)
-        bg = (f'<div class="r s12" style="height:24px;gap:8px">{ic("term",12,"#e5c07b",2.4)}<div class="g tr mono mut" style="font-size:11.5px">npm run test:watch</div><div class="s11 dim n">background command</div><div class="s11 dim n" style="width:40px;text-align:right">4m</div></div>'
-              f'<div class="r s12" style="height:24px;gap:8px"><div class="n r" style="width:12px;justify-content:center"><div class="done"></div></div><div class="g tr mut">Explore: where the cart total is fetched</div><div class="s11 dim n">subagent · finished</div><div class="s11 dim n" style="width:40px;text-align:right">37s</div></div>')
-        fl = ''.join(f'<div class="r s12" style="height:24px;gap:8px">{ic("file",12,"#7d818b")}<div class="g tr mono mut" style="font-size:11.5px">{a}</div><div class="s11 n" style="color:#98c379">+{b}</div><div class="s11 n" style="color:#f0857d;width:24px;text-align:right">−{c}</div></div>' for a,b,c in [("tests/checkout.spec.ts",18,4),("tests/helpers/cart.ts",9,0),("src/cart/session.ts",3,1)])
-        more = sect("Recent steps","newest first",f'<div class="c">{rows}</div>') + sect("Background work","1 running",f'<div class="c">{bg}</div>') + sect("Files it changed","3",f'<div class="c">{fl}</div>') + sect("Last reply","5m ago",'<div class="card mut" style="padding:9px 11px;line-height:1.5;font-size:12px">The test clicked "Pay" after a fixed 300 ms wait. I replaced it with a wait for the cart total, so a slow pricing request no longer fails the run.</div>')
+        sub = '<div class="r s12" style="height:24px;gap:8px"><div class="n r" style="width:12px;justify-content:center"><div class="done"></div></div><div class="g tr mut">Explore: where the cart total is fetched</div><div class="s11 dim n">23 tools · 4k out</div></div>'
+        more = sect("Subagents", "1", f'<div class="c">{sub}</div>')
+    ctx = ''.join(f'<div class="r s12" style="height:22px;gap:8px">{ic("wrench",12,"#7d818b")}<div class="g tr mut">{a}</div><div class="s11 dim n">~{b}</div></div>' for a, b in [("Read · src/cart/session.ts","6k"),("Bash · npm test -- checkout","4k"),("Read · tests/checkout.spec.ts","3k")]) if long else ""
     return f"""
 <div class="c g" style="padding:8px 14px 14px;gap:14px;min-height:0">
   <div class="card r" style="padding:10px 12px;gap:10px"><div class="spin"></div><div class="g"><div class="b6">Running Bash</div><div class="s11 dim tr">npm test -- checkout</div></div><div class="s11 mut">38s</div></div>
-  {sect("Needs you","nothing waiting",'<div class="mut" style="font-size:11.5px">No permission request or question is open.</div>') if long else ""}
-  {sect("Context","38% · 76k of 200k",'<div class="bar"><div style="width:38%;height:100%;background:#8ab4f8"></div></div><div class="mut" style="font-size:11.5px">Grows about 5k per turn: roughly 22 more turns before it compacts.</div>')}
-  {sect("Prompt cache","warm · 4m left",'<div class="mut" style="font-size:11.5px">Reply now about $0.04. After it expires about $0.41.</div>')}
-  {sect("Spend","session $6.82",'<div class="mut" style="font-size:11.5px">Last 14 turns about $5.10 · typical turn about $0.36</div>')}
-  {sect("Last turn","5m11s · $0.92",'<div class="r" style="height:6px;border-radius:3px;overflow:hidden;gap:1px"><div style="width:68%;height:100%;background:#7aa2f7"></div><div style="width:29%;height:100%;background:#98c379"></div><div style="width:3%;height:100%;background:#c678dd"></div></div><div class="s11 dim">model 3m32s · tools 1m29s · hooks 9.7s</div>')}
+  {sect("Needs attention","",'<div class="mut" style="font-size:11.5px">Nothing needs you.</div>')}
+  {sect("Context","38% · 76k of 200k",'<div class="bar"><div style="width:38%;height:100%;background:#8ab4f8"></div></div><div class="mut" style="font-size:11.5px">Grows ~5k per turn lately — about 22 more turns like that before it compacts.</div>' + ctx)}
+  {sect("Prompt cache","warm · 4m left",'<div class="mut" style="font-size:11.5px">Reply before it expires: re-reading the context costs ~$0.04. After: rewriting it costs ~$0.41.</div>')}
+  {sect("Spend","session $6.82",'<div class="mut" style="font-size:11.5px">Last 14 turns ~$5.10 · typical turn ~$0.36 (estimated from token prices).</div><div class="r s12" style="height:22px;gap:8px"><div class="n" style="color:#e5c07b">4.0×</div><div class="g tr">Why does the cart total load twice?</div><div class="dim n">$1.44</div></div>')}
   {more}
 </div>"""
 
@@ -263,7 +265,7 @@ def sidebar_page():
     page("sidebar", 300, 860, f'<div class="r" style="width:300px;height:860px;padding:8px;align-items:stretch">{sidebar(284, False)}</div>', "Sidebar")
 
 def panel_inspector():
-    page("panel-inspector", 460, 860, f'<div class="c" style="width:460px;height:860px;padding:8px"><div class="c g panel" style="min-height:0">{tabs("Inspector")}{subtabs("Overview")}{overview_body(True)}</div></div>', "Inspector: Overview")
+    page("panel-inspector", 460, 700, f'<div class="c" style="width:460px;height:700px;padding:8px"><div class="c g panel" style="min-height:0">{tabs("Inspector")}{subtabs("Overview")}{overview_body(True)}</div></div>', "Inspector: Overview")
 
 # ---------------------------------------------------------------- command bar
 def bar(w, h, head, left, right, foot):
@@ -287,15 +289,9 @@ def command_bar():
         + cgroup("Views") + crow(ic("users",14), "<hl>Te</hl>am Map", "⌃⌘T") + crow(ic("search",14), "Herdr command palet<hl>te</hl>", ""))
     right = f"""<div class="s11 b6 dim">Agents</div>
 <div class="r" style="gap:8px">{ag("cc")}<div class="b6" style="font-size:14px">Fix flaky checkout test</div></div>
-<div class="mut" style="line-height:1.55">Go to this agent's terminal (Claude Code in acme-web).</div>
-<div class="card c" style="padding:10px 12px;gap:6px;margin-top:6px">
-  <div class="r" style="gap:8px"><div class="spin"></div><div class="g b5">Running Bash</div><div class="s11 dim">38s</div></div>
-  <div class="s11 dim mono tr">npm test -- checkout</div>
-  <div class="bar" style="height:4px"><div style="width:38%;height:100%;background:#8ab4f8"></div></div>
-  <div class="s11 dim">Context 38% · branch main</div>
-</div>"""
+<div class="mut" style="line-height:1.55">Go to this agent's terminal (Claude Code in acme-web).</div>"""
     head = f'{ic("search",15)}<div class="g">te<span style="display:inline-block;width:1.5px;height:17px;background:#8ab4f8;vertical-align:-3px;margin-left:1px"></span></div>'
-    page("command-bar", 760, 520, bar(760, 520, head, left, right, '<div>↑↓ move</div><div>↵ Open</div><div class="g"></div><div>6 results</div>'), "Command bar")
+    page("command-bar", 760, 520, bar(760, 520, head, left, right, '<div class="g"></div><div>↑↓ move</div><div>↵ Go</div>'), "Command bar")
 
 def new_agent():
     chip = lambda t, x="": f'<div class="r n" style="height:24px;padding:0 8px;gap:6px;border-radius:6px;background:#2c2e35;font-size:12px;font-weight:500">{x}{t}</div>'
@@ -304,39 +300,42 @@ def new_agent():
         + cgroup("Terminal") + crow(ag("tm"), "Terminal", "A plain shell, no agent."))
     right = f"""<div class="s11 b6 dim">Agent</div>
 <div class="r" style="gap:8px">{ag("cc")}<div class="b6" style="font-size:14px">Claude Code</div></div>
-<div class="mut" style="line-height:1.55">Runs claude.<br>Starts in acme-web, as a new tab.</div>
-<div class="s11 b6 dim" style="margin-top:6px">First message</div>
-<div class="card" style="padding:8px 10px;line-height:1.5">Fix the flaky checkout test</div>"""
-    page("new-agent", 760, 420, bar(760, 420, head, left, right, '<div>Step 2 of 2 · type the task · ⌫ back</div><div class="g"></div><div>↑↓ move</div><div>↵ Start</div>'), "Command bar: New agent")
+<div class="mut" style="line-height:1.55">Runs claude.<br>Starts in acme-web, as a new tab.<br>Account: System default<br><br>First message:<br>Fix the flaky checkout test</div>"""
+    page("new-agent", 760, 420, bar(760, 420, head, left, right, '<div class="g">Step 2 of 2 · type the task · ⌫ back</div><div>↑↓ move</div><div>↵ Start</div>'), "Command bar: New agent")
 
 # ---------------------------------------------------------------- board
-def bcard(title, fold, branch, agents, time, need=False, pr="", pinned=False):
-    rows = ''.join(f'<div class="r s12" style="height:22px;gap:7px"><div class="mk">{ag(k,"sm","#a5a8b0")}</div><div class="g tr {"" if s in ("work","need") else "mut"}">{n}</div><div class="n r" style="width:14px;justify-content:center">{ST[s].replace("need","need sm").replace("spin","spin sm")}</div></div>' for k, n, s in agents)
-    right = '<div class="chip" style="color:#f0857d;background:#4a2725">needs you</div>' if need else f'<div class="s11 dim">{time}</div>'
-    return f"""<div class="c" style="padding:10px;border-radius:8px;background:{"#2a1e1f" if need else "#212328"};gap:7px">
-  <div class="r" style="gap:7px"><div class="g b5 tr">{title}</div>{ic("pin",12,"#a5a8b0") if pinned else ""}</div>
-  <div class="r s11 mut" style="gap:6px">{tile(fold,"sm")}<div class="n">{fold}</div><div class="dim mono tr">{branch}</div></div>
-  {f'<div class="c" style="border-top:1px solid #2c2e35;padding-top:5px">{rows}</div>' if rows else ""}
-  <div class="r" style="height:20px;gap:6px">{pr}<div class="g"></div>{right}</div>
+def bcard(title, fold, branch, agents, time, need=False, pr=None, pinned=False, wt=False):
+    # As space-board draws a card: state, name, PR number in its CI color, age; then where it lives; then its agents.
+    rank = ["need", "work", "done", "idle"]
+    top = min((s for _, _, s in agents), key=rank.index, default=None)
+    mark = f'<div class="n r" style="width:16px;justify-content:center">{ST[top].replace("spin","spin sm").replace("need","need sm") if top else ""}</div>'
+    prn = f'<div class="s11 n" style="color:{pr[1]}">#{pr[0]}</div>' if pr else ""
+    where = " · ".join(x for x in [branch if branch not in ("main", title) else "", "worktree" if wt else ""] if x)
+    rows = ''.join(f'<div class="r" style="height:20px;padding-left:22px;gap:6px"><div class="n r" style="width:14px;justify-content:center">{ag(k,"sm","#a5a8b0")}</div><div class="g tr s12 {"mut" if s == "idle" else ""}">{n}</div><div class="n r" style="width:14px;justify-content:center">{ST[s].replace("need","need sm").replace("spin","spin sm")}</div></div>' for k, n, s in agents)
+    return f"""<div class="c" style="padding:10px;border-radius:8px;background:{"#2a1e1f" if need else "#212328"};gap:6px">
+  <div class="r" style="gap:6px">{mark}<div class="g b5 tr">{title}</div>{prn}<div class="s11 dim n">{time}</div>{ic("pin",12,"#e4e5e9") if pinned else ""}</div>
+  <div class="r s11 mut" style="padding-left:22px;gap:6px">{tile(fold,"sm")}<div class="n">{fold}</div><div class="g tr dim">{where}</div></div>
+  {rows or '<div class="s11 dim" style="padding-left:22px">no agents</div>'}
+  {'<div class="r s11" style="padding-left:22px;gap:5px;color:#f0857d"><div class="need sm">!</div>needs you</div>' if need else ""}
 </div>"""
 def bcol(mark, name, n, cards, first=False):
     return f'<div class="c g" style="padding:0 12px;gap:8px;{"" if first else "border-left:1px solid #26282d"}"><div class="r s11 b6 mut" style="height:28px;gap:7px">{mark}<div class="g">{name}</div><div class="dim" style="font-weight:400">{n}</div></div>{"".join(cards)}</div>'
 def board():
-    pr = lambda n, s, col: f'<div class="chip r" style="gap:4px;background:#2c2e35;color:#a5a8b0">{ic("pr",10,col)}#{n} · {s}</div>'
+    G, F = "#98c379", "#f0857d"
     cols = [
       bcol('<div class="idle"></div>', "Todo", 2, [
         bcard("docs-site", "docs-site", "main", [], "2d"),
-        bcard("Playground", "Playground", "no repo", [("cc","Try the new CLI flags","idle")], "5d")], True),
+        bcard("Playground", "Playground", "", [("cc","Try the new CLI flags","idle")], "5d")], True),
       bcol('<div class="spin sm"></div>', "In progress", 3, [
-        bcard("billing-api", "billing-api", "feat/csv-export", [("cc","Add CSV export","need"),("cx","Migrate invoices table","work")], "", need=True, pinned=True),
+        bcard("billing-api", "billing-api", "feat/csv-export", [("cc","Add CSV export","need"),("cx","Migrate invoices table","work")], "6m", need=True, pinned=True),
         bcard("acme-web", "acme-web", "main", [("cc","Fix flaky checkout test","work"),("cc","Review PR #214","done")], "now"),
-        bcard("search-index", "docs-site", "feat/search-index", [("cu","Index headings for search","work")], "3m")]),
+        bcard("search-index", "docs-site", "feat/search-index", [("cu","Index headings for search","work")], "3m", wt=True)]),
       bcol('<div class="done" style="background:#c678dd"></div>', "In review", 2, [
-        bcard("csv-button", "acme-web", "feat/csv-button", [("cc","Draft export button","idle")], "3h", pr=pr(221,"checks pass","#98c379")),
-        bcard("rate-limits", "billing-api", "fix/rate-limits", [("cx","Tighten rate limits","done")], "41m", pr=pr(87,"1 failing","#f0857d"))]),
+        bcard("csv-button", "acme-web", "feat/csv-button", [("cc","Draft export button","idle")], "3h", pr=(221, G), wt=True),
+        bcard("rate-limits", "billing-api", "fix/rate-limits", [("cx","Tighten rate limits","done")], "41m", pr=(87, F), wt=True)]),
       bcol('<div class="done" style="background:#98c379"></div>', "Done", 2, [
-        bcard("dark-mode", "acme-web", "merged", [], "1d", pr=pr(209,"merged","#c678dd")),
-        bcard("api-reference", "docs-site", "merged", [], "3d", pr=pr(52,"merged","#c678dd"))]),
+        bcard("dark-mode", "acme-web", "feat/dark-mode", [("cc","Add a dark mode toggle","done")], "1d", wt=True),
+        bcard("api-reference", "docs-site", "docs/api-reference", [("ge","Write the API reference","done")], "3d", wt=True)]),
     ]
     body = f"""<div class="r" style="width:1200px;height:720px;align-items:stretch"><div class="c g panel" style="margin:8px">
   <div class="r n" style="height:48px;padding:0 16px;gap:12px;border-bottom:1px solid #26282d">
@@ -382,7 +381,7 @@ def team_map():
     {bub("Lead · 14:16", "Review the export endpoint: streaming, escaping, permissions.", True)}
     {bub("Reviewer · 14:21", "Two blocking findings, details in my reply.", False)}
   </div>
-  <div class="r n" style="padding:10px 12px;border-top:1px solid #26282d;gap:8px"><div class="btn">Go to agent</div><div class="g"></div><div class="s11 dim">Click the marker again to close</div></div>
+  <div class="r n" style="padding:10px 12px;border-top:1px solid #26282d;gap:8px"><div class="btn">Go to agent</div><div class="g"></div><div class="s11 dim">Click again to close</div></div>
 </div>"""
     ticks = ''.join(f'<div class="g">{t}</div>' for t in ["14:02", "14:08", "14:14", "14:20", "14:26"])
     body = f"""<div class="r" style="width:1200px;height:700px;align-items:stretch"><div class="c g panel" style="margin:8px;overflow:hidden">
@@ -399,7 +398,7 @@ def team_map():
       <div class="r n s11 dim" style="height:26px;border-top:1px solid #26282d;border-bottom:1px solid #26282d"><div class="n b6" style="width:230px;padding-left:14px">Members</div><div class="r g" style="margin-right:14px">{ticks}</div></div>
       {lanes}
       <div class="g"></div>
-      <div class="r n s11 dim" style="padding:10px 14px;border-top:1px solid #26282d;gap:8px">{ic("gauge",12,"#7d818b")}Follows the focused agent · click a bar or a marker for details</div>
+      <div class="r n s11 dim" style="padding:10px 14px;border-top:1px solid #26282d;gap:8px">{ic("gauge",12,"#7d818b")}Follows the focused agent · click a member for details</div>
     </div>
     {drawer}
   </div>
@@ -408,60 +407,68 @@ def team_map():
 
 # ---------------------------------------------------------------- inspector trace
 def trace():
-    K = {"LLM": "#7aa2f7", "tool": "#98c379", "hook": "#c678dd"}
-    spans = [("hook","UserPromptSubmit","0.2s","",0,1,0),("LLM","Opus · plan","44s","$0.11",1,14,0),("tool","Read checkout.spec.ts","0.1s","",15,1,0),("tool","Read session.ts","0.1s","",16,1,0),
-             ("LLM","Opus","1m08s","$0.24",17,22,0),("tool","Edit checkout.spec.ts","0.1s","",39,1,0),("hook","PostToolUse lint","9.2s","",40,3,1),
-             ("LLM","Opus","59s","$0.21",43,19,0),("tool","Bash npm test","1m09s","",62,22,0),("tool","Agent Explore","37s","$0.08",62,12,0),("LLM","Opus · reply","41s","$0.28",84,14,0),("hook","Stop","0.3s","",98,1,0)]
-    rows = ''.join(f'<div class="r s12" style="height:24px;gap:8px;{"background:#2a1e1f;border-radius:5px;" if e else ""}"><div class="n s11" style="width:30px;color:{K[k]};padding-left:4px">{k}</div><div class="n tr" style="width:150px;{"color:#f0857d" if e else ""}">{n}</div><div class="g" style="height:8px;position:relative;background:#1d1e22;border-radius:2px"><div style="position:absolute;left:{l}%;width:{max(w,1.5)}%;height:100%;border-radius:2px;background:{"#f0857d" if e else K[k]}"></div></div><div class="n s11 mut" style="width:38px;text-align:right">{d}</div><div class="n s11 dim" style="width:34px;text-align:right;padding-right:4px">{c}</div></div>' for k, n, d, c, l, w, e in spans)
-    def turn(i, text, meta, open_=False):
-        return f'<div class="r" style="height:32px;padding:0 10px;gap:8px;{"border-radius:8px 8px 0 0;background:#212328" if open_ else ""}">{ic("down" if open_ else "right",10,"#7d818b",2.4)}<div class="n s11 dim" style="width:16px">{i}</div><div class="g tr {"b5" if open_ else "mut"}">{text}</div><div class="s11 dim n">{meta}</div></div>'
-    chip = lambda t, n="", on=False: f'<div class="r" style="height:22px;padding:0 8px;gap:5px;border-radius:11px;font-size:12px;{"background:#383b43" if on else "border:1px solid #383b43;color:#a5a8b0"}">{t}<span class="s11 dim">{n}</span></div>'
+    # As agent-inspector's Trace tab draws it: filter pills with counts, then one row per turn (time, your message,
+    # a stats line); an open turn adds the time split and a waterfall of spans.
+    K = {"llm": ("sparkles", "#7aa2f7"), "tool": ("wrench", "#98c379"), "agent": ("bot", "#c678dd"), "hook": ("flag", "#c678dd")}
+    spans = [("hook","UserPromptSubmit","0.2s",0,1,0),("llm","Opus → plan","44s",1,14,0),("tool","Read · checkout.spec.ts","0.1s",15,1,0),("tool","Read · session.ts","0.1s",16,1,0),
+             ("llm","Opus → Edit","1m08s",17,22,0),("tool","Edit · checkout.spec.ts","0.1s",39,1,0),("hook","PostToolUse lint","9.2s",40,3,1),
+             ("llm","Opus → Bash, Agent","59s",43,19,0),("tool","Bash · npm test","1m09s",62,22,0),("agent","Explore","37s",62,12,0),("llm","Opus → reply","41s",84,14,0),("hook","Stop","0.3s",98,1,0)]
+    def span(k, n, d, l, w, e):
+        icn, col = K[k]
+        col = "#f0857d" if e else col
+        return (f'<div class="r s12" style="height:20px;gap:8px;padding:0 4px"><div class="r n" style="width:150px;gap:4px">{ic(icn,12,col)}<div class="g tr {"fg" if k == "llm" else "mut"}">{n}</div></div>'
+                f'<div class="g" style="height:20px;position:relative"><div style="position:absolute;left:0;right:0;top:10px;height:1px;background:#2b2d33"></div><div style="position:absolute;left:{l}%;width:{max(w,1.5)}%;top:5px;height:10px;border-radius:3px;background:{col};opacity:.85"></div></div>'
+                f'<div class="n s11" style="width:40px;text-align:right;color:{"#e5c07b" if d.count("m") else "#7d818b"}">{d}</div></div>')
+    rows = ''.join(span(*s) for s in spans)
+    def turn(at, text, stats, open_=False, ratio=""):
+        chip = f'<div class="n s11" style="padding:0 5px;border-radius:4px;background:#3a321f;color:#e5c07b">{ratio}</div>' if ratio else ""
+        return (f'<div class="c" style="padding:6px 8px;gap:2px;border-radius:6px;{"background:#212328" if open_ else ""}">'
+                f'<div class="r" style="gap:6px"><div class="r n dim s11" style="gap:2px">{ic("down" if open_ else "right",10,"#7d818b",2.4)}{at}</div><div class="g tr fg">{text}</div>{chip}</div>'
+                f'<div class="s11 dim tr" style="padding-left:16px">{stats}</div></div>')
+    pill = lambda t, on=False: f'<div class="r" style="height:22px;padding:0 8px;border-radius:11px;font-size:12px;border:1px solid #383b43;{"background:#2c2e35;color:#e4e5e9" if on else "color:#a5a8b0"}">{t}</div>'
+    split = [("model","#7aa2f7",3*60+32,68),("tools","#98c379",89,27),("waiting for you","#e5c07b",0,0),("other","#7d818b",10,5)]
+    bar = ''.join(f'<div style="width:{p}%;height:100%;background:{c}"></div>' for _, c, _, p in split if p)
+    key = ''.join(f'<div class="r" style="gap:4px"><div style="width:6px;height:6px;border-radius:3px;background:{c}"></div>{n} {s//60}m{s%60:02d}s · {p}%</div>' if s >= 60 else f'<div class="r" style="gap:4px"><div style="width:6px;height:6px;border-radius:3px;background:{c}"></div>{n} {s}s · {p}%</div>' for n, c, s, p in split if s)
     body = f"""<div class="c" style="width:460px;height:860px;padding:8px"><div class="c g panel" style="min-height:0;overflow:hidden">
 {tabs("Inspector")}{subtabs("Trace")}
-<div class="r n" style="padding:0 12px 8px;gap:6px">{chip("All","",True)}{chip("Errors","1")}{chip("Costly")}{chip("Skills")}</div>
-<div class="c g" style="padding:0 8px;gap:2px;min-height:0">
-  <div class="r" style="height:32px;padding:0 10px;gap:8px"><div class="spin sm"></div><div class="n s11 dim" style="width:16px">15</div><div class="g tr">Run it 20 times to check it is stable</div><div class="s11" style="color:#e5c07b">running · 38s</div></div>
-  {turn(14,"The checkout test fails about one run in five…","5m11s · $0.92",True)}
-  <div class="c" style="background:#212328;border-radius:0 0 8px 8px;padding:2px 10px 10px;gap:8px">
-    <div class="mut" style="font-size:12px;line-height:1.5">Read the test and the cart session code, replaced a fixed wait with a wait for the total, one lint hook failed and was retried, then ran the tests. 12 calls · 4 LLM · 5 tools · 3 hooks.</div>
-    <div class="c" style="gap:4px"><div class="r" style="height:6px;border-radius:3px;overflow:hidden;gap:1px"><div style="width:68%;height:100%;background:#7aa2f7"></div><div style="width:29%;height:100%;background:#98c379"></div><div style="width:3%;height:100%;background:#c678dd"></div></div>
-    <div class="r s11 dim" style="gap:12px"><div><span style="color:#7aa2f7">■</span> model 3m32s</div><div><span style="color:#98c379">■</span> tools 1m29s</div><div><span style="color:#c678dd">■</span> hooks 9.7s</div></div></div>
-    <div class="c" style="gap:1px;margin:0 -4px">{rows}</div>
-    <div class="c" style="padding:8px 10px;border-radius:6px;background:#17181b;border:1px solid #4a2725;gap:3px"><div class="r s11"><div class="g b6" style="color:#f0857d">PostToolUse lint · exit 2</div><div class="dim">9.2s</div></div><div class="mono mut" style="font-size:11px">checkout.spec.ts:41 'total' is assigned but never used</div></div>
+<div class="r s11 b6 dim" style="padding:6px 14px"><div class="g">Turns</div><div style="font-weight:400">last 15 of 15 · ~$6.82</div></div>
+<div class="r n" style="padding:0 6px 6px;gap:4px">{pill("All",True)}{pill("Errors 1")}{pill("Costly 1")}{pill("Skills 0")}</div>
+<div class="c g" style="padding:0 6px;gap:2px;min-height:0">
+  {turn("14:31","The checkout test fails about one run in five on CI…","5m11s · 4 LLM calls · 5 tools · in 18k new + 290k cached (94%) · out 9k · ~$0.92 · 1 error",True)}
+  <div class="c" style="padding:4px 4px 8px;gap:6px">
+    <div class="c" style="gap:4px;padding:0 4px"><div class="r" style="height:6px;border-radius:3px;overflow:hidden;gap:1px">{bar}</div>
+    <div class="r s11 dim" style="gap:10px;flex-wrap:wrap">{key}</div></div>
+    <div class="r s11 dim" style="padding:0 4px"><div class="n" style="width:158px"></div><div class="g r" style="justify-content:space-between"><div>0</div><div>2m35s</div><div>5m11s</div></div><div class="n" style="width:40px"></div></div>
+    <div class="c">{rows}</div>
   </div>
-  {turn(13,"Why does the cart total load twice?","8m02s · $1.44")}
-  {turn(12,"Add a test for an empty cart","2m47s · $0.52")}
-  {turn(11,"/compact","58s · $0.31")}
-  {turn(10,"Rename CartSession to CheckoutSession","1m36s · $0.28")}
-  {turn(9,"Show the last order on the receipt page","6m20s · $0.87")}
+  {turn("14:12","Why does the cart total load twice?","8m02s · 6 LLM calls · 11 tools · in 31k new + 420k cached (93%) · out 14k · ~$1.44",ratio="4.0×")}
+  {turn("13:58","Add a test for an empty cart","2m47s · 3 LLM calls · 4 tools · in 9k new + 180k cached (95%) · out 5k · ~$0.52")}
+  {turn("13:41","/compact","58s · 1 LLM call · 0 tools · out 3k · ~$0.31")}
+  {turn("13:30","Rename CartSession to CheckoutSession","1m36s · 2 LLM calls · 6 tools · in 6k new + 150k cached (96%) · out 3k · ~$0.28")}
 </div>
-<div class="r n s11 dim" style="height:32px;padding:0 14px;border-top:1px solid #26282d">15 turns · 1h52m · $6.82 · click a span for its input and output</div>
 </div></div>"""
     page("inspector-trace", 460, 860, body, "Inspector: Trace")
 
 # ---------------------------------------------------------------- files search
 def files_search():
-    def grp(path, n, lines):
-        d, f = path.rsplit("/", 1)
-        ls = ''.join(f'<div class="r mono" style="height:22px;gap:10px;font-size:11.5px;padding-left:26px;{"background:#2c2e35;border-radius:5px;" if s else ""}"><div class="n dim" style="width:26px;text-align:right">{no}</div><div class="g tr" style="color:#c9ccd3">{t}</div></div>' for no, t, s in lines)
-        return f'<div class="c" style="gap:1px"><div class="r" style="height:26px;gap:7px;padding:0 6px">{ic("down",10,"#7d818b",2.4)}{ic("file",13,"#7d818b")}<div class="b5 n">{f}</div><div class="g tr s11 dim">{d}</div><div class="chip" style="background:#24262b;color:#a5a8b0">{n}</div></div>{ls}</div>'
+    # As files-plus draws a contents search: one row per hit (file, :line, folder, then the line); clicking one opens the file.
     H = lambda s: s.replace("checkoutTotal", "<hl>checkoutTotal</hl>")
-    res = (grp("src/cart/session.ts", 3, [(42, H("export async function checkoutTotal(cart: Cart) {"), True), (88, H("  const total = await checkoutTotal(cart);"), False), (131, H("// checkoutTotal is cached per session"), False)])
-      + grp("src/pages/Checkout.tsx", 2, [(17, H('import { checkoutTotal } from "../cart/session";'), False), (63, H("  const { data } = useQuery(() => checkoutTotal(cart));"), False)])
-      + grp("tests/checkout.spec.ts", 2, [(12, H('  await page.route("**/checkoutTotal", slow);'), False), (41, H('  // wait for checkoutTotal before paying'), False)])
-      + grp("docs/payments.md", 1, [(9, H("The `checkoutTotal` call includes tax and shipping."), False)]))
+    hits = [("src/cart/session.ts",42,"export async function checkoutTotal(cart: Cart) {"),("src/cart/session.ts",88,"const total = await checkoutTotal(cart);"),
+            ("src/cart/session.ts",131,"// checkoutTotal is cached per session"),("src/pages/Checkout.tsx",17,'import { checkoutTotal } from "../cart/session";'),
+            ("src/pages/Checkout.tsx",63,"const { data } = useQuery(() => checkoutTotal(cart));"),("tests/checkout.spec.ts",12,'await page.route("**/checkoutTotal", slow);'),
+            ("tests/checkout.spec.ts",41,"// wait for checkoutTotal before paying"),("docs/payments.md",9,"The `checkoutTotal` call includes tax and shipping.")]
+    def hit(path, no, text):
+        d, f = path.rsplit("/", 1)
+        return (f'<div class="c" style="padding:4px 8px;gap:1px;border-radius:7px"><div class="r" style="height:18px;gap:7px">{ic("file",14,"#a5a8b0")}<div class="n">{f}</div>'
+                f'<div class="n s11 dim">:{no}</div><div class="g tr s11 dim">{d}</div></div><div class="tr mono mut" style="padding-left:21px;font-size:12px">{H(text)}</div></div>')
     body = f"""<div class="c" style="width:460px;height:700px;padding:8px"><div class="c g panel" style="min-height:0;overflow:hidden">
 {tabs("Files")}
-<div class="r n" style="height:34px;padding:0 8px 0 12px;gap:4px"><div class="g b6">acme-web</div><div class="ib" style="width:26px;height:26px">{ic("collapse",14)}</div><div class="ib" style="width:26px;height:26px">{ic("refresh",14)}</div><div class="ib" style="width:26px;height:26px">{DOTS}</div></div>
-<div class="c n" style="padding:0 10px 8px;gap:8px">
-  <div class="r" style="height:32px;padding:0 10px;gap:8px;border-radius:7px;border:1px solid #8ab4f8;background:#0f1012">{ic("search",13,"#7d818b")}<div class="g">checkoutTotal</div>{ic("x",12,"#7d818b")}</div>
-  <div class="r" style="gap:10px"><div class="seg"><div>Names</div><div class="on">Contents</div></div><div class="g"></div><div class="s11 dim">8 matches in 4 files</div></div>
+<div class="r n" style="height:36px;padding:0 6px 0 12px;gap:2px"><div class="g b6">acme-web</div><div class="ib" style="width:26px;height:26px">{ic("collapse",14)}</div><div class="ib" style="width:26px;height:26px">{ic("refresh",14)}</div><div class="ib" style="width:26px;height:26px">{ic("folder",14)}</div></div>
+<div class="c n" style="padding:0 10px 8px;gap:6px">
+  <div class="r" style="height:32px;padding:0 10px;gap:8px;border-radius:7px;border:1px solid #8ab4f8;background:#0f1012">{ic("search",13,"#7d818b")}<div class="g">checkoutTotal</div></div>
+  <div class="r" style="height:28px;padding:2px;gap:2px;border-radius:7px;background:#0f1012;border:1px solid #2b2d33"><div class="g r mut" style="height:100%;justify-content:center;border-radius:5px">Names</div><div class="g r b5" style="height:100%;justify-content:center;border-radius:5px;background:#2c2e35">Contents</div></div>
 </div>
-<div class="c g" style="padding:0 8px;gap:8px;min-height:0;border-top:1px solid #26282d;padding-top:8px">{res}</div>
-<div class="c n" style="border-top:1px solid #26282d">
-  <div class="r" style="height:32px;padding:0 12px;gap:8px"><div class="g tr mono s12">src/cart/session.ts</div><div class="s11 dim n">line 42 · read-only preview</div></div>
-  <div class="c mono" style="padding:0 12px 12px;font-size:11.5px;line-height:1.7;color:#c9ccd3;white-space:pre">{''.join(f'<div class="r" style="gap:12px;{"background:#2a2418;" if n==42 else ""}"><span class="dim" style="width:22px;text-align:right">{n}</span><span>{t}</span></div>' for n,t in [(40,"// Total with tax and shipping, from the pricing service."),(41,""),(42,H("export async function checkoutTotal(cart: Cart) {")),(43,'  const res = await api.post("/pricing/total", cart);'),(44,"  return res.total;"),(45,"}")])}</div>
-</div>
+<div class="c g" style="padding:0 6px 6px;gap:1px;min-height:0">{''.join(hit(*h) for h in hits)}</div>
 </div></div>"""
     page("files-search", 460, 700, body, "Files: search inside files")
 
