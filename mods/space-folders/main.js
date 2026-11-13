@@ -502,8 +502,12 @@ export default class Spaces extends View {
   // A new space `s` under the space it was made from: in that one's folder, and
   // after it in Herdr's order, which the list keeps inside a folder (a checkout's
   // worktrees stay between them). space.move's index is where it ends up, from 1.
+  // Not a space made for a folder of its own (the command bar's New agent or Resume in a folder with no space yet):
+  // when another folder's rules take its path, it goes there instead.
   settle(sp, s, from) {
     const f = folders(from.machine);
+    const own = folderOf(s, { list: f.list, of: {} }, panes());
+    if (own && own !== from.folder) return;
     if (from.folder && f.of[localId(s)] === undefined && f.list.some((x) => x.id === from.folder)) {
       saveFolders(from.machine, { ...f, of: { ...f.of, [localId(s)]: from.folder } });
     }
