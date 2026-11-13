@@ -100,8 +100,8 @@ Five icon tabs (`stack-tabs`) in Herdr's own panel:
 
 <p align="center"><img src="docs/img/accounts.png" alt="Accounts dialog" width="560"><br><em>The Accounts dialog.</em></p>
 
-More than one Claude Code or Codex login (`accounts`, `lib/accounts.py`). The Accounts dialog adds an account,
-picks the one new agents start on, signs in again or removes one. An added account is a folder used as
+More than one Claude Code or Codex login (`accounts`, `lib/accounts.py`). The Accounts dialog adds an account
+(you name it; the name can be changed later), picks the one new agents start on, signs in again or removes one. An added account is a folder used as
 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` whose contents, apart from the login, are symlinks to `~/.claude` /
 `~/.codex`, so settings and conversations are shared. Claude Code keeps trusted folders and MCP servers in
 `.claude.json` next to the login, which cannot be a symlink: before an agent starts on an added account, those

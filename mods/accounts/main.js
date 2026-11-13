@@ -31,6 +31,7 @@ export default class Accounts extends View {
     this.plan = null;     // { provider, name, env, items }: the Ask list after a switch
     this.adding = null;   // provider id whose "name the new account" row is open
     this.newName = null;  // its InputState
+    this.renaming = null; // { provider, id, input }: the "what to call it" row open under an account
     this.note = null;     // what the last action did, one line
     this.load(cx);
     // A sign-in finished in another tab shows up by itself (a small local read; redraws only when something changed).
@@ -59,7 +60,7 @@ export default class Accounts extends View {
   // One change at a time; the list is read again after it.
   act(cx, fn) {
     if (this.working) return;
-    this.working = true; this.note = null; this.confirm = null;
+    this.working = true; this.note = null; this.confirm = null; this.renaming = null;
     cx.notify();
     cx.spawn(async (cx) => {
       try { await fn(cx); } catch (e) { this.note = `That did not work: ${String(e?.message ?? e).slice(0, 120)}`; }
@@ -73,7 +74,7 @@ export default class Accounts extends View {
     const sec = this.data?.[p.id];
     if (id === "default") return sec?.default?.email ?? "the system default";
     const a = sec?.accounts?.find((x) => x.id === id);
-    return a?.email ?? "the new account";
+    return a?.label ?? a?.email ?? "the new account";
   }
 
   // ---------- actions ----------
@@ -88,7 +89,7 @@ export default class Accounts extends View {
   askName(p, cx) {
     if (this.adding === p.id) { this.adding = null; cx.notify(); return; }
     this.adding = p.id;
-    this.newName = InputState.new({ value: "", placeholder: "Name it, e.g. work or personal  (Enter to add)" });
+    this.newName = InputState.new({ value: "", placeholder: "Name it, e.g. Work or Personal  (Enter to add; you can rename it later)" });
     this.newName.on("submit", (_e, cx) => this.add(p, cx));
     this.newName.focus();
     cx.timer.after(200, () => { if (this.adding === p.id) this.newName?.focus(); });
@@ -101,6 +102,24 @@ export default class Accounts extends View {
       this.adding = null;
       if (r.error || !Array.isArray(r.env)) throw new Error(r.error ?? "no folder");
       this.signIn(p, r.env, cx);
+    });
+  }
+  // What the account is called in Herdr (the row, the sidebar tag, the usage bar). Its folder keeps its name.
+  askRename(p, a, cx) {
+    if (this.renaming?.provider === p.id && this.renaming?.id === a.id) { this.renaming = null; cx.notify(); return; }
+    const input = InputState.new({ value: a.label ?? "", placeholder: "What to call it, e.g. Work  (empty: its email)" });
+    input.on("submit", (_e, cx) => this.rename(p, a, cx));
+    this.renaming = { provider: p.id, id: a.id, input }; this.confirm = null;
+    input.focus();
+    cx.timer.after(200, () => this.renaming?.input === input && input.focus());
+    cx.notify();
+  }
+  rename(p, a, cx) {
+    const name = (this.renaming?.input.value() ?? "").trim();
+    this.act(cx, async () => {
+      const r = await this.py(["rename", p.id, a.id, name]);
+      if (r.error) throw new Error(r.error);
+      setShared("accounts.changed", Date.now());
     });
   }
   again(p, a, cx) {
@@ -173,11 +192,13 @@ export default class Accounts extends View {
     const sec = this.data[p.id], id = isDefault ? "default" : a.id, active = sec.active === id;
     const who = isDefault ? sec.default : a;
     const key = `${p.id}-${id}`;
-    const title = isDefault ? "System default" : who.email ?? (who.signedIn ? "Signed in" : "Not signed in yet");
+    // A name the person gave it leads; the email then moves to the second line.
+    const title = isDefault ? "System default" : who.label ?? who.email ?? (who.signedIn ? "Signed in" : "Not signed in yet");
     const sub = isDefault
       ? [who.email ?? (who.signedIn ? "signed in" : "not signed in"), who.plan, p.id === "claude" ? "~/.claude" : "~/.codex"]
-      : [who.signedIn ? who.plan : `open "Sign in" to finish`, a.id, a.added ? `added ${a.added}` : null];
+      : [who.label ? who.email : null, who.signedIn ? who.plan : `open "Sign in" to finish`, a.added ? `added ${a.added}` : null];
     const asking = this.confirm?.provider === p.id && this.confirm?.id === id;
+    const naming = !isDefault && this.renaming?.provider === p.id && this.renaming?.id === id ? this.renaming : null;
     return v_flex().when(!last, (e) => e.border_b(1).border_color(t.border))
       .child(h_flex().min_h(48).px(SPACE.card).py(6).gap(8).items_center()
         .child(div().w(16).flex_none().flex().justify_center().child(active ? icon("circle-check", 14, t.accent) : icon("circle", 14, t.border)))
@@ -187,8 +208,14 @@ export default class Accounts extends View {
         .when(active, (e) => e.child(div().flex_none().h(20).px(8).flex().items_center().rounded(5).bg(tint(t.accent)).text_size(TS.small).font_semibold().text_color(t.accent).child("Active")))
         .when(!active && (isDefault || who.signedIn), (e) => e.child(this.button(t, `use-${key}`, "Use", (cx) => this.use(p, id, cx))))
         .when(!isDefault, (e) => e
+          .child(div().id(`nm-${key}`).flex_none().size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
+            .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Rename").on_click((_e, cx) => { if (!this.working) this.askRename(p, a, cx); }).child(icon("pencil", 13)))
           .child(this.button(t, `in-${key}`, who.signedIn ? "Sign in again" : "Sign in", (cx) => this.again(p, a, cx)))
-          .child(this.button(t, `rm-${key}`, "Remove", (cx) => { this.confirm = asking ? null : { provider: p.id, id }; cx.notify(); }, { danger: true }))))
+          .child(this.button(t, `rm-${key}`, "Remove", (cx) => { this.confirm = asking ? null : { provider: p.id, id }; this.renaming = null; cx.notify(); }, { danger: true }))))
+      .when(Boolean(naming), (e) => e.child(h_flex().px(SPACE.card).pb(8).pl(SPACE.card + 24).gap(8).items_center()
+        .child(div().flex_1().min_w(0).child(field(t, naming.input, { size: "panel", focused: true })))
+        .child(this.button(t, `nmno-${key}`, "Cancel", (cx) => { this.renaming = null; cx.notify(); }))
+        .child(this.button(t, `nmyes-${key}`, "Save", (cx) => this.rename(p, a, cx), { primary: true }))))
       .when(asking, (e) => e.child(h_flex().px(SPACE.card).pb(8).pl(SPACE.card + 24).gap(8).items_center()
         .child(div().flex_1().min_w(0).text_size(TS.small).text_color(t.muted).child(`Remove this account from Herdr? Its folder is deleted (your shared settings and conversations stay).${p.id === "claude" ? " The login itself stays in the macOS keychain until you sign out." : ""}`))
         .child(this.button(t, `rmno-${key}`, "Cancel", (cx) => { this.confirm = null; cx.notify(); }))

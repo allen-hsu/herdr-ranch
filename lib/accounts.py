@@ -13,13 +13,14 @@ Pointers: ranch/active-claude and ranch/active-codex hold the active account's f
 for the shell hook (integrations/shell/accounts.sh) that makes a plain `claude` / `codex` use it.
 Registry: ~/.config/herdr-app/ranch/accounts.json
   {"onSwitch": "ask" | "restart" | "leave",
-   "claude": {"active": "default" | <id>, "accounts": [{"id", "dir", "addedAt"}]}, "codex": {...}}
+   "claude": {"active": "default" | <id>, "accounts": [{"id", "dir", "addedAt", "label"}]}, "codex": {...}}
 "default" is the system login (~/.claude, ~/.codex). Folders: ~/.config/herdr-app/ranch/accounts/<id>/ (mode 700).
 No credentials are stored, copied or read here: the logins stay where Claude Code (the macOS keychain) and Codex
 (<folder>/auth.json) keep them. Only the email and plan are read, for display.
 
   accounts.py list                         everything the dialog shows
   accounts.py add <provider> [name]        make a new account folder (accounts/<provider>-<name>) -> {"id", "dir"}
+  accounts.py rename <provider> <id> [name]  what it is called in Herdr (the folder keeps its name)
   accounts.py remove <provider> <id>       forget it and delete its folder (symlinks and its own files)
   accounts.py use <provider> <id|default>  which account new agents start with
   accounts.py on-switch <ask|restart|leave>
@@ -45,6 +46,14 @@ PROVIDERS = {
 }
 ID = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")
 ON_SWITCH = ("ask", "restart", "leave")
+
+
+def clean_label(x):
+    """What the person calls an account ("Work"): one short line, or None. Display only; the folder keeps its name."""
+    if not isinstance(x, str):
+        return None
+    x = " ".join("".join(c for c in x if c.isprintable()).split())[:32].strip()
+    return x or None
 
 
 def account_dir(aid):
@@ -84,7 +93,8 @@ def load():
         for a in (adopted[p] if adopted else sec.get("accounts") or []):
             d = account_dir(a.get("id")) if isinstance(a, dict) else None
             if d and not any(x["id"] == a["id"] for x in accs):
-                accs.append({"id": a["id"], "dir": d, "addedAt": a.get("addedAt") if isinstance(a.get("addedAt"), str) else None})
+                accs.append({"id": a["id"], "dir": d, "addedAt": a.get("addedAt") if isinstance(a.get("addedAt"), str) else None,
+                             "label": clean_label(a.get("label"))})
         active = sec.get("active")
         reg[p] = {"active": active if any(x["id"] == active for x in accs) else "default", "accounts": accs}
     if adopted and any(adopted.values()):
@@ -275,7 +285,8 @@ def active(provider, reg=None):
     d = account_dir(aid) if aid != "default" else None
     if not d:
         return {"id": "default", "dir": None, "short": None}
-    return {"id": aid, "dir": d, "short": short(info(provider, d).get("email")) or aid}
+    label = next((a.get("label") for a in reg[provider]["accounts"] if a["id"] == aid), None)
+    return {"id": aid, "dir": d, "short": label or short(info(provider, d).get("email")) or aid}
 
 
 def env_for(provider, reg=None):
@@ -376,7 +387,8 @@ def cmd_list():
             except ValueError:
                 pass
             accs.append({"id": a["id"], "dir": a["dir"], "added": added, "email": i.get("email"), "plan": i.get("plan"),
-                         "signedIn": bool(i.get("signedIn")), "short": short(i.get("email")) or a["id"]})
+                         "signedIn": bool(i.get("signedIn")), "label": a.get("label"),
+                         "short": a.get("label") or short(i.get("email")) or a["id"]})
         d = info(p, None)
         out[p] = {"name": spec["name"], "active": reg[p]["active"], "accounts": accs, "env": env_for(p, reg),
                   "default": {"email": d.get("email"), "plan": d.get("plan"), "signedIn": bool(d.get("signedIn"))}}
@@ -407,7 +419,7 @@ def cmd_add(provider, name=""):
     link_shared(provider, d)
     if provider == "claude":
         sync_claude(d)  # the person's setup (trusted folders, MCP servers, onboarding) before the first sign-in
-    reg[provider]["accounts"].append({"id": aid, "dir": d, "addedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    reg[provider]["accounts"].append({"id": aid, "dir": d, "addedAt": time.strftime("%Y-%m-%dT%H:%M:%S"), "label": clean_label(name)})
     save(reg)
     return {"id": aid, "dir": d, "env": ["env", "%s=%s" % (spec["env"], d)]}
 
@@ -435,6 +447,18 @@ def cmd_use(provider, aid):
     reg[provider]["active"] = aid
     save(reg)
     return {"ok": True, "active": aid, "env": env_for(provider, reg), "sync": sync(provider, reg)}
+
+
+def cmd_rename(provider, aid, name):
+    """Change what the account is called in Herdr ("" : back to its email). The folder is not renamed: the login
+    is tied to its path."""
+    reg = load()
+    a = next((x for x in reg[provider]["accounts"] if x["id"] == aid), None)
+    if not a:
+        return {"error": "no such account"}
+    a["label"] = clean_label(name)
+    save(reg)
+    return {"ok": True, "label": a["label"]}
 
 
 def cmd_on_switch(value):
@@ -492,7 +516,7 @@ def cmd_agents(provider, addrs):
 
 def main(argv):
     cmd, args = (argv[0] if argv else ""), argv[1:]
-    need_p = cmd in ("add", "remove", "use", "agents")
+    need_p = cmd in ("add", "remove", "use", "agents", "rename")
     if cmd == "sync":
         ps = [args[0]] if args and args[0] in PROVIDERS else list(PROVIDERS)
         print(json.dumps({p: sync(p) for p in ps}, ensure_ascii=False))
@@ -507,12 +531,14 @@ def main(argv):
         out = cmd_remove(args[0], args[1])
     elif cmd == "use" and len(args) == 2:
         out = cmd_use(args[0], args[1])
+    elif cmd == "rename" and len(args) >= 2:
+        out = cmd_rename(args[0], args[1], " ".join(args[2:]))
     elif cmd == "on-switch" and len(args) == 1:
         out = cmd_on_switch(args[0])
     elif cmd == "agents":
         out = cmd_agents(args[0], args[1:])
     else:
-        out = {"error": "usage: list | add <provider> | remove <provider> <id> | use <provider> <id> | on-switch <mode> | agents <provider> <terminal>..."}
+        out = {"error": "usage: list | add <provider> [name] | rename <provider> <id> [name] | remove <provider> <id> | use <provider> <id> | on-switch <mode> | agents <provider> <terminal>..."}
     print(json.dumps(out, ensure_ascii=False))
     return 1 if isinstance(out, dict) and out.get("error") else 0
 

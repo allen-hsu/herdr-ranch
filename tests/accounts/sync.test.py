@@ -50,6 +50,14 @@ with tempfile.TemporaryDirectory() as home:
         "a name can't be used twice": "error" in again,
         "a name needs letters or digits": "error" in odd,
     })
+    cli = lambda *n: json.loads(subprocess.run([sys.executable, PY, *n], env=env, capture_output=True, text=True).stdout)
+    cli("rename", "claude", "acc1", "  Team   plan ")
+    listed = {a["id"]: a for a in cli("list")["claude"]["accounts"]}
+    checks.update({
+        "the name given at add is its label": listed["claude-my-work"]["label"] == "My Work!",
+        "rename changes the label, not the folder": listed["acc1"]["label"] == "Team plan" and listed["acc1"]["short"] == "Team plan" and os.path.isdir(acc),
+        "an empty rename clears it": cli("rename", "claude", "acc1").get("label") is None,
+    })
     bad = [k for k, ok in checks.items() if not ok]
     for k, ok in checks.items():
         print(("ok   " if ok else "FAIL ") + k)
