@@ -29,6 +29,7 @@ LINE_MAX = 32 * 1024 * 1024  # a record longer than this (many large pasted imag
 SCAN_MAX = 64 * 1024 * 1024  # how far into a file the head may go when it keeps skipping such records
 TAILS = (256 * 1024, 2 * 1024 * 1024, 8 * 1024 * 1024)  # widened until the last prompt shows up (as live.py does)
 META = 16 * 1024  # of a Codex rollout's first line: enough for its id and cwd, not its full instructions
+NAME_TAIL, NAME_HEAD, NAME_LINE = 16 * 1024 * 1024, 1024 * 1024, 64 * 1024  # where a name is looked for, and how long its record may be
 NAMES = (b'"type":"custom-title"', b'"type":"agent-name"')  # as written, so text quoting them (escaped) never matches
 
 
@@ -85,9 +86,11 @@ def lines(path, tail=None):
     out = []
     for raw in data:
         try:
-            out.append(json.loads(raw.decode("utf-8", "replace")))
+            rec = json.loads(raw.decode("utf-8", "replace"))
         except ValueError:
             continue
+        if isinstance(rec, dict):  # a stray string, list or null on a line is not a record
+            out.append(rec)
     return out
 
 
@@ -150,19 +153,31 @@ def last_prompt(path, head, prompt):
 
 
 def given_name(path):
-    """The latest /rename (custom-title) or agent name anywhere in the file: found by a byte search, not by reading it."""
+    """The latest /rename (custom-title) or agent name: a byte search over the end of the file (the latest one is
+    there), then over its start. Never the whole of a long transcript: they run to hundreds of MB, and up to 40
+    are listed each time the list opens."""
     try:
         with open(path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-            for key in sorted(NAMES, key=lambda k: -mm.rfind(k)):  # the one written last first
-                end = len(mm)
-                while (at := mm.rfind(key, 0, end)) >= 0:
-                    start, stop = mm.rfind(b"\n", 0, at) + 1, mm.find(b"\n", at)
-                    end = start
+            size = len(mm)
+            tail_from = max(0, size - NAME_TAIL)
+            for lo, hi in ((tail_from, size), (0, min(NAME_HEAD, tail_from))):
+                end = hi
+                while end > lo:
+                    at = max(mm.rfind(k, lo, end) for k in NAMES)  # the one written last first
+                    if at < 0:
+                        break
+                    end = at  # always moves back
+                    floor = max(0, at - NAME_LINE)
+                    nl, stop = mm.rfind(b"\n", floor, at), mm.find(b"\n", at, min(size, at + NAME_LINE))
+                    if (nl < 0 and floor > 0) or (stop < 0 and size - at > NAME_LINE):
+                        continue  # inside a long record (quoted text), not a short record of its own
+                    start = nl + 1
                     try:
-                        r = json.loads(mm[start:stop if stop >= 0 else len(mm)].decode("utf-8", "replace"))
+                        r = json.loads(mm[start:stop if stop >= 0 else size].decode("utf-8", "replace"))
                     except ValueError:
                         continue
-                    if (v := r.get("customTitle") or r.get("agentName")) and isinstance(v, str):
+                    v = (r.get("customTitle") or r.get("agentName")) if isinstance(r, dict) else None
+                    if v and isinstance(v, str):
                         return v
     except (OSError, ValueError):  # gone, or empty (mmap refuses an empty file)
         pass
@@ -209,8 +224,8 @@ def claude(dirs):
             continue
         head = lines(path)
         cwd = launch_folder(path, head, dirs)
-        if not inside(cwd, dirs):
-            continue
+        if not inside(cwd, dirs) or not os.path.isdir(cwd):
+            continue  # elsewhere, or its folder is gone (a removed worktree): Claude Code resumes only from there
         first = next((p for p in map(claude_prompt, head) if p), None)
         if not first:
             continue  # nothing was ever asked: nothing to resume
@@ -234,7 +249,9 @@ def codex_meta(path):
     except OSError:
         return {}
     try:
-        return json.loads(data.decode("utf-8", "replace")).get("payload") or {}
+        rec = json.loads(data.decode("utf-8", "replace"))
+        payload = rec.get("payload") if isinstance(rec, dict) else None
+        return payload if isinstance(payload, dict) else {}
     except ValueError:  # cut short: id and cwd come before the instructions
         pass
     text, meta = data.decode("utf-8", "replace"), {}
@@ -253,8 +270,8 @@ def codex(dirs):
     files = newest(glob.glob(os.path.join(CODEX, "*", "*", "*", "rollout-*.jsonl")))[:CODEX_SCAN]
     for at, path in files:
         meta = codex_meta(path)
-        if not isinstance(meta.get("cwd"), str) or not inside(meta["cwd"], dirs):
-            continue
+        if not isinstance(meta.get("cwd"), str) or not inside(meta["cwd"], dirs) or not os.path.isdir(meta["cwd"]):
+            continue  # elsewhere, or its folder is gone: the new tab would have nowhere to open
         m = UUID.search(os.path.basename(path))
         sid = meta.get("id") if isinstance(meta.get("id"), str) and UUID.fullmatch(meta["id"]) else (m.group(0) if m else None)
         if not sid:
