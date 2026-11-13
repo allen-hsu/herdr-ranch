@@ -6,7 +6,7 @@
 // Opened with ⌘K (keys.json: "mod.open:command-bar").
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents } from "herdr";
+import { agents, spaces, panes, focused, run, exec, theme, props, closeOverlay, openOverlay, shared, setShared, notify, knownAgents, home } from "herdr";
 import { TS, C, icon, statusMark, spaceName, openPage } from "./ui.js";
 import { agentName } from "./agentname.js";
 import { loadFolders, folderOf, place } from "./folders.js";
@@ -81,7 +81,8 @@ export default class CommandBar extends View {
     const ps = panes();
     const mine = spaces().filter((s) => !s.machine && folderOf(s, this.folders, ps) === folder.id);
     if (mine.length) run("tab.new", { space: mine[0].id, ...(argv ? { argv, task: t } : {}), ...(name ? { name } : {}) });
-    else if (folder.path) run("space.new", { folder: folder.path, ...(argv ? { argv, task: t } : {}) });
+    // Herdr takes the path as written: a folder path saved as "~/…" is expanded here (as space-folders does).
+    else if (folder.path) run("space.new", { folder: folder.path.replace(/^~(?=\/|$)/, home()), ...(argv ? { argv, task: t } : {}) });
     else notify({ title: `${folder.name} has no space and no path`, body: "Give the folder a path (⋯ › Edit) or open a space in it first.", level: "warning" });
   }
 
