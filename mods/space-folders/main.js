@@ -105,12 +105,14 @@ function deepest(list, score) {
   return best?.id ?? null;
 }
 
-// Where a space goes: where it was dragged (or "" for out of every folder), else
-// the folder whose rules reach deepest into the folder it works in.
+// Where a space goes: where it was dragged (or "" for out of every folder), else the folder whose rules reach
+// deepest into the folder it was made in, else into the folder it works in now.
+// ranch: the made-in folder comes first, so an agent started in a folder stays there when it `cd`s into a
+// sibling repo (the terminal's live folder moves with it; before, the space dropped out to Recent).
 function folderOf(s, { list, of }, ps) {
   const id = of[localId(s)];
   if (id !== undefined) return list.some((f) => f.id === id) ? id : null;
-  return deepest(list, (f) => reach(f, place(s, ps)));
+  return deepest(list, (f) => reach(f, s.folder)) ?? deepest(list, (f) => reach(f, place(s, ps)));
 }
 
 // The folder on this computer that takes in another machine: the first whose
