@@ -793,7 +793,7 @@ export default class Spaces extends View {
       })
       .on_hover((h, cx) => { if (h) this.hoveredFolder = f.id; else if (this.hoveredFolder === f.id) this.hoveredFolder = null; cx.notify(); })
       .on_click(() => this.toggleFolder(machine, f.id))
-      .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } }));
+      .on_mouse_down("right", () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: machine ? 206 : 239, props: { folderMenu: f.id, machine } }));
     // Orca-style: a thin folder outline (open when expanded) in the folder's color, or the project's own logo when
     // one is found (this.logos); the name in bold; count, ⋯ and chevron only while hovered.
     const hue = f.color ? (markColor(t, f.color) ?? f.color) : t.muted;
@@ -815,7 +815,7 @@ export default class Spaces extends View {
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_mouse_up("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { cx.stop_propagation(); openBar({ folder: { id: f.id, name: f.name, path: f.path ?? null } }); }).child(icon("plus", 13))))
       .child(this.trail().when(hover, (el) => el.child(this.more(t, `folder-more-${f.id}`, "New space, team, color, edit",
-        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: 206, props: { folderMenu: f.id, machine } })))));
+        () => openOverlay({ mod: "space-folders", kind: "popup", width: 210, height: machine ? 206 : 239, props: { folderMenu: f.id, machine } })))));
   }
 
   // Each folder's logo, Orca-style: a favicon / app icon found in the folder's path or the repos of its spaces,
@@ -862,6 +862,10 @@ export default class Spaces extends View {
     return v_flex().id("folder-menu").size_full().p(5).gap(1).bg(t.popover).text_color(t.foreground).text_size(TS.item)
       .child(h_flex().px(8).pt(6).pb(8).gap(6).items_center().children([null, ...MARKS].map(swatch)))
       .child(item("folder-space", "New space here", () => newSpaceIn(machine, id)))
+      .when(!machine, (el) => el.child(item("folder-resume", "Resume a conversation…", () => {
+        const f = folders(machine).list.find((x) => x.id === id);
+        if (f) openBar({ resume: { id: f.id, name: f.name, path: f.path ?? null } });
+      })))
       .when(!machine, (el) => el.child(item("folder-team", "Start an agent team…", () => openOverlay({ mod: "team-launch", kind: "dialog", width: 560, height: 228, props: { folder: id } }))))
       .child(item("folder-edit", "Edit folder…", () => openOverlay({ mod: "space-folders", kind: "dialog", width: 460, props: { edit: id, machine } })))
       .child(item("folder-delete", "Delete folder", () => {
@@ -1089,13 +1093,13 @@ export default class Spaces extends View {
   rowMenu(w, g) {
     let root = null, on = null;
     try { const [o, common] = JSON.parse(g?.repo ?? "[]"); on = o; if (common?.endsWith("/.git")) root = common.slice(0, -5); } catch {}
-    const items = (root ? (g.linked ? 2 : 3) : 0) + 2;
+    const items = (root ? (g.linked ? 2 : 3) : 0) + (w.machine ? 2 : 3);
     openOverlay({ mod: "space-folders", kind: "popup", width: 220, height: 12 + items * 33 + 9,
-      props: { spaceMenu: w.id, root, on, linked: Boolean(g?.linked), top: g?.top ?? null } });
+      props: { spaceMenu: w.id, root, on, linked: Boolean(g?.linked), top: g?.top ?? null, remote: Boolean(w.machine) } });
   }
 
   spaceMenuView(t) {
-    const { spaceMenu: id, root, on, linked, top, overlay } = this.spaceMenu;
+    const { spaceMenu: id, root, on, linked, top, remote, overlay } = this.spaceMenu;
     const wt = (props, height) => openOverlay({ mod: WORKTREES_MOD, kind: "dialog", width: 480, height, props: { ...props, root, on } });
     const item = (key, icon, label, action, danger) => h_flex().id(key).h(32).px(8).gap(8).items_center().rounded(6).cursor_pointer()
       .text_color(danger ? C(t).status.blocked : t.foreground).hover((s) => s.bg(t.hover)).on_click(() => { closeOverlay(overlay); action(); })
@@ -1112,6 +1116,7 @@ export default class Spaces extends View {
     return v_flex().id("space-menu").size_full().p(5).gap(1).bg(t.popover).text_size(TS.item)
       .children(rows)
       .when(rows.length > 0, (el) => el.child(div().mx(6).my(3).h(1).bg(t.border)))
+      .when(!remote, (el) => el.child(item("sm-resume", "ranch/icons/history.svg", "Resume a conversation…", () => openBar({ resume: { space: id } }))))
       .child(item("sm-rename", "square-pen", "Rename", () => run("space.rename", { id })))
       .child(item("sm-close", "x", "Close", () => run("space.close", { id })));
   }

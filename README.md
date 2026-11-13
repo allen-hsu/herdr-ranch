@@ -46,12 +46,17 @@ One box that filters agents (agents that need you first), folders, spaces, actio
 explains the highlighted row. (`command-bar`)
 
 - **Go to** an agent or a space.
-- **Actions:** New agent, New team, New worktree, Add machine, Accounts, New space, New terminal tab, Split
+- **Actions:** New agent, Resume a conversation, New team, New worktree, Add machine, Accounts, New space, New terminal tab, Split
   right, Toggle sidebar, Toggle details panel, and "Compact this agent's context" for a focused Claude agent.
 - **Views:** Board, Team Map, the four Inspector tabs, Changes, Git graph, Pull requests, Files, Resource
   Manager, Accounts, Settings, Keybinds, Herdr's own command palette.
 - **New agent flow:** pick a folder (or "This space"), pick one of the agents Herdr reports as installed (or a
   plain terminal); whatever you typed becomes its first message. Backspace on an empty box goes back a step.
+- **Resume a conversation:** lists the past Claude Code and Codex conversations started in this space's folder or
+  in folders under it, such as `.claude/worktrees/<name>` (newest first, with the first and last thing you typed;
+  one still open elsewhere, like the Claude app, is marked), and continues the picked one in a new tab in its own
+  folder (`claude --resume` / `codex resume`, on the active account). Also at the end of
+  the New agent flow, and in the sidebar's space and folder menus. (`lib/sessions.py`)
 
 ### Right panel
 
