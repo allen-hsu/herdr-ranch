@@ -25,6 +25,8 @@ UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-
 # What Claude Code itself echoes into a user record (local command output, ! shell runs, hook text): no prompt.
 ECHO = re.compile(r"<(local-command-|bash-|command-|user-prompt-submit-hook)")
 HEAD, LIMIT, CODEX_SCAN = 256 * 1024, 40, 3000
+LINE_MAX = 32 * 1024 * 1024  # a record longer than this (many large pasted images) is skipped, not parsed
+SCAN_MAX = 64 * 1024 * 1024  # how far into a file the head may go when it keeps skipping such records
 TAILS = (256 * 1024, 2 * 1024 * 1024, 8 * 1024 * 1024)  # widened until the last prompt shows up (as live.py does)
 META = 16 * 1024  # of a Codex rollout's first line: enough for its id and cwd, not its full instructions
 NAMES = (b'"type":"custom-title"', b'"type":"agent-name"')  # as written, so text quoting them (escaped) never matches
@@ -45,8 +47,29 @@ def newest(paths):
     return sorted(out, reverse=True)
 
 
+def head_lines(f):
+    """Whole lines from the start until 256 KB are kept. A line is never cut: a first message with a pasted image
+    (base64, often over 256 KB) is still read whole; only one over LINE_MAX is passed over, and reading goes on
+    (up to SCAN_MAX in all)."""
+    out, kept, scanned = [], 0, 0
+    while kept < HEAD and scanned < SCAN_MAX:
+        raw = f.readline(LINE_MAX)
+        if not raw:
+            break
+        scanned += len(raw)
+        if not raw.endswith(b"\n") and len(raw) == LINE_MAX:  # too long to keep: skip to its end, not counted as head
+            more = b""
+            while scanned < SCAN_MAX and (more := f.readline(LINE_MAX)) and not more.endswith(b"\n"):
+                scanned += len(more)
+            scanned += len(more or b"")
+            continue
+        kept += len(raw)
+        out.append(raw)
+    return out
+
+
 def lines(path, tail=None):
-    """The records in the first 256 KB of a file, or in its last `tail` bytes; a cut line at the edge is skipped."""
+    """The records at the start of a file (head_lines), or in its last `tail` bytes; a cut line at the edge is skipped."""
     try:
         with open(path, "rb") as f:
             if tail:
@@ -54,13 +77,13 @@ def lines(path, tail=None):
                 f.seek(max(0, size - tail))
                 if size > tail:
                     f.readline()
-                data = f.read()
+                data = f.read().splitlines()
             else:
-                data = f.read(HEAD)
+                data = head_lines(f)
     except OSError:
         return []
     out = []
-    for raw in data.splitlines():
+    for raw in data:
         try:
             out.append(json.loads(raw.decode("utf-8", "replace")))
         except ValueError:
