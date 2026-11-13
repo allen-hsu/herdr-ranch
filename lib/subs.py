@@ -96,12 +96,11 @@ def main():
             continue
         p = transcript(addr)
         res[addr] = (running(p) + shells(p)) if p else []
-        # Which account the agent runs under (also when a plain `claude` was started by the shell hook).
+        # Which account the agent really runs under, "default" included: the terminal's argv can say otherwise
+        # (a plain `claude` started by the shell hook; or the first agent ended and another was typed in its shell).
         try:
             g = json.loads(subprocess.run(["hc", "get", addr, "--json"], capture_output=True, text=True, timeout=4).stdout)
-            acct = accounts.account_of_session((g.get("foreground") or {}).get("pid"))
-            if acct != "default":
-                res.setdefault("_accounts", {})[addr] = acct
+            res.setdefault("_accounts", {})[addr] = accounts.account_of_session((g.get("foreground") or {}).get("pid"))
         except Exception:
             pass
     print(json.dumps(res, ensure_ascii=False, separators=(",", ":")))

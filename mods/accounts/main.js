@@ -32,8 +32,10 @@ export default class Accounts extends View {
     this.adding = null;   // provider id whose "name the new account" row is open
     this.newName = null;  // its InputState
     this.renaming = null; // { provider, id, input }: the "what to call it" row open under an account
+    this.strays = {};     // provider id -> running agents that are not on the account in use (switchPlan items)
     this.note = null;     // what the last action did, one line
     this.load(cx);
+    this.findStrays(cx);
     // A sign-in finished in another tab shows up by itself (a small local read; redraws only when something changed).
     cx.timer.every(5000, (cx) => this.load(cx));
   }
@@ -67,7 +69,31 @@ export default class Accounts extends View {
       await this.read();
       this.working = false;
       cx.notify();
+      this.findStrays(cx);
     });
+  }
+  // Running agents that are not on the account in use: started before a switch and left behind, or a `claude`
+  // typed in a shell that predates the shell hook. Looked for when the dialog opens and after each change
+  // (it asks every agent, so not on the 5 s tick).
+  findStrays(cx) {
+    cx.spawn(async (cx) => {
+      if (!this.data) await this.read();
+      const next = {};
+      for (const p of PROVIDERS) {
+        const active = this.data?.[p.id]?.active;
+        if (!active) continue;
+        try { const items = await switchPlan(p.id, active); if (items.length) next[p.id] = items; } catch {}
+      }
+      this.strays = next;
+      cx.notify();
+    });
+  }
+  moveStrays(p, cx) {
+    const sec = this.data?.[p.id], items = this.strays[p.id];
+    if (!sec || !items?.length) return;
+    setPending(p.id, sec.active, [], []);
+    this.plan = { provider: p, id: sec.active, name: this.label(p, sec.active), env: sec.env ?? [], items };
+    cx.notify();
   }
 
   label(p, id) {
@@ -232,6 +258,11 @@ export default class Accounts extends View {
       .child(v_flex().rounded(8).bg(t.surface)
         .child(this.row(t, p, null, true, !sec.accounts.length))
         .children(sec.accounts.map((a, i) => this.row(t, p, a, false, i === sec.accounts.length - 1))))
+      .when((this.strays[p.id]?.length ?? 0) > 0, (e) => { const n = this.strays[p.id].length, c = C(t).status.blocked;
+        return e.child(h_flex().min_h(34).px(SPACE.card).py(4).gap(8).items_center().rounded(8).bg(tint(c, 0.08)).border_1().border_color(tint(c, 0.3))
+          .child(icon("circle-alert", 13, c))
+          .child(div().flex_1().min_w(0).text_size(TS.small).text_color(t.foreground).child(`${n} running agent${n > 1 ? "s are" : " is"} not on the account in use (${this.label(p, sec.active)}).`))
+          .child(this.button(t, `strays-${p.id}`, n > 1 ? "Move them…" : "Move it…", (cx) => this.moveStrays(p, cx)))); })
       .when(this.adding === p.id && this.newName != null, (e) => e.child(h_flex().gap(8).items_center()
         .child(div().flex_1().min_w(0).child(field(t, this.newName, { size: "panel", focused: true })))
         .child(this.button(t, `addno-${p.id}`, "Cancel", (cx) => { this.adding = null; cx.notify(); }))
