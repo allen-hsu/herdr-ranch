@@ -47,7 +47,7 @@ One box that filters agents (agents that need you first), folders, spaces, actio
 explains the highlighted row. (`command-bar`)
 
 - **Go to** an agent or a space.
-- **Actions:** New agent, Resume a conversation, New team, New worktree, Add machine, Accounts, New space, New terminal tab, Split
+- **Actions:** New agent, Resume a conversation, Restore agents, New team, New worktree, Add machine, Accounts, New space, New terminal tab, Split
   right, Toggle sidebar, Toggle details panel, and "Compact this agent's context" for a focused Claude agent.
 - **Views:** Board, Team Map, the four Inspector tabs, Changes, Git graph, Pull requests, Files, Resource
   Manager, Accounts, Settings, Keybinds, Herdr's own command palette.
