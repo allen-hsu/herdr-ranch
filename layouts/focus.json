@@ -326,6 +326,19 @@
           }
         },
         {
+          "id": "restore",
+          "type": "block",
+          "size": {
+            "px": 1
+          },
+          "content": {
+            "mod": "agent-restore",
+            "props": {
+              "block": "restore"
+            }
+          }
+        },
+        {
           "id": "worktrees",
           "type": "block",
           "size": {

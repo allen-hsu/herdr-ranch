@@ -127,6 +127,17 @@ tab closes. An agent that is working or waiting for you is not interrupted; it m
 Agents started from Herdr always use the picked account. For a `claude` or `codex` you type yourself in a Herdr
 terminal to do the same, install with `--shell` (one line in your shell rc; no effect outside Herdr).
 
+### Restore after a restart
+
+Herdr keeps every terminal across a reboot, a logout or a core crash, but brings it back as a shell: the agent
+that ran in it is not started again. With the session hook installed (`./install.sh --restore`), each Claude
+Code and Codex conversation writes its id and start folder as labels on its own terminal, and labels survive
+the restart. When Herdr is back, the status bar shows **Restore N agents** (`agent-restore`): its dialog lists
+them, and Resume types `cd <folder> && claude --resume <id>` (or `codex resume <id>`) into the same terminals,
+one after another, on the account in use. Ask (the default), Automatically, or Off. A conversation you left
+yourself (`/exit`) is not offered. What an agent was doing when Herdr stopped is cut short, and programs it
+left running in the background are not started again.
+
 ### Status bar
 
 - **Usage meters** (`usage-bar`): plan usage and reset times for Claude, Codex and Cursor for the active
@@ -167,6 +178,7 @@ cd herdr-ranch
 ./install.sh                # install, or update after a pull
 ./install.sh --statusline   # also add the snapshot hook to your Claude Code status-line script
 ./install.sh --shell        # also make a plain claude / codex typed in a Herdr terminal use the picked account
+./install.sh --restore      # also add the session hook that lets agents be brought back after a restart
 ```
 
 Then switch Herdr to the **focus** layout. Edit files in this repo and re-run the installer; do not edit the
@@ -185,6 +197,7 @@ What `install.sh` writes (`$APP` is `~/.config/herdr-app`, or `$HERDR_APP_HOME`)
 | `$APP/keys.json` | keys from `config.example/keys.json` are merged in; a key you already bound is kept and reported |
 | your status-line script | only with `--statusline`: one line added after `input=$(cat)`, backup saved as `<script>.bak-ranch` |
 | `~/.zshrc` (or `~/.bashrc`) | only with `--shell`: one line that sources `$APP/ranch/shell-accounts.sh` |
+| `~/.claude/settings.json`, `~/.codex/hooks.json` | only with `--restore`: a SessionStart (Claude Code: and SessionEnd) hook running `$APP/ranch/agent-session-hook.py`; backups saved as `<file>.bak-ranch`; `integrations/agent-restore/wire.py --remove` takes it out |
 | `~/.cache/herdr-ranch/` | checkouts of mods pinned in `vendor.json` (none at present) |
 
 It never writes your personal config. Copy what you need from `config.example/` into `$APP`:

@@ -7,6 +7,7 @@ Every folder in `mods/`. "Shows" is where the focus layout (`layouts/focus.json`
 |---|---|---|---|
 | `accounts` | Add, switch, re-sign-in and remove Claude Code / Codex logins; optionally restart agents on the new account (busy ones follow when free). | dialog (command bar, sidebar footer) | ui.js, accounts.js, accounts.py, accountswitch.js, agentname.js, subs.py, codexlog.py |
 | `agent-inspector` | Overview / Trace / Capabilities / Config for the focused Claude Code or Codex agent, from local transcripts. | right panel tab | codexlog.py, ui.js, agentname.js, accounts.py |
+| `agent-restore` | After a restart: "Restore N agents" in the status bar, and a dialog that resumes each lost conversation in its own terminal. Needs the session hook (`--restore`). | status bar pill; dialog | ui.js, accounts.js, agentname.js |
 | `agent-team` | Team Map: sequence diagram of an agent's team (hc agents, subagents, messaged sessions) and their messages. | full page (⌃⌘T); also a window | agentname.js, newteam.js, folders.js, ui.js, live.py, codexlog.py, accounts.py, accounts.js |
 | `agent-toast` | Agent notifications that name the agent, state, space, branch and tab; macOS notification when Herdr is in the background; sounds. | toast (layout root `toast`) | agentname.js, live.py, codexlog.py, ui.js, accounts.py |
 | `changes-plus` | Uncommitted changes with coloured diff rows. Clone of Herdr's `changes`. | right panel tab | ui.js |

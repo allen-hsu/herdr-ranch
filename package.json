@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/git-graph/graph.test.mjs && python3 tests/accounts/sync.test.py && python3 tests/sessions/list.test.py"
+    "test": "node tests/git-graph/graph.test.mjs && python3 tests/accounts/sync.test.py && python3 tests/sessions/list.test.py && python3 tests/agent-restore/hook.test.py && node tests/agent-restore/logic.test.mjs"
   }
 }

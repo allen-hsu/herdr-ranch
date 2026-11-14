@@ -5,6 +5,8 @@
 #   ./install.sh               install / update
 #   ./install.sh --dry-run     show what would change
 #   ./install.sh --statusline  also add the context/quota snapshot hook to your Claude Code status line
+#   ./install.sh --restore     also add the session hook to Claude Code and Codex, so agents can be brought back
+#                              after a restart (the agent-restore mod)
 #   ./install.sh --shell       also add one line to your shell rc, so a plain `claude` / `codex` typed in a
 #                              Herdr terminal uses the account picked in the Accounts dialog
 #
@@ -14,13 +16,14 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-ranch"
-DRY=0; STATUSLINE=0; SHELLRC=0
+DRY=0; STATUSLINE=0; SHELLRC=0; RESTORE=0
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --statusline) STATUSLINE=1 ;;
     --shell) SHELLRC=1 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    --restore) RESTORE=1 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "unknown option: $a" >&2; exit 2 ;;
   esac
 done
@@ -163,6 +166,19 @@ else
   say "not wired. Context % and cost on agent cards need it. Add after your status line reads stdin:"
   say '  ( printf '"'"'%s'"'"' "$input" | python3 "$HOME/.claude/herdr-status-snapshot.py" >/dev/null 2>&1 & )'
   say "or re-run with --statusline if your status line is a script with input=\$(cat)."
+fi
+
+echo "Restore after a restart (a session hook records which conversation runs in which terminal)"
+run cp "$HERE/integrations/agent-restore/session-hook.py" "$APP/ranch/agent-session-hook.py"
+if [ "$DRY" = 1 ]; then say "[dry-run] $(python3 "$HERE/integrations/agent-restore/wire.py" --check | tr '\n' ' ')"
+elif [ "$RESTORE" = 1 ]; then python3 "$HERE/integrations/agent-restore/wire.py" | sed 's/^/  /'
+else
+  WIRED="$(python3 "$HERE/integrations/agent-restore/wire.py" --check)"
+  printf '%s\n' "$WIRED" | sed 's/^/  /'
+  if printf '%s' "$WIRED" | grep -q "not wired"; then
+    say "Without the hook the Restore pill never has anything to offer. Re-run with --restore (adds one SessionStart /"
+    say "SessionEnd hook to ~/.claude/settings.json and one SessionStart hook to ~/.codex/hooks.json; backups kept)."
+  fi
 fi
 
 echo "Accounts in the shell (a plain claude / codex in a Herdr terminal uses the picked account)"
