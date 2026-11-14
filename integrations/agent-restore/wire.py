@@ -21,6 +21,18 @@ TARGETS = [
 ]
 
 
+def write_private(path, text, mode):
+    """Write a file that is created with `mode` from the start (no moment at the umask's wider default)."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    with os.fdopen(fd, "w") as f:
+        os.fchmod(f.fileno(), mode)
+        f.write(text)
+
+
 def ours(group):
     return isinstance(group, dict) and any(isinstance(h, dict) and MARK in str(h.get("command", "")) for h in group.get("hooks") or [])
 
@@ -68,13 +80,16 @@ def apply(provider, path, events, home, remove):
         data.pop("hooks", None)
     if not changed:
         return "%s: %s" % (provider, "nothing to remove" if remove else "already wired")
+    # The settings can hold secrets (an "env" block): the backup and the new file get the mode the file had,
+    # never a wider one (a new file: owner only).
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except OSError:
+        mode = 0o600
     if text is not None:
-        with open(path + ".bak-ranch", "w") as f:
-            f.write(text)
+        write_private(path + ".bak-ranch", text, mode)
     tmp = "%s.ranch-tmp-%d" % (path, os.getpid())
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    write_private(tmp, json.dumps(data, indent=2, ensure_ascii=False) + "\n", mode)
     os.replace(tmp, path)
     return "%s: %s %s%s" % (provider, "removed from" if remove else "added to", path, "" if text is None else " (backup: %s.bak-ranch)" % path)
 
