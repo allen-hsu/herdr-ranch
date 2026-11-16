@@ -29,6 +29,16 @@ function terminalLabel(tabId) {
   return [prog, folder].filter(Boolean).join(" · ") || p.program?.name || null;
 }
 
+const AGENT_NAMES = new Set(["Claude Code", "Codex", "Cursor", "Gemini", "Grok"]);
+// The title an agent program set on its terminal ("✳ Fix the cart"), when it says something of its own.
+function paneTitle(tabId) {
+  const mine = panes().filter((p) => p.tab === tabId && p.terminal && p.program && !p.program.shell);
+  const p = mine.find((x) => x.focused) ?? mine[0];
+  const t = (p?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  if (!t || t === p.program.name || t.toLowerCase() === p.program.key || /^[~/]/.test(t) || t.includes("@")) return null;
+  return t;
+}
+
 export default class Tabs extends View {
   init(_props, cx) {
     // Keys for the full pages (keys.json: "tabs-plus.board", "tabs-plus.team"): this bar is always shown, so it answers.
@@ -92,8 +102,12 @@ export default class Tabs extends View {
       const program = panes().find(p => p.tab === c.id && p.program?.agent)?.program ?? panes().find(p => p.tab === c.id)?.program;
       // ranch: a tab you named keeps its name; otherwise it shows its agent's name, as the sidebar does.
       const lead = agents().find((a) => a.tab === c.id && a.focused) ?? agents().find((a) => a.tab === c.id);
-      const mineNamed = c.named && c.name !== program?.name && !/^tb\d+$/.test(c.name);
-      const name = mineNamed ? c.name : (lead && agentName(lead)) || (!c.named && terminalLabel(c.id)) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
+      // A tab named after an agent program ("Claude Code", set when an agent was restarted in a new tab) is no
+      // name of yours: it shows what runs there now.
+      const mineNamed = c.named && c.name !== program?.name && !AGENT_NAMES.has(c.name) && !/^tb\d+$/.test(c.name);
+      // The agent's name; also when Herdr doesn't list it as an agent (its status report hasn't arrived), from the
+      // title the program set; else what the terminal is (folder, program).
+      const name = mineNamed ? c.name : (lead && agentName(lead)) || paneTitle(c.id) || terminalLabel(c.id) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
       const now = Date.now();
       if (this.prev[c.id] !== c.status) {
         if ((c.status === "done" || c.status === "blocked") && !c.active) this.flash[c.id] = { kind: c.status, until: c.status === "blocked" ? Infinity : now + 4000 };
