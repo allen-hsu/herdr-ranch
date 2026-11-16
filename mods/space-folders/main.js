@@ -18,7 +18,7 @@ import { agents, terminals, spaces, machines, panes, run, openOverlay, closeOver
 
 import { PRCache, prColor, prTip, revealPR } from "./prs.js";
 import { agentName } from "./agentname.js";
-import { AgentData, simpleAgentRow, childrenOf } from "./agentrows.js";
+import { AgentData, simpleAgentRow, childrenOf, allAgents } from "./agentrows.js";
 import { TS, C, tint, icon, statusMark, statusOf, spaceName, openCommandBar, toggleSidebar } from "./ui.js";
 import { reposOf, otherRules, isPlainPath } from "./folders.js";
 const WORKTREES_MOD = "worktrees";
@@ -683,7 +683,7 @@ export default class Spaces extends View {
   // The agents working in a space, each followed by its sub-agents; agents another agent started are drawn
   // under that agent, not again on their own.
   agentsOf(r, t) {
-    const all = agents().filter((a) => !a.address.includes("/"));
+    const all = allAgents().filter((a) => !a.address.includes("/"));
     let terms = [];
     try { terms = terminals() ?? []; } catch {}
     const childOf = new Set(terms.filter((k) => k.parent && all.some((a) => a.address === k.parent)).map((k) => k.address));
@@ -732,11 +732,11 @@ export default class Spaces extends View {
   }
 
   spaceMatches(w) {
-    return agents().some((a) => !a.address.includes("/") && a.space === w.id && matches(this.filter, a));
+    return allAgents().some((a) => !a.address.includes("/") && a.space === w.id && matches(this.filter, a));
   }
 
   filterBar(t) {
-    const all = agents().filter((a) => !a.address.includes("/"));
+    const all = allAgents().filter((a) => !a.address.includes("/"));
     const n = (id) => all.filter((a) => matches(id, a)).length;
     return h_flex().gap(2).items_center().ml(-7).children(FILTERS.map(([id, label]) => {
       const on = this.filter === id, c = id === "all" ? 0 : n(id);
@@ -753,7 +753,7 @@ export default class Spaces extends View {
   // elsewhere (Herdr marks those "done" until you look at them). Only with no filter on.
   attention(t) {
     if (this.filter !== "all") return [];
-    const all = agents().filter((a) => !a.address.includes("/"));
+    const all = allAgents().filter((a) => !a.address.includes("/"));
     const sp = spaces();
     const where = (a) => spaceName(sp.find((s) => s.id === a.space)?.name);
     const out = [];
@@ -1063,7 +1063,7 @@ export default class Spaces extends View {
   row({ w, i, g, tree, folder, nested }, t) {
     const on = w.active;
     // The most urgent agent here sets a dot; one that finished unseen makes the name bold.
-    const mine = agents().filter((a) => a.space === w.id);
+    const mine = allAgents().filter((a) => a.space === w.id);
     const unread = mine.some((a) => a.status === "done");
     return v_flex()
       .relative()
