@@ -107,6 +107,7 @@ export default class Tabs extends View {
       const lead = agents().find((a) => a.tab === c.id && a.focused) ?? agents().find((a) => a.tab === c.id);
       // A tab named after an agent program ("Claude Code", set when an agent was restarted in a new tab) is no
       // name of yours: it shows what runs there now.
+      // Only "tbN" here, not numberName(): a tab you named "3" is still yours to show; "tbN" is a tab id leaking in.
       const mineNamed = c.named && c.name !== program?.name && !PROGRAM_NAMES.has(c.name) && !/^tb\d+$/.test(c.name);
       // The agent's name; also when Herdr doesn't list it as an agent (its status report hasn't arrived), from the
       // title the program set; else what the terminal is (folder, program).
