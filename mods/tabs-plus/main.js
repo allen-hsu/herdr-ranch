@@ -3,7 +3,8 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props, nextCommand, home } from "herdr";
-import { agentName } from "./agentname.js";
+import { agentName, givenName } from "./agentname.js";
+import { refreshGivenNames } from "./givennames.js";
 import { TS, C, tint, icon, statusMark, togglePage } from "./ui.js";
 import { movePending } from "./accountswitch.js";
 
@@ -45,6 +46,8 @@ export default class Tabs extends View {
     cx.spawn(async () => { for (;;) { const c = String(await nextCommand()).split(".").pop(); if (c === "board" || c === "team") togglePage(c); } });
     // Agents that were busy when the account was switched move once they are free (lib/accountswitch.js).
     cx.timer.every(15000, (cx) => { if (Object.keys(shared("accounts.pending") ?? {}).length && !this.moving) { this.moving = true; cx.spawn(async () => { try { await movePending(); } finally { this.moving = false; } }); } });
+    // ranch: tabs show an agent's /rename name; read here too, so it stays current without the sidebar.
+    cx.timer.every(4000, (cx) => cx.spawn(async (cx) => { if (await refreshGivenNames().catch(() => false)) cx.notify(); }));
     // ranch: a tab whose agent finishes (or needs you) while you look elsewhere pulses: finished for a few
     // seconds, needs-you until you open it.
     this.prev = {};
@@ -100,14 +103,15 @@ export default class Tabs extends View {
       .on_mouse_down("left", stop).on_click(action).child(label);
     const item = (c, i) => {
       const program = panes().find(p => p.tab === c.id && p.program?.agent)?.program ?? panes().find(p => p.tab === c.id)?.program;
-      // ranch: a tab you named keeps its name; otherwise it shows its agent's name, as the sidebar does.
+      // ranch: a tab shows its agent's /rename name; else a tab you named keeps its name; otherwise it shows its
+      // agent's name, as the sidebar does.
       const lead = agents().find((a) => a.tab === c.id && a.focused) ?? agents().find((a) => a.tab === c.id);
       // A tab named after an agent program ("Claude Code", set when an agent was restarted in a new tab) is no
       // name of yours: it shows what runs there now.
       const mineNamed = c.named && c.name !== program?.name && !AGENT_NAMES.has(c.name) && !/^tb\d+$/.test(c.name);
       // The agent's name; also when Herdr doesn't list it as an agent (its status report hasn't arrived), from the
       // title the program set; else what the terminal is (folder, program).
-      const name = mineNamed ? c.name : (lead && agentName(lead)) || paneTitle(c.id) || terminalLabel(c.id) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
+      const name = givenName(lead) || (mineNamed ? c.name : (lead && agentName(lead))) || paneTitle(c.id) || terminalLabel(c.id) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
       const now = Date.now();
       if (this.prev[c.id] !== c.status) {
         if ((c.status === "done" || c.status === "blocked") && !c.active) this.flash[c.id] = { kind: c.status, until: c.status === "blocked" ? Infinity : now + 4000 };
