@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, agents, run, openOverlay, theme, window, shared, layout, settings, props, nextCommand, home } from "herdr";
-import { agentName, givenName } from "./agentname.js";
+import { agentName, givenName, renamePending, RENAME_TIP, PROGRAM_NAMES } from "./agentname.js";
 import { refreshGivenNames } from "./givennames.js";
 import { TS, C, tint, icon, statusMark, togglePage } from "./ui.js";
 import { movePending } from "./accountswitch.js";
@@ -30,7 +30,6 @@ function terminalLabel(tabId) {
   return [prog, folder].filter(Boolean).join(" · ") || p.program?.name || null;
 }
 
-const AGENT_NAMES = new Set(["Claude Code", "Codex", "Cursor", "Gemini", "Grok"]);
 // The title an agent program set on its terminal ("✳ Fix the cart"), when it says something of its own.
 function paneTitle(tabId) {
   const mine = panes().filter((p) => p.tab === tabId && p.terminal && p.program && !p.program.shell);
@@ -108,7 +107,8 @@ export default class Tabs extends View {
       const lead = agents().find((a) => a.tab === c.id && a.focused) ?? agents().find((a) => a.tab === c.id);
       // A tab named after an agent program ("Claude Code", set when an agent was restarted in a new tab) is no
       // name of yours: it shows what runs there now.
-      const mineNamed = c.named && c.name !== program?.name && !AGENT_NAMES.has(c.name) && !/^tb\d+$/.test(c.name);
+      // Only "tbN" here, not numberName(): a tab you named "3" is still yours to show; "tbN" is a tab id leaking in.
+      const mineNamed = c.named && c.name !== program?.name && !PROGRAM_NAMES.has(c.name) && !/^tb\d+$/.test(c.name);
       // The agent's name; also when Herdr doesn't list it as an agent (its status report hasn't arrived), from the
       // title the program set; else what the terminal is (folder, program).
       const name = givenName(lead) || (mineNamed ? c.name : (lead && agentName(lead))) || paneTitle(c.id) || terminalLabel(c.id) || (/^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name);
@@ -135,6 +135,7 @@ export default class Tabs extends View {
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
         .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
+        .when(renamePending(lead), el => el.child(div().id(`pend-${c.id}`).flex_none().tooltip(RENAME_TIP).child(icon("clock", 11, t.dim))))
         .when(c.status === "working" || c.status === "blocked" || c.status === "done", el => el.child(statusMark(t, c.status)))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: c.id }); }).child(svg("mods/pane/close.svg").size(12))));
     };
