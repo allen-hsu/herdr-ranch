@@ -17,6 +17,8 @@ const c = classify([
   t("t8", before, {}, { "ranch.agent": "bash" }),    // not an agent we resume
   { address: "t9", state: "live", program: { shell: true } }, // no labels
 ], now);
+const muteT = t("t10", same, { program: { shell: false, agent: false, key: "claude" }, status: null });
+const cm = classify([muteT], now);
 const ids = (xs) => xs.map((x) => x.address).join(",");
 const checks = {
   "core: parsed, and compared with slack": parseCore(same)?.pid === 900 && sameCore(parseCore(same), now) && !sameCore(parseCore(before), now) && parseCore("x") === null,
@@ -32,6 +34,7 @@ const checks = {
   "a folder with a quote is quoted whole": resumeLine(record(t("t1", before, {}, { "ranch.cwd": "/work/it's; rm -rf ~" }))) === `cd -- '/work/it'\\''s; rm -rf ~' && claude --resume ${S}`,
   "no folder: no cd": resumeLine(record(t("t1", before, {}, { "ranch.cwd": "" }))) === `claude --resume ${S}`,
   "shq": shq("a'b") === `'a'\\''b'`,
+  "an agent that never reported is mute, not lost": cm.mute.length === 1 && cm.restore.length === 0 && cm.stale.length === 0,
 };
 let bad = 0;
 for (const [k, ok] of Object.entries(checks)) { console.log((ok ? "ok   " : "FAIL ") + k); if (!ok) bad++; }

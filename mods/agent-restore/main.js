@@ -38,6 +38,7 @@ export default class AgentRestore extends View {
     this.items = [];                    // records to restore (logic.js record), not yet tried
     this.off = {};                      // dialog: address -> unticked
     this.staleSeen = {};                // address -> when it was first seen ended under this core run
+    this.muteSeen = {};                 // address -> when it was first seen running without reporting
     this.queue = []; this.busy = false; // resumes waiting their turn
     this.width = null;                  // the pill's block width as last set
     this.auto = null;                   // the core run "Automatically" already acted on
@@ -63,10 +64,17 @@ export default class AgentRestore extends View {
         if (!this.dialog) await this.tidy(c, now);
         const tried = shared(TRIED) ?? {};
         const before = JSON.stringify(this.items);
-        this.items = mode() === "off" && !this.dialog ? [] : c.restore.filter((r) => !tried[r.address]).map((r) => ({ ...r, ...this.whereOf(r.address) }));
+        // Silent agents count once they have been silent for a minute (one that is only starting gets that long).
+        const muteNow = new Set(c.mute.map((r) => r.address));
+        for (const a of Object.keys(this.muteSeen)) if (!muteNow.has(a)) delete this.muteSeen[a];
+        for (const r of c.mute) this.muteSeen[r.address] ??= now;
+        const mute = c.mute.filter((r) => now - this.muteSeen[r.address] >= 60000 && !tried[r.address]);
+        this.items = mode() === "off" && !this.dialog ? [] : [...c.restore.filter((r) => !tried[r.address]), ...mute].map((r) => ({ ...r, ...this.whereOf(r.address) }));
         if (!this.dialog) {
           this.fit();
-          if (mode() === "auto" && this.items.length && this.auto !== this.core?.start) { this.auto = this.core?.start; this.resume(this.items, cx); }
+          // Automatically: only the lost ones. A silent one is running, maybe working: restarting it is the person's call.
+          const lost = this.items.filter((r) => !r.mute);
+          if (mode() === "auto" && lost.length && this.auto !== this.core?.start) { this.auto = this.core?.start; this.resume(lost, cx); }
         }
         if (JSON.stringify(this.items) !== before) cx.notify();
       } finally { this.looking = false; }
@@ -126,8 +134,16 @@ export default class AgentRestore extends View {
         if (env.length && !synced[r.provider]) { synced[r.provider] = true; await syncAccounts(r.provider); }
         const cmd = known.find((k) => k.key === r.provider && Array.isArray(k.run))?.run ?? null;
         const line = resumeLine(r, env, cmd);
+        const now = () => classify((terminals() ?? []).filter((x) => x.address === r.address), this.core);
+        // A silent agent is stopped first (ctrl+c twice ends Claude Code and Codex), then resumed in its shell.
+        // Its labels may go with it (the session hook treats an exit as leaving); `r` already holds what is needed.
+        const atShell = () => (terminals() ?? []).find((x) => x.address === r.address)?.program?.shell === true;
+        if (r.mute && now().mute.length === 1) {
+          await hc(["keys", r.address, "ctrl+c", "ctrl+c"]).catch(() => null);
+          for (let i = 0; i < 20 && !atShell(); i++) await new Promise((ok) => cx.timer.after(500, ok));
+        }
         // Only into a shell that is still waiting (the person may have started something there meanwhile).
-        const still = classify((terminals() ?? []).filter((x) => x.address === r.address), this.core).restore.length === 1;
+        const still = r.mute ? atShell() : now().restore.length === 1;
         if (line && still) {
           // Typed as a person would: from inside a terminal, hc wraps what it sends in <hc from="…"> for agents to
           // read, which a shell can't parse. `env -u` makes sure this send never looks like it came from one.
@@ -167,11 +183,11 @@ export default class AgentRestore extends View {
       .child(image(ICON[r.provider]).size(14).flex_none())
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(div().truncate().text_size(TS.item).text_color(t.foreground).child(r.title ?? `${NAME[r.provider]} conversation`))
-        .child(div().truncate().text_size(TS.small).text_color(t.dim).child([r.space, r.tab, r.cwd ? r.cwd.split("/").pop() : null].filter(Boolean).join(" · "))));
+        .child(div().truncate().text_size(TS.small).text_color(t.dim).child([r.mute ? "running, but Herdr gets no status from it: restarts it" : null, r.space, r.tab, r.cwd ? r.cwd.split("/").pop() : null].filter(Boolean).join(" · "))));
     return v_flex().id("agent-restore").size_full().bg(t.popover).text_size(TS.item).text_color(t.foreground)
       .child(h_flex().h(48).px(SPACE.dialog).gap(12).items_center().flex_none().border_b(1).border_color(t.border)
         .child(dialogTitle(t, "Restore agents"))
-        .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(t.dim).child("Conversations that were running before Herdr restarted"))
+        .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(t.dim).child("Conversations lost to a restart, or running without a status"))
         .child(escChip(t, "ar-esc", () => this.close())))
       .child(v_flex().flex_1().min_h(0).p(SPACE.dialog).gap(12)
         .child(v_flex().id("ar-list").flex_1().min_h(0).rounded(8).bg(t.surface).overflow_y_scrollbar()

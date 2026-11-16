@@ -26,10 +26,14 @@ export function record(t) {
   if (t.state && t.state !== "live") return null;
   const p = t.program ?? {};
   const alive = Boolean(p.agent) || Boolean(t.status); // terminals(): program { shell, agent }, status a word or null
+  // Running but silent: the agent's program is in front, yet it never told Herdr its status. Claude Code asks the
+  // terminal once at start (OSC 7501, 2 s to answer) and stays silent for good when the answer is late, as after
+  // a boot or when many start at once. Only a restart fixes it.
+  const mute = !alive && !p.shell && p.key === provider;
   return { address: t.address, provider, session,
     cwd: printable(cwd) && cwd.startsWith("/") && cwd.length < 1024 ? cwd : null,
     title: printable(l["ranch.title"]) ? l["ranch.title"].slice(0, 80) : null,
-    core: parseCore(l["ranch.core"]), alive, atShell: !alive && p.shell === true };
+    core: parseCore(l["ranch.core"]), alive: alive || mute, mute, atShell: !alive && p.shell === true };
 }
 
 // Sort the labelled terminals by what to do about them under the core run `core`:
@@ -37,11 +41,12 @@ export function record(t) {
 //   stale    the agent is gone under this same run: it ended by itself or was closed, nothing to offer
 //   restamp  the agent is alive but its record names an earlier run (the core was restarted under it)
 export function classify(list, core) {
-  const out = { restore: [], stale: [], restamp: [], alive: [] };
+  const out = { restore: [], stale: [], restamp: [], alive: [], mute: [] };
   if (!core) return out;
   for (const t of list ?? []) {
     const r = record(t);
     if (!r) continue;
+    if (r.mute) out.mute.push(r);
     if (r.alive) { out.alive.push(r); if (!sameCore(r.core, core)) out.restamp.push(r); }
     else if (r.atShell) (sameCore(r.core, core) ? out.stale : out.restore).push(r);
   }
