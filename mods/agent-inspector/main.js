@@ -34,6 +34,7 @@ export default class AgentInspector extends View {
     this.open = new Set([0]); // expanded turns in Trace (the latest starts open)
     this.openSpan = new Set(); // expanded waterfall rows in Trace
     this.openSrv = new Set(); // expanded servers in MCP
+    this.openSkills = false; this.openSkGroup = new Set(); // Skills: the listed ones, and which of their groups
     this.openHook = new Set(); // expanded hooks in Config
     this.openFile = null; // memory file shown inline in Config: { path, text }
     this.load(cx);
@@ -542,6 +543,28 @@ export default class AgentInspector extends View {
         .child(div().truncate().text_color(t.foreground).child(u.name))
         .child(div().truncate().text_size(TS.tiny).text_color(t.dim).child([u.count ? `${u.count}× ${u.how.map((h) => HOW[h] ?? h).join(", ")}` : "", u.restored ? `restored ${u.restored}× after compaction` : "", u.failed ? `${u.failed} failed` : "", u.last ? `last ${clock(u.last)}` : ""].filter(Boolean).join(" · "))))
       .child(div().flex_none().text_color(u.tok > 20000 ? t.working : t.dim).tooltip("Size of the skill's instructions when loaded (characters ÷ 4)").child(u.tok ? `~${k(u.tok)}` : "–")));
+    // Every skill the agent is shown, folded: by plugin or family, the costliest first.
+    const listed = sk.listed ?? [];
+    if (listed.length) {
+      const all = listed.reduce((n, g) => n + g.skills.length, 0);
+      out.push(h_flex().id("sk-listed").px(SPACE.panel).pt(14).pb(6).gap(6).items_center().text_size(11).font_semibold().cursor_pointer().text_color(t.dim)
+        .hover((x) => x.text_color(t.foreground)).on_click((_e, cx) => { this.openSkills = !this.openSkills; cx.notify(); })
+        .child(icon(this.openSkills ? "chevron-down" : "chevron-right", 12, t.dim)).child(div().child("Listed")).child(div().flex_1())
+        .child(div().child(`${all} · ~${k(sk.available_tok)} every turn`)));
+      if (this.openSkills) for (const [i, g] of listed.entries()) {
+        const key = g.name || "(other)", open = this.openSkGroup.has(key), used = g.skills.filter((s) => s.used).length;
+        out.push(h_flex().id(`sk-g-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta).cursor_pointer().hover((x) => x.bg(t.hover))
+          .on_click((_e, cx) => { open ? this.openSkGroup.delete(key) : this.openSkGroup.add(key); cx.notify(); })
+          .child(icon(open ? "chevron-down" : "chevron-right", 12, t.dim))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(g.name ? (g.skills[0].name.includes(":") ? g.name : `${g.name}-*`) : "Other skills"))
+          .child(div().flex_none().text_color(used ? t.accent : t.dim).child(used ? `${used} used · ${g.skills.length}` : String(g.skills.length)))
+          .child(div().flex_none().w(44).text_right().text_color(g.tok > 1000 ? t.working : t.dim).tooltip("What their descriptions cost on every turn (approx.)").child(`~${k(g.tok)}`)));
+        if (open) for (const [j, s] of g.skills.entries()) out.push(h_flex().id(`sk-g-${i}-${j}`).pl(SPACE.panel + 20).pr(SPACE.panel).py(2).gap(8).items_center().text_size(TS.small)
+          .child(div().flex_1().min_w(0).truncate().text_color(s.used ? t.accent : t.muted).child(s.name))
+          .when(s.used, (e) => e.child(div().flex_none().text_color(t.accent).child("loaded")))
+          .child(div().flex_none().w(44).text_right().text_color(t.dim).child(`~${k(s.tok)}`)));
+      }
+    }
     out.push(this.h(t, "Timeline", (sk.events ?? []).length ? "newest first" : null));
     if (!(sk.events ?? []).length) out.push(this.note(t, "Nothing yet."));
     for (const [i, e] of (sk.events ?? []).entries()) out.push(h_flex().id(`sk-e-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.small)

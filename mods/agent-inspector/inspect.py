@@ -19,7 +19,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 22
+VERSION = 23
 # $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
 # From the Claude API reference, 2026-11. Unknown models: no cost shown.
 PRICES = {
@@ -225,6 +225,33 @@ def mcp_summary(g):
                        "context_tok": tot("instr_tok") + tot("def_tok") + tot("list_tok")}}
 
 
+def listed_skills(a):
+    """{name: tokens} for each skill in a listing: its "- name: description" entry (several lines at most)."""
+    names = [n for n in (a.get("names") or []) if isinstance(n, str)]
+    text = a.get("content") or ""
+    cost, cur = {}, None
+    # A plugin's skill is "plugin:skill", so the name is the longest known one the line starts with.
+    known = sorted(names, key=len, reverse=True)
+    for line in text.split("\n"):
+        if line.startswith("- "):
+            n = next((x for x in known if line[2:].startswith(x + ":") or line[2:].strip() == x), None) if known \
+                else (line[2:].split(":", 1)[0].strip() if ":" in line else None)
+            if n:
+                cur = n
+                cost[cur] = 0
+        if cur is not None:
+            cost[cur] += tok(line + "\n")
+    return {n: cost.get(n, 0) for n in names} if names else cost
+
+
+def skill_group(name):
+    """Where a listed skill comes from, for the list: a plugin ("plugin:skill"), else a family by its prefix."""
+    if ":" in name:
+        return name.split(":", 1)[0]
+    head = name.split("-", 1)[0]
+    return head if "-" in name else ""
+
+
 def skill_summary(g, turns):
     events = [{k: v for k, v in e.items() if k != "step"} for e in g.skill_events]
     used = {}
@@ -240,7 +267,21 @@ def skill_summary(g, turns):
         u["last"] = e.get("at") or u["last"]
         u["failed"] += 0 if e.get("ok", True) else 1
     missed = collections.Counter(n for x in turns for n in x["mentions"] if n not in {e["name"] for e in x["skills"]})
-    return {"available": g.skills_avail, "available_tok": g.skills_avail_tok,
+    groups = {}
+    for n, t in g.skills_listed.items():
+        gr = groups.setdefault(skill_group(n), {"name": skill_group(n), "tok": 0, "skills": []})
+        gr["tok"] += t
+        gr["skills"].append({"name": n, "tok": t, "used": n in used})
+    # A family of one is no family: it joins the ungrouped ones.
+    loose = groups.setdefault("", {"name": "", "tok": 0, "skills": []})
+    for key in [k for k, v in groups.items() if k and ":" not in v["skills"][0]["name"] and len(v["skills"]) < 3]:
+        loose["skills"] += groups[key]["skills"]; loose["tok"] += groups.pop(key)["tok"]
+    if not loose["skills"]:
+        groups.pop("")
+    listed = sorted(groups.values(), key=lambda x: -x["tok"])
+    for x in listed:
+        x["skills"].sort(key=lambda s: (-s["used"], -s["tok"]))
+    return {"available": g.skills_avail, "available_tok": g.skills_avail_tok, "listed": listed,
             "used": sorted(used.values(), key=lambda u: -(u["last"] or 0)),
             "events": [e for e in events if e["how"] != "restored"][-40:][::-1], "missed": [{"name": n, "turns": c} for n, c in missed.most_common(8)]}
 
@@ -251,6 +292,7 @@ class Agg:
         self.skills_avail = 0
         self.skills_avail_tok = 0
         self.skill_names = set()  # every skill the listing offered
+        self.skills_listed = {}   # name -> what its line in the listing costs (tokens), in listing order
         self.skill_events = []    # one per load: {at, name, how: model|you|subagent|restored, tok, ok, error, args, allowed, turn}
         self.hooks = {}           # key -> stats
         self.mcp = {}             # server key (as in mcp__<key>__tool) -> see srv()
@@ -407,6 +449,7 @@ def _parse(path, offset, g, turns, cur, first_ctx, last_ctx, out_tok, cache_read
                 g.skills_avail = int(a.get("skillCount") or len(a.get("names") or []))
                 g.skills_avail_tok = tok(a.get("content") or "")
                 g.skill_names |= {n for n in (a.get("names") or []) if isinstance(n, str)}
+                g.skills_listed = listed_skills(a)
             elif at_ == "invoked_skills":
                 # Skills already loaded, put back into context after a compaction: not a new call (once per compaction).
                 for sk in a.get("skills") or []:
