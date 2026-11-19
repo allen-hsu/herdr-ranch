@@ -45,6 +45,9 @@ export default class AgentInspector extends View {
       const a = this.target(); if (a && a !== this.addr) this.switchTo(a, cx);
       // The command bar asks for a tab through shared "inspector.goto" {tab, n}.
       const g = shared("inspector.goto");
+      // The Cache tile counts down by the second while it shows (a redraw a second, only then).
+      const cu = this.data?.cache_until, sec = Math.floor(Date.now() / 1000);
+      if (this.tab === "overview" && cu && cu - sec > -2 && cu - sec < 7200 && sec !== this.tick) { this.tick = sec; cx.notify(); }
       if (g?.n && g.n !== this.gotoSeen) { this.gotoSeen = g.n; if (TABS.includes(g.tab) && g.tab !== this.tab) { this.tab = g.tab; localStorage.setItem("tab", g.tab); cx.notify(); } }
     });
   }
@@ -135,7 +138,7 @@ export default class AgentInspector extends View {
   // ---------- derived alerts (live state) ----------
   liveIssues(t, d) {
     const out = [];
-    const left = d.cache_until ? d.cache_until - d.now : null;
+    const left = d.cache_until ? d.cache_until - Date.now() / 1000 : null;
     if (d.pct >= 70) out.push({ level: "error", kind: "context", text: `Context ${Math.round(d.pct)}% full — /compact or start fresh before quality drops.` });
     else if (d.pct >= 50) out.push({ level: "warn", kind: "context", text: `Context ${Math.round(d.pct)}% — every turn re-reads ${k(d.ctx)} tokens.` });
     if (left != null && left <= 0 && d.ctx > 100000) out.push({ level: "warn", kind: "cache", text: `Prompt cache expired — next turn re-writes ~${k(d.ctx)} tokens at full price.` });
@@ -211,7 +214,7 @@ export default class AgentInspector extends View {
     }
 
     // Cache: what replying now vs later costs.
-    const left = d.cache_until ? d.cache_until - d.now : null;
+    const left = d.cache_until ? d.cache_until - Date.now() / 1000 : null;
     if (d.agent !== "codex" && left != null && d.price && d.ctx) {
       const w = (d.cache_ttl ?? 300) >= 3600 ? 2 : 1.25;
       const now = (d.ctx * d.price.read) / 1e6, later = (d.ctx * d.price.in * w) / 1e6;
@@ -270,15 +273,20 @@ export default class AgentInspector extends View {
   }
 
   tools(t, d) {
-    const out = [this.h(t, "Tools used", "calls · avg · context added")];
+    // Fixed columns, header included, so every number lines up under its heading.
+    const COLS = [["calls", 44], ["avg", 52], ["errors", 44], ["context", 48]];
+    const cell = (w, txt, color, extra = (e) => e) => extra(div().flex_none().w(w).text_right().truncate().text_color(color).child(txt));
+    const out = [h_flex().px(SPACE.panel).pt(14).pb(6).gap(8).items_center().text_size(11).font_semibold().text_color(t.dim)
+      .child(div().w(12).flex_none()).child(div().flex_1().min_w(0).child("Tools used"))
+      .children(COLS.map(([name, w]) => cell(w, name, t.dim)))];
     if (!(d.tools ?? []).length) out.push(this.note(t, "No tool calls yet."));
     for (const [i, x] of (d.tools ?? []).entries()) out.push(h_flex().id(`tl-${i}`).px(SPACE.panel).py(4).gap(8).items_center().text_size(TS.meta)
       .child(icon(x.name.startsWith("mcp__") ? "plug" : x.name === "Agent" || x.name === "Task" ? "bot" : "wrench", 12, x.errors ? C(t).status.blocked : t.dim))
       .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.name.startsWith("mcp__") ? x.name.split("__").slice(1).join(" · ") : x.name))
-      .child(div().flex_none().text_color(t.dim).child(`${x.calls}×`))
-      .child(div().flex_none().w(48).text_right().text_color(x.avg_ms > 10000 ? C(t).status.working : t.dim).child(ms(x.avg_ms)))
-      .when(x.errors > 0, (e) => e.child(div().flex_none().text_color(C(t).status.blocked).child(`${x.errors} err`)))
-      .child(div().flex_none().w(44).text_right().text_color(x.result_tok > 20000 ? C(t).status.working : t.dim).child(`~${k(x.result_tok)}`)));
+      .child(cell(44, `${x.calls}×`, t.dim))
+      .child(cell(52, ms(x.avg_ms), x.avg_ms > 10000 ? t.foreground : t.dim, (e) => e.when(x.avg_ms > 10000, (y) => y.font_semibold())))
+      .child(cell(44, x.errors > 0 ? `${x.errors} err` : "", C(t).status.blocked))
+      .child(cell(48, `~${k(x.result_tok)}`, x.result_tok > 20000 ? C(t).status.working : t.dim)));
     if ((d.big ?? []).length) {
       out.push(this.h(t, "Biggest results", "tokens"));
       for (const [i, b] of d.big.slice(0, 6).entries()) out.push(this.row(t, `tl-b-${i}`, icon("wrench", 12, t.dim), `${b.tool} · ${b.label}`, `~${k(b.tok)}`));
@@ -670,7 +678,7 @@ export default class AgentInspector extends View {
     const name = agentName(a) || d?.name || d?.session?.slice(0, 8) || this.addr;
     const pct = d ? d.pct ?? (d.window ? (d.ctx / d.window) * 100 : null) : null;
     const st = C(t).status;
-    const left = d?.cache_until ? d.cache_until - d.now : null;
+    const left = d?.cache_until ? d.cache_until - Date.now() / 1000 : null;
     const tile = (label, value, color, tip) => this.stat(t, label, value ?? "–", color, tip);
     return [
       v_flex().px(SPACE.panel).pt(12).gap(2)
