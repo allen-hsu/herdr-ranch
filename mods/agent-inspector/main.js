@@ -6,7 +6,7 @@
 // Data: ./inspect.py (local transcripts only).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
-import { exec, appHome, focused, agents, theme, run, readTextFile, home, settings, shared } from "herdr";
+import { exec, appHome, focused, agents, panes, theme, run, readTextFile, home, settings, shared } from "herdr";
 import { TS, SPACE, C, tint, icon, statusMark } from "./ui.js";
 import { agentName } from "./agentname.js";
 
@@ -54,7 +54,11 @@ export default class AgentInspector extends View {
 
   target() {
     const f = focused();
-    return f?.agent ?? (agents().some((a) => a.address === f?.terminal) ? f.terminal : null);
+    if (f?.agent) return f.agent;
+    if (agents().some((a) => a.address === f?.terminal)) return f.terminal;
+    // An agent Herdr doesn't list (its status report never arrived: see agent-restore) is still the one in front.
+    const p = f?.terminal ? panes().find((x) => x.terminal === f.terminal) : null;
+    return p && !p.program?.shell && (p.program?.key === "claude" || p.program?.key === "codex") ? f.terminal : null;
   }
 
   // Show another agent: its last data at once (dimmed until fresh data lands), or a skeleton.
