@@ -19,7 +19,7 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CACHE_DIR = os.path.join(HOME, ".cache", "herdr-claude-status")
 SNAPSHOT = os.path.join(CACHE_DIR, "claude-statusline.json")
-VERSION = 23
+VERSION = 24
 # $ per million tokens: (input, output, cache read). Cache writes: 1.25x input (5 min), 2x (1 h).
 # From the Claude API reference, 2026-11. Unknown models: no cost shown.
 PRICES = {
@@ -739,7 +739,7 @@ def turn_row(x, reqs, calls, blobs, id2tool, shapes, mem_tok):
                 tools = [g["name"] for g in c["got"] if g["k"] == "tool"]
                 think = any(g["k"] in ("thinking", "redacted_thinking") for g in c["got"])
                 what = " → ".join(filter(None, ["thinking" if think else "", "reply" if any(g["k"] == "text" for g in c["got"]) else "", ", ".join(tools[:3]) + ("…" if len(tools) > 3 else "")]))
-                spans.append({"k": "llm", "name": f"LLM #{j + 1}", "label": what, "s": c["at"] - t0, "e": c["at"] - t0 + c["ms"] / 1000, "call": j})
+                spans.append({"k": "llm", "name": f"LLM #{j + 1}", "label": what, "s": c["at"] - t0, "e": c["at"] - t0 + c["ms"] / 1000, "call": j, "miss": c.get("miss")})
         for j, st in enumerate(steps):
             if st.get("t0") and st["k"] in ("tool", "agent", "skill"):
                 end = st.get("t1")
@@ -783,7 +783,7 @@ def turn_row(x, reqs, calls, blobs, id2tool, shapes, mem_tok):
 def call_rows(refs, reqs, calls, blobs, id2tool, shapes=None, mem_tok=0):
     """Each API call of a turn: when, how long, what it sent that was new, the input split
     (new / cache write / cache read), the output (and thinking), and what came back."""
-    out, prev_read = [], None
+    out, prev_read, prev = [], None, None
     for ref in refs:
         c = calls.get(ref) or {}
         q = reqs.get(ref) or {}
@@ -818,10 +818,40 @@ def call_rows(refs, reqs, calls, blobs, id2tool, shapes=None, mem_tok=0):
                     "model": q.get("model"), "effort": q.get("effort"), "ttl": q.get("ttl"),
                     "new": new, "cache_write": cw, "cache_read": cr, "hit": round(cr / total * 100, 1) if total else None,
                     "miss": bool(prev_read and cr < prev_read * 0.5),
+                    "miss_why": miss_why(q, c, prev, start) if prev_read and cr < prev_read * 0.5 else None,
+                    "miss_cost": miss_cost(q.get("model"), u, prev_read) if prev_read and cr < prev_read * 0.5 else None,
                     "out": u.get("output_tokens") or 0, "think": (u.get("output_tokens_details") or {}).get("thinking_tokens") or 0,
                     "sent": sent[:12], "unrecorded": missing, "got": c.get("blocks", [])[:12]})
         prev_read = cr or prev_read
+        prev = (q, c)
     return out
+
+
+def miss_why(q, c, prev, start):
+    """Why a call re-read much less from the prompt cache than the one before: the likeliest reason we can see."""
+    if not prev:
+        return "unknown"
+    pq, pc = prev
+    gap = start - pc["last"] if start and pc.get("last") else None
+    ttl = 3600 if str(pq.get("ttl") or "").startswith("1h") else 300
+    if gap is not None and gap > ttl:
+        return f"expired: {int(gap // 60)} min since the call before, the cache lasts {ttl // 60} min"
+    if pq.get("model") and q.get("model") and pq.get("model") != q.get("model"):
+        return f"model changed ({pq.get('model')} → {q.get('model')}): each model has its own cache"
+    if pq.get("shape") and q.get("shape") and pq.get("shape") != q.get("shape"):
+        return "the system prompt or the tool list changed (an MCP server, a skill or a mod came or went)"
+    if pq.get("effort") != q.get("effort") or pq.get("thinking") != q.get("thinking"):
+        return "thinking or effort settings changed"
+    return "the start of the conversation changed (a compaction, or an edit to earlier messages)"
+
+
+def miss_cost(model, u, prev_read):
+    """Roughly what the miss cost over a cache hit: the tokens written again at write price instead of read price."""
+    p = price_of(model)
+    if not p:
+        return None
+    again = max(0, (prev_read or 0) - (u.get("cache_read_input_tokens") or 0))
+    return round(again * (p[0] * 1.25 - p[2]) / 1e6, 4)
 
 
 def subagents(path, sid):

@@ -397,9 +397,17 @@ export default class AgentInspector extends View {
       .when(s.misses > 0, (el) => el.child(div().text_color(t.working).tooltip("A call re-read much less from the prompt cache than the one before").child(` · ${s.misses} cache miss`)));
   }
 
+  missChip(t, id) {
+    const c = C(t).status.working;
+    return div().id(id).flex_none().px(4).rounded(4).border_1().border_color(tint(c, 0.5)).text_size(TS.tiny).text_color(c)
+      .tooltip("Cache miss: this call re-read much less from the prompt cache than the one before, so the rest was written again at full price").child("miss");
+  }
+
   callDetail(t, c, pad) {
     const out = [];
     const line = (txt, color) => div().pl(pad).pr(SPACE.panel).text_size(TS.small).text_color(color ?? t.muted).truncate().child(txt);
+    if (c.miss) out.push(div().pl(pad).pr(SPACE.panel).pb(2).text_size(TS.small).text_color(C(t).status.working)
+      .child(`Cache miss: ${c.miss_why ?? "reason unknown"}${c.miss_cost != null ? ` · cost ~$${c.miss_cost.toFixed(2)} more than a hit` : ""}`));
     out.push(line(`${c.model ?? ""}${c.effort ? ` · effort ${c.effort}` : ""}${c.ttl ? ` · cache ${c.ttl}` : ""}${c.cost != null ? ` · ~$${c.cost.toFixed(3)}` : ""}`, t.dim));
     out.push(line(`in ${k(c.new)} new · ${k(c.cache_write)} cache write · ${k(c.cache_read)} cache read${c.hit != null ? ` (${Math.round(c.hit)}%)` : ""} · out ${k(c.out)}${c.think ? ` (${k(c.think)} thinking)` : ""}`, c.miss ? t.working : t.dim));
     if (c.comp) {
@@ -431,7 +439,17 @@ export default class AgentInspector extends View {
     const labelW = width >= 640 ? 190 : width >= 480 ? 130 : 104;
     const durW = 44;
     const trackW = Math.max(60, width - SPACE.panel * 2 - labelW - durW - 16);
-    const x = (sec) => Math.round((Math.min(sec, total) / total) * trackW);
+    // Long stretches where nothing ran (waiting on background work, idle) fold into a thin slot, so the steps on
+    // either side keep their width; a row in the list says how long it was.
+    const spans = tu.spans ?? [];
+    const iv = spans.map((s) => [Math.max(0, s.s), Math.min(total, s.e ?? total)]).filter(([p, q]) => q >= p).sort((p, q) => p[0] - q[0]);
+    const gaps = [];
+    let reach = 0;
+    for (const [p, q] of iv) { if (p - reach > Math.max(60, total * 0.15)) gaps.push([reach, p]); reach = Math.max(reach, q); }
+    const SLOT = total * 0.03; // what a folded stretch keeps on the axis
+    const shown = total - gaps.reduce((n, [p, q]) => n + (q - p - SLOT), 0);
+    const pos = (sec) => { let v = Math.min(sec, total); for (const [p, q] of gaps) { if (sec >= q) v -= q - p - SLOT; else if (sec > p) v -= (sec - p) * (1 - SLOT / (q - p)); } return v; };
+    const x = (sec) => Math.round((pos(sec) / Math.max(0.001, shown)) * trackW);
     const sp = tu.split;
     if (sp) out.push(div().px(SPACE.panel).pt(6).pb(4).child(this.stack(t, `split-${i}`, [
       { key: "model", v: sp.model, color: this.kindColor(t, "llm") },
@@ -439,13 +457,28 @@ export default class AgentInspector extends View {
       { key: "waiting for you", v: sp.you ?? 0, color: this.kindColor(t, "wait") },
       { key: "other", v: sp.other, color: this.kindColor(t, "other") },
     ], (p) => `${dur(p.v)} · ${Math.round((p.v / total) * 100)}%`)));
-    // Axis: 0 … total, with a mid tick.
+    // Axis: 0 … total (no mid tick when stretches are folded: the scale is no longer even).
     out.push(h_flex().px(SPACE.panel).gap(8).text_size(TS.tiny).text_color(t.dim)
       .child(div().w(labelW).flex_none())
-      .child(h_flex().w(trackW).flex_none().justify_between().child("0").child(dur(total / 2)).child(dur(total)))
+      .child(h_flex().w(trackW).flex_none().justify_between().child("0").when(!gaps.length, (e) => e.child(dur(total / 2))).child(dur(total)))
       .child(div().w(durW).flex_none()));
+    // What the marks mean.
+    const missN = spans.filter((s) => s.miss).length;
+    out.push(h_flex().px(SPACE.panel).pb(4).gap(10).flex_wrap().text_size(TS.tiny).text_color(t.dim)
+      .child(h_flex().gap(4).items_center().child(div().text_color(t.foreground).font_semibold().child("1m15s")).child("over 20 s"))
+      .when(missN > 0, (e) => e.child(h_flex().gap(4).items_center().child(this.missChip(t, "lg-miss")).child("re-read less from the cache")))
+      .when(gaps.length > 0, (e) => e.child(h_flex().gap(4).items_center().child(div().text_color(t.muted).child("⋯")).child("long wait, folded"))));
+    let gapAt = 0;
     const ICON = { llm: "sparkles", tool: "wrench", agent: "bot", skill: "zap", hook: "flag", wait: "hourglass" };
-    for (const [j, s] of (tu.spans ?? []).entries()) {
+    for (const [j, s] of spans.entries()) {
+      while (gapAt < gaps.length && s.s >= gaps[gapAt][1]) {
+        const [p, q] = gaps[gapAt++];
+        out.push(h_flex().id(`wf-gap-${i}-${gapAt}`).px(SPACE.panel).h(18).gap(8).items_center().text_size(TS.small).text_color(t.dim)
+          .tooltip("Nothing in this turn ran here: usually waiting on background work (a subagent, a background command) or idle.")
+          .child(h_flex().w(labelW).flex_none().gap(4).items_center().child(div().w(12).flex_none().text_center().child("⋯")).child(div().truncate().child(`waited ${dur(q - p)}`)))
+          .child(div().relative().w(trackW).h(18).flex_none().child(div().absolute().left(x(p)).top(8).w(Math.max(2, x(q) - x(p))).h(2).rounded(1).bg(t.border)))
+          .child(div().w(durW).flex_none().text_right().child(dur(q - p))));
+      }
       const key = `${i}:${s.k}:${j}`, open = this.openSpan.has(key);
       const color = s.err ? t.blocked : this.kindColor(t, s.k);
       const a = x(s.s), w = Math.max(2, x(s.e) - a);
@@ -456,12 +489,13 @@ export default class AgentInspector extends View {
         .on_click((_e, cx) => { open ? this.openSpan.delete(key) : this.openSpan.add(key); cx.notify(); })
         .child(h_flex().w(labelW).flex_none().gap(4).items_center().text_size(TS.small)
           .child(ICON[s.k] ? icon(ICON[s.k], 12, color) : div().flex_none().w(12).text_color(color).child("·"))
-          .child(div().flex_1().min_w(0).truncate().text_color(s.k === "llm" ? t.foreground : t.muted).child(name)))
+          .child(div().flex_1().min_w(0).truncate().text_color(s.k === "llm" ? t.foreground : t.muted).child(name))
+          .when(Boolean(s.miss), (e) => e.child(this.missChip(t, `wf-miss-${key}`))))
         .child(div().relative().w(trackW).h(20).flex_none()
           .child(div().absolute().left(0).right(0).top(10).h(1).bg(t.border).opacity(0.5))
           .child(div().absolute().left(a).top(5).w(w).h(10).rounded(3).bg(color).opacity(s.open ? 0.5 : 0.85)
             .when(Boolean(s.open), (e) => e.loop("opacity", { from: 0.3, to: 0.8, period: 1400 }))))
-        .child(div().w(durW).flex_none().text_right().text_size(TS.small).text_color((s.e - s.s) > 20 ? t.working : t.dim).child(dur(s.e - s.s))));
+        .child(div().w(durW).flex_none().text_right().text_size(TS.small).text_color((s.e - s.s) > 20 ? t.foreground : t.dim).when((s.e - s.s) > 20, (e) => e.font_semibold()).child(dur(s.e - s.s))));
       if (open) {
         const pad = SPACE.panel + 14;
         if (s.k === "llm" && tu.calls?.[s.call]) out.push(...this.callDetail(t, tu.calls[s.call], pad));
@@ -597,7 +631,8 @@ export default class AgentInspector extends View {
         : `${tot.loaded ?? 0} tools loaded with full schemas, ${tot.called ?? 0} used (${tot.calls ?? 0} calls). ~${k(tot.context_tok)} tokens of context: instructions + tool names + loaded schemas.`))];
     const st = C(t).status;
     const color = (s) => s.status === "failed" ? st.blocked : s.status === "needs auth" || s.status === "pending" ? st.working : s.calls ? st.done : t.dim;
-    out.push(this.h(t, "Servers", codex ? "calls" : "tools · loaded · calls"));
+    out.push(this.h(t, "Servers", codex ? "calls" : "offers · loaded · calls"));
+    if (!codex) out.push(this.note(t, "offers: tools the server has · loaded: whose full definitions the agent pulled into context · calls: times it used them."));
     for (const [i, s] of (m.servers ?? []).entries()) {
       const open = this.openSrv.has(s.key);
       const ctx = s.instr_tok + s.list_tok + s.def_tok;
