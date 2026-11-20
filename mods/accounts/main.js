@@ -173,7 +173,7 @@ export default class Accounts extends View {
       const said = `New ${p.name} agents now start on ${name}.`;
       let items = [];
       try { items = await switchPlan(p.id, id); } catch {}
-      const able = items.filter((x) => !x.skip);
+      const able = items.filter((x) => !x.skip && !x.silent); // a silent one may be working: only when ticked
       if (!items.length) { setPending(p.id, id, [], []); this.note = said; return; }
       if (mode === "leave") { setPending(p.id, id, [], []); this.note = `${said} ${items.length} running agent${items.length > 1 ? "s stay" : " stays"} on the old account.`; return; }
       if (mode === "restart") {
@@ -292,7 +292,7 @@ export default class Accounts extends View {
       .child(box(it.on && !it.skip, Boolean(it.skip)))
       .child(div().w(16).flex_none().flex().justify_center().child(statusMark(t, it.status)))
       .child(div().flex_1().min_w(0).truncate().text_size(TS.item).text_color(it.skip ? t.muted : t.foreground).child(it.name))
-      .child(div().flex_none().max_w(240).truncate().text_size(TS.small).text_color(t.dim).child(`${spaceName(it.where)} · ${it.later ? `${it.skip}: moves when free` : it.skip ? `skipped: ${it.skip}` : it.status === "error" ? "stopped on an error" : it.status === "done" ? "finished" : "idle"}`));
+      .child(div().flex_none().max_w(240).truncate().text_size(TS.small).text_color(t.dim).child(`${spaceName(it.where)} · ${it.silent ? "status unknown: tick to restart it anyway" : it.later ? `${it.skip}: moves when free` : it.skip ? `skipped: ${it.skip}` : it.status === "error" ? "stopped on an error" : it.status === "done" ? "finished" : "idle"}`));
     return v_flex().flex_1().min_h(0).p(SPACE.dialog).gap(12)
       .child(v_flex().gap(4)
         .child(div().text_size(TS.item).font_medium().text_color(t.foreground).child(`Restart running ${pl.provider.name} agents on ${pl.name}?`))
