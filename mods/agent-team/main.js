@@ -45,6 +45,7 @@ export default class AgentTeam extends View {
     this.pinned = p.lead ?? null; // map: the lead it shows (null: follow the focused agent)
     this.sel = p.sel ?? null; // a member to select on open (e.g. from the sidebar)
     this.range = null; // map: the timeline range, see RANGES (null: picked from the run's length, see mapView)
+    this.showOld = false; // map: the members that finished before the range, unfolded
     this.teams = null; // map: every lead that has a team (from team.py --teams), for the picker
     this.w = 980;
     this.load(cx);
@@ -351,31 +352,35 @@ export default class AgentTeam extends View {
       const [ch, col] = TILE[k] ?? [String(k ?? "?")[0]?.toUpperCase() ?? "?", t.muted];
       return div().size(13).flex_none().rounded(4).bg(tint(col, 0.22)).flex().items_center().justify_center().text_size(9).font_bold().text_color(col).child(ch); };
     const barColor = (c) => (c.status === "blocked" || c.status === "error" ? S.blocked : c.state === "finished" ? S.done : c.lead ? C(t).kind.llm : S.working);
+    // A finished member is one line (30px): there are often many, and what matters is the ones still running.
     const lane = (c, i) => {
       const sel = c.key === this.sel && !this.closed;
+      const done = !c.lead && c.state === "finished", H = done ? 26 : 44, mid = H / 2;
       const a = c.start ?? t0, b = c.state === "finished" ? (c.end ?? a) : now;
       const color = barColor(c);
       // Only what falls inside the range is drawn; a bar that started before it is cut at the left edge. A member
       // with no known start (another Claude session it only messaged) has markers, no bar.
       const shown = (c.lead || c.start != null) && b >= t0 && a <= t1, x0 = xOf(Math.max(a, t0)), bw = Math.max(6, xOf(Math.min(b, t1)) - x0);
       const mine = evs.filter((e) => !c.lead && c.ids.includes(e.who) && e.at >= t0 && e.at <= t1);
-      const track = div().relative().w(trackW).h(44).flex_none().overflow_hidden()
-        .children(ticks.map((k) => div().absolute().left(k.x).top(0).w(1).h(44).bg(t.border).opacity(0.35)))
-        .child(div().absolute().left(0).right(0).top(21).h(2).rounded(1).bg(t.border).opacity(0.6))
-        .when(shown, (x) => x.child(div().absolute().left(Math.min(x0, trackW - bw)).top(15).w(bw).h(14).rounded(4).bg(color).opacity(c.state === "finished" ? 0.5 : 0.9)
+      const track = div().relative().w(trackW).h(H).flex_none().overflow_hidden()
+        .children(ticks.map((k) => div().absolute().left(k.x).top(0).w(1).h(H).bg(t.border).opacity(0.35)))
+        .child(div().absolute().left(0).right(0).top(mid - 1).h(2).rounded(1).bg(t.border).opacity(0.6))
+        .when(shown, (x) => x.child(div().absolute().left(Math.min(x0, trackW - bw)).top(mid - (done ? 5 : 7)).w(bw).h(done ? 10 : 14).rounded(4).bg(color).opacity(c.state === "finished" ? 0.5 : 0.9)
           .when(c.state !== "finished" && c.status === "working", (y) => y.loop("opacity", { from: 0.6, to: 0.95, period: 1600 }))))
-        .children(mine.slice(0, 40).map((e) => div().absolute().left(Math.max(0, Math.min(trackW - 10, xOf(e.at) - 5))).top(17).size(10).rounded(5)
+        .children(mine.slice(0, 40).map((e) => div().absolute().left(Math.max(0, Math.min(trackW - 10, xOf(e.at) - 5))).top(mid - 5).size(10).rounded(5)
           .border_2().border_color(this.page ? t.background : t.popover).bg(e.k === "from" ? t.accent : e.k === "note" ? S.done : t.foreground)));
       const dur = c.start ? (b - a < 60 ? "<1m" : b - a < 3600 ? `${Math.round((b - a) / 60)}m` : `${(Math.round((b - a) / 360) / 10)}h`) : "";
-      return h_flex().id(`ln-${i}`).h(48).mx(8).px(8).gap(8).items_center().rounded(8).cursor_pointer().flex_none()
+      return h_flex().id(`ln-${i}`).h(done ? 30 : 48).mx(8).px(8).gap(8).items_center().rounded(done ? 6 : 8).cursor_pointer().flex_none()
         .when(sel, (x) => x.bg(t.selected)).when(!sel, (x) => x.hover((h) => h.bg(t.hover)))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { this.sel = c.key; this.closed = false; cx.notify(); })
         .child(div().w(18).flex_none().flex().justify_center().child(mark(c)))
-        .child(v_flex().w(NAME).flex_none().min_w(0).gap(2)
+        .when(!done, (x) => x.child(v_flex().w(NAME).flex_none().min_w(0).gap(2)
           .child(div().truncate().text_size(TS.item).text_color(sel || c.state !== "finished" ? t.foreground : t.muted).font_medium().child(c.name))
           .child(h_flex().gap(5).items_center().min_w(0).child(tile(c))
-            .child(div().flex_1().min_w(0).truncate().text_size(TS.small).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor))))
+            .child(div().flex_1().min_w(0).truncate().text_size(TS.small).text_color(t.dim).child(c.lead ? `lead · ${c.vendor}` : c.vendor)))))
+        .when(done, (x) => x.child(h_flex().w(NAME).flex_none().min_w(0).gap(6).items_center().child(tile(c))
+          .child(div().flex_1().min_w(0).truncate().text_size(TS.body).text_color(sel ? t.foreground : t.muted).tooltip(c.vendor).child(c.name))))
         .child(track)
         .child(div().w(DUR).flex_none().text_right().text_size(TS.meta).text_color(t.dim).child(dur));
     };
@@ -394,10 +399,25 @@ export default class AgentTeam extends View {
       .child(key(div().w(14).h(6).flex_none().rounded(2).bg(S.done).opacity(0.5), "finished"))
       .child(key(div().w(14).h(6).flex_none().rounded(2).bg(S.blocked), "needs you"))
       .child(key(dot(t.foreground), "lead → it")).child(key(dot(t.accent), "its reply")).child(key(dot(S.done), "done note"));
-    const n = rows.length - 1;
+    // The order: the lead, who needs you, who is working, then the finished ones, the latest to finish first.
+    // Those that finished before the range (or, over the whole run, more than 6 h before its end) fold into one
+    // row: in a long run they are most of the list.
+    const fin = rows.filter((c) => !c.lead && c.state === "finished").sort((a, b) => (b.end ?? b.start ?? 0) - (a.end ?? a.start ?? 0));
+    const cut = win ? t0 : end - 6 * 3600;
+    const recent = fin.filter((c) => (c.end ?? c.start ?? 0) >= cut), older = fin.filter((c) => (c.end ?? c.start ?? 0) < cut);
+    const active = rows.filter((c) => !c.lead && c.state !== "finished");
+    const order = [...rows.filter((c) => c.lead), ...active.filter((c) => c.status === "blocked" || c.status === "error"),
+      ...active.filter((c) => !(c.status === "blocked" || c.status === "error")), ...recent, ...(this.showOld ? older : [])];
+    const fold = older.length ? h_flex().id("mp-fold").h(28).mx(8).px(8).gap(8).items_center().rounded(6).cursor_pointer().flex_none()
+      .text_size(TS.meta).text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.muted))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { this.showOld = !this.showOld; cx.notify(); })
+      .child(div().w(18).flex_none().flex().justify_center().child(icon(this.showOld ? "chevron-down" : "chevron-right", 12, t.dim)))
+      .child(div().child(this.showOld ? `Hide the ${older.length} that finished earlier` : `${older.length} more finished earlier`)) : null;
+    const n = rows.length - 1, working = active.length;
     const bar = h_flex().h(32).px(PADX).gap(10).items_center().flex_none()
       .child(this.label(t, "Timeline"))
-      .child(div().flex_none().text_size(11).text_color(t.dim).child(`${n} member${n === 1 ? "" : "s"}`))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(`${n} member${n === 1 ? "" : "s"}${working && fin.length ? ` · ${working} running · ${fin.length} finished` : ""}`))
       .child(seg).child(div().flex_1().min_w(0)).child(legend);
     const axis = h_flex().h(20).px(PADX).gap(8).items_center().flex_none().text_size(TS.small).text_color(t.dim)
       .child(div().w(18 + NAME + 8).flex_none())
@@ -407,7 +427,10 @@ export default class AgentTeam extends View {
       .child(div().w(DUR).flex_none());
     const left = v_flex().flex_1().min_w(0).h_full()
       .child(bar).child(axis)
-      .child(v_flex().id("mp-lanes").flex_1().min_h(0).pb(12).overflow_y_scrollbar().children(rows.map(lane)));
+      .child(v_flex().id("mp-lanes").flex_1().min_h(0).pb(12).overflow_y_scrollbar()
+        .children(order.slice(0, order.length - (this.showOld ? older.length : 0)).map(lane))
+        .when(Boolean(fold), (e) => e.child(fold))
+        .when(this.showOld, (e) => e.children(older.map((c, j) => lane(c, order.length + j)))));
     return root
       .when(Boolean(banner), (e) => e.child(banner))
       .child(h_flex().flex_1().min_h(0).child(left).when(Boolean(selCol), (e) => e.child(this.drawer(t, d, selCol))));
