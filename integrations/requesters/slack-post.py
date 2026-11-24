@@ -14,7 +14,22 @@ Usage:
   slack-post.py         -> posts for the PR in the HERDR_PR_* env vars
 Only talks to slack.com. Prints one JSON object.
 """
-import json, os, subprocess, sys, urllib.parse, urllib.request
+import json, os, ssl, subprocess, sys, urllib.parse, urllib.request
+
+
+def tls():
+    """Trust the system's roots even on a python.org Python whose own CA store was never installed."""
+    ctx = ssl.create_default_context()
+    if not ctx.cert_store_stats().get("x509_ca"):
+        try:
+            import certifi
+            ctx.load_verify_locations(certifi.where())
+        except Exception:
+            for path in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt"):
+                if os.path.exists(path):
+                    ctx.load_verify_locations(path)
+                    break
+    return ctx
 
 CONFIG = os.path.expanduser("~/.config/herdr-app/slack-review.json")
 DEFAULT_TEMPLATE = "<@{bot}> 請幫忙 review {url}"
@@ -45,7 +60,7 @@ def api(method, tok, params, post=False):
     else:
         req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params), headers=headers)
     try:
-        return json.load(urllib.request.urlopen(req, timeout=15))
+        return json.load(urllib.request.urlopen(req, timeout=15, context=tls()))
     except Exception as e:
         return {"ok": False, "error": "network: %s" % type(e).__name__}
 

@@ -17,8 +17,36 @@ the keychain item "Claude Code-credentials-" + the first 8 hex of sha256(its con
 Codex keeps it in <account folder>/auth.json. Each account has its own cache file, and "account" in the output
 is its short name (the part of the email before @) when it is not the system login.
 """
-import glob, hashlib, json, os, subprocess, sys, time, urllib.request
+import glob, hashlib, json, os, ssl, subprocess, sys, time, urllib.request
 import accounts
+
+
+def tls():
+    """An HTTPS context that trusts the system's roots. A python.org Python ships with no CA store of its own
+    until its "Install Certificates" step runs: every request then fails with CERTIFICATE_VERIFY_FAILED."""
+    ctx = ssl.create_default_context()
+    if not ctx.cert_store_stats().get("x509_ca"):
+        try:
+            import certifi
+            ctx.load_verify_locations(certifi.where())
+        except Exception:
+            for path in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt"):
+                if os.path.exists(path):
+                    ctx.load_verify_locations(path)
+                    break
+    return ctx
+
+
+TLS = tls()
+
+
+def stale_if_old(info):
+    """Numbers kept from an earlier fetch after a failed one: marked stale once they are an hour old or a window
+    they show has already reset, so the bar never passes them off as current."""
+    now = time.time()
+    if now - info.get("fetched_at", 0) > 3600 or any((w.get("resets_at") or now + 1) < now for w in info.get("windows") or []):
+        info["stale"] = True
+    return info
 from datetime import datetime
 
 CACHE_DIR = os.path.expanduser("~/.cache/herdr-claude-status")
@@ -48,7 +76,7 @@ def claude_fetch(acct):
     req = urllib.request.Request("https://api.anthropic.com/api/oauth/usage", headers={
         "Authorization": "Bearer " + token, "anthropic-beta": "oauth-2025-04-20", "User-Agent": "herdr-usage-bar"})
     try:
-        data = json.load(urllib.request.urlopen(req, timeout=15))
+        data = json.load(urllib.request.urlopen(req, timeout=15, context=TLS))
     except urllib.error.HTTPError as e:
         return {"error": "http-%d" % e.code}
     except Exception:
@@ -83,7 +111,7 @@ def claude(acct):
     fresh["fetched_at"] = time.time()
     if "error" in fresh and cached and "windows" in cached:
         cached["error"] = fresh["error"]  # keep the last good numbers, note the failure
-        return cached
+        return stale_if_old(cached)
     os.makedirs(CACHE_DIR, exist_ok=True)
     tmp = cache + ".tmp"
     with open(tmp, "w") as f:
@@ -150,7 +178,7 @@ def cached(name, fetch):
     fresh["fetched_at"] = time.time()
     if "error" in fresh and old and old.get("windows"):
         old["error"] = fresh["error"]
-        return old
+        return stale_if_old(old)
     os.makedirs(CACHE_DIR, exist_ok=True)
     with open(path + ".tmp", "w") as f:
         json.dump(fresh, f)
@@ -161,7 +189,7 @@ def cached(name, fetch):
 def get_json(url, headers):
     req = urllib.request.Request(url, headers={"User-Agent": "herdr-usage-bar", "Accept": "application/json", **headers})
     try:
-        return json.load(urllib.request.urlopen(req, timeout=15)), None
+        return json.load(urllib.request.urlopen(req, timeout=15, context=TLS)), None
     except urllib.error.HTTPError as e:
         return None, "http-%d" % e.code
     except Exception:
